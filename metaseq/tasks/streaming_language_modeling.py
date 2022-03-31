@@ -23,6 +23,7 @@ from metaseq.data import (
     ResamplingDataset,
     StreamingShuffleDataset,
     StreamingTokenBlockDataset,
+    StreamingSrcTgtDataset,
     data_utils,
     iterators,
 )
@@ -44,6 +45,9 @@ logger = logging.getLogger(__name__)
 class StreamingLanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory with JSONL files"}
+    )
+    src_tgt_format: Optional[bool] = field(
+        default=False, metadata={"help": "data is in src-tgt format"}
     )
     vocab_filename: Optional[str] = field(
         default="", metadata={"help": "path to bpe-vocab.json"}
@@ -161,6 +165,17 @@ class StreamingLanguageModelingTask(LegacyTask):
     @classmethod
     def setup_task(cls, args, **kwargs):
         return cls(args)
+
+    def _tokenize_src_tgt_json(self, json):
+        src = json["src"].rstrip(" ")
+        tgt = json["tgt"].rstrip()
+        full_tokens = torch.LongTensor(
+            self.tokenizer.encode(" ".join([src, tgt])).ids + [self.eod]
+        )
+        src_tokens_len = len(self.tokenizer.encode(src).ids)
+        tgt_tokens = torch.clone(full_tokens)
+        tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
+        return (full_tokens, tgt_tokens)
 
     def _tokenize_one_json(self, json):
         text = json["text"]
@@ -287,7 +302,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self._tokenize_one_json,
+                    tokenizer=self._tokenize_src_tgt_json
+                    if self.args.src_tgt_format
+                    else self._tokenize_one_json,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -302,7 +319,12 @@ class StreamingLanguageModelingTask(LegacyTask):
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
         # chunk into blocks of tokens
-        self.datasets[split] = StreamingTokenBlockDataset(
+        StreamingDataset = (
+            StreamingSrcTgtDataset
+            if self.args.src_tgt_format
+            else StreamingTokenBlockDataset
+        )
+        self.datasets[split] = StreamingDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -321,14 +343,30 @@ class StreamingLanguageModelingTask(LegacyTask):
         if len([x for x in items if x is not None]) == 0:
             return {}
 
-        tokens = data_utils.collate_tokens(
-            [x["block"] for x in items if x is not None],
-            pad_idx=self.source_dictionary.pad(),
-            pad_to_bsz=self.args.batch_size,
-        )
-        # generate inputs and targets
-        input = tokens[:, :-1].contiguous()
-        target = tokens[:, 1:].contiguous()
+        if self.args.src_tgt_format:
+            src_tokens = data_utils.collate_tokens(
+                [x["src_block"] for x in items if x is not None],
+                pad_idx=self.source_dictionary.pad(),
+                pad_to_bsz=self.args.batch_size,
+            )
+            tgt_tokens = data_utils.collate_tokens(
+                [x["tgt_block"] for x in items if x is not None],
+                pad_idx=self.source_dictionary.pad(),
+                pad_to_bsz=self.args.batch_size,
+            )
+
+            # generate inputs and targets
+            input = src_tokens[:, :-1].contiguous()
+            target = tgt_tokens[:, 1:].contiguous()
+        else:
+            tokens = data_utils.collate_tokens(
+                [x["block"] for x in items if x is not None],
+                pad_idx=self.source_dictionary.pad(),
+                pad_to_bsz=self.args.batch_size,
+            )
+            # generate inputs and targets
+            input = tokens[:, :-1].contiguous()
+            target = tokens[:, 1:].contiguous()
 
         ids = torch.cat([x["ids"] for x in items if x is not None])
         if ids.numel() != torch.unique(ids).numel():
@@ -338,7 +376,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             )
 
         # metaseq expects batches to have the following structure
-        return {
+        batch = {
             "id": ids,
             "net_input": {
                 "src_tokens": input,
@@ -347,6 +385,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             "nsentences": input.size(0),
             "ntokens": input.ne(self.dictionary.pad()).sum(),
         }
+        if self.args.src_tgt_format:
+            batch["ntokens_target"] = target.ne(self.dictionary.pad()).sum()
+        return batch
 
     def dataset(self, split):
         return self.datasets[split]

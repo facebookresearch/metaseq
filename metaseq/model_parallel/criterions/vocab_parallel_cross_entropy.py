@@ -46,7 +46,11 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         if has_pad:
             loss = loss * (target != self.padding_idx)
         loss = loss.sum()
-        sample_size = sample["ntokens"]
+        sample_size = (
+            sample["ntokens_target"]
+            if "ntokens_target" in sample
+            else sample["ntokens"]
+        )
         logging_output = {
             "loss": loss.data,
             "ntokens": sample["ntokens"],
@@ -103,17 +107,9 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         metrics.log_scalar(
             "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
         )
-        if sample_size != ntokens:
-            metrics.log_scalar(
-                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
-            )
-            metrics.log_derived(
-                "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)
-            )
-        else:
-            metrics.log_derived(
-                "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
-            )
+        metrics.log_derived(
+            "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
+        )
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:
