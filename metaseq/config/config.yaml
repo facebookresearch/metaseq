@@ -1,0 +1,13 @@
+defaults:
+    - _self_  # https://hydra.cc/docs/upgrades/1.0_to_1.1/default_composition_order/
+    - base_config # https://hydra.cc/docs/next/upgrades/1.0_to_1.1/automatic_schema_matching/
+    - task: null
+    - model: null
+    - criterion: null
+    - optimizer: null
+    - lr_scheduler: null
+    - bpe: null
+    - tokenizer: null
+    - generation: null
+    - common_eval: null
+    - eval_lm: null

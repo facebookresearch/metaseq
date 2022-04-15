@@ -1,0 +1,198 @@
+# Use 2.1 for orbs
+version: 2.1
+
+# -------------------------------------------------------------------------------------
+# Environments to run the jobs in
+# -------------------------------------------------------------------------------------
+gpu: &gpu
+  environment:
+    CUDA_VERSION: "11.1"
+  machine:
+    image: ubuntu-1604-cuda-11.1:202012-01
+    resource_class: gpu.nvidia.medium.multi
+
+
+# -------------------------------------------------------------------------------------
+# Re-usable commands
+# -------------------------------------------------------------------------------------
+cache_key: &cache_key cache-key-{{ .Environment.CIRCLE_JOB }}-{{ checksum ".circleci/config.yml" }}-{{ checksum "setup.py"}}
+
+install_dep_common: &install_dep_common
+  - run:
+      name: Install Common Dependencies
+      command: |
+        source activate metaseq
+        # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
+        pip install setuptools==59.5.0
+        pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
+        python -c 'import torch; print("Torch version:", torch.__version__)'
+        python -m torch.utils.collect_env
+
+install_dep_fused_ops: &install_dep_fused_ops
+  - run:
+      name: Install Megatron/Apex Dependencies
+      working_directory: ~/
+      # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
+      command: |
+        source activate metaseq
+        if ! python -c 'import apex'; then
+          git clone https://github.com/NVIDIA/apex
+          cd apex
+          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
+          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
+          cd ~/
+        fi
+        if ! python -c 'import megatron_lm'; then
+          git clone --depth=1 --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
+          cd Megatron-LM
+          pip install -r requirements.txt
+          pip install .
+          cd ~/
+        fi
+
+# Remove this when we get a new fairscale release
+install_fairscale: &install_fairscale
+  - run:
+      name: Install Fairscale from Source
+      working_directory: ~/
+      command: |
+        source activate metaseq
+        if ! python -c 'import fairscale'; then
+            git clone https://github.com/facebookresearch/fairscale.git
+            cd fairscale
+            git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
+            pip install .
+            cd ~/
+        fi
+
+install_dep_pt19: &install_dep_pt19
+  - run:
+      name: Install Pytorch Dependencies
+      command: |
+        source activate metaseq
+        pip install --upgrade setuptools
+        pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+        python -c 'import torch; print("Torch version:", torch.__version__)'
+
+install_dep_pt18: &install_dep_pt18
+  - run:
+      name: Install Pytorch Dependencies
+      command: |
+        source activate metaseq
+        pip install --upgrade setuptools
+        pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+        python -c 'import torch; print("Torch version:", torch.__version__)'
+
+install_pytorch_dep: &install_pytorch_dep
+  - parameters:
+        version_str:
+          type: string
+          default: "/dev/non_exist"  # Default to error out
+  - run:
+      name: Install Pytorch Dependencies
+      command: |
+        source activate metaseq
+        pip install --upgrade setuptools
+        echo "<<parameters.version_str>>"
+        pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
+        python -c 'import torch; print("Torch version:", torch.__version__)'
+
+install_repo: &install_repo
+  - run:
+      name: Install Repository
+      command: |
+        source activate metaseq
+        pip install -e .[dev,few_shot,gpu]
+        python setup.py build_ext --inplace
+
+
+check_nvidia_driver: &check_nvidia_driver
+  - run:
+      name: Check NVIDIA Driver
+      working_directory: ~/
+      command: |
+        pyenv versions
+        nvidia-smi
+
+create_conda_env: &create_conda_env
+  run:
+      name: Install and Create Conda Environment
+      command: |
+        curl -o ~/miniconda.sh -O  https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        chmod +x ~/miniconda.sh
+        ~/miniconda.sh -b -p $HOME/miniconda
+        rm ~/miniconda.sh
+        echo 'export PATH=$HOME/miniconda/bin:$PATH' >> $BASH_ENV
+        source $BASH_ENV
+        if [ ! -d ~/miniconda/envs/metaseq ]
+        then
+          conda create -y -n metaseq python=3.8
+        fi
+        source activate metaseq
+        python --version
+        pip install --upgrade pip
+
+commands:
+
+  gpu_pre: &gpu_pre
+    steps:
+      - run:
+          name: Setup Ramdisk
+          command: sudo mount -t tmpfs tmpfs ~/
+      - checkout
+      - <<: *check_nvidia_driver
+      - <<: *create_conda_env
+      - restore_cache:
+          key: *cache_key
+
+  gpu_post: &gpu_post
+    steps:
+      - <<: *install_dep_common
+      - <<: *install_fairscale
+      - <<: *install_dep_fused_ops
+      - <<: *install_repo
+      - save_cache:
+          paths:
+            - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
+          key: *cache_key
+      - run:
+          name: Run Unit Tests
+          command: |
+            source activate metaseq
+            python -m pytest --junitxml=test-results/junit.xml gpu_tests
+      - store_test_results:
+          path: test-results
+
+
+# -------------------------------------------------------------------------------------
+# Jobs to run
+# -------------------------------------------------------------------------------------
+
+jobs:
+  gpu_tests_pt18:
+    <<: *gpu
+
+    working_directory: ~/metaseq
+
+    steps:
+      - gpu_pre
+      - <<: *install_dep_pt18
+      - gpu_post
+
+  gpu_tests_pt19:
+    <<: *gpu
+
+    working_directory: ~/metaseq
+
+    steps:
+      - gpu_pre
+      - <<: *install_dep_pt19
+      - gpu_post
+
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - gpu_tests_pt18
+      - gpu_tests_pt19
