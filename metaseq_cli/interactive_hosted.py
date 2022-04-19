@@ -31,7 +31,7 @@ from metaseq import options
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
-from metaseq.eval.hub_utils import GeneratorInterface
+from metaseq.hub_utils import GeneratorInterface
 
 app = Flask(__name__)
 
@@ -358,7 +358,9 @@ def index():
 
 def _copy_checkpoint_cache():
     if os.path.exists(os.path.dirname(CHECKPOINT_LOCAL)):
-        logger.info("Local checkpoint copy already exists, skipping copy.")
+        logger.info(
+            "Local checkpoint copy already exists, skipping copy. Note that you may need to manually copy over a `dict.txt` file. Make sure that your model is appropriately sharded for your GPU setup. :)"
+        )
         return
     logger.info("Making a local copy of the checkpoint.")
     shutil.copytree(CHECKPOINT_FOLDER, os.path.dirname(CHECKPOINT_LOCAL))
