@@ -8,6 +8,7 @@ on-the-fly tokenization.
 """
 
 import logging
+import numpy as np
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -19,6 +20,7 @@ from metaseq.data import (
     Dictionary,
     JsonlDataset,
     PartitionedStreamingDataset,
+    ResamplingDataset,
     StreamingShuffleDataset,
     StreamingTokenBlockDataset,
     data_utils,
@@ -74,6 +76,12 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     )
     final_vocab_size: Optional[int] = field(
         default=None, metadata={"help": "force vocab size to this"}
+    )
+    multicorpus_sampling_alpha: Optional[float] = field(
+        default=1.0,
+        metadata={
+            "help": "smoothing alpha for sample rations across multiple datasets"
+        },
     )
 
     # TODO common vars below add to parent
@@ -162,6 +170,78 @@ class StreamingLanguageModelingTask(LegacyTask):
             + [self.eod]
         )
 
+    def _get_sample_prob(self, dataset_lens):
+        """
+        Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
+        """
+        prob = dataset_lens / dataset_lens.sum()
+        smoothed_prob = prob**self.args.multicorpus_sampling_alpha
+        smoothed_prob = smoothed_prob / smoothed_prob.sum()
+        return smoothed_prob
+
+    def _alpha_sampling(self, datasets, corpora, epoch=1):
+        """
+        Up or down sample corpora with alpha sampling.
+        """
+        dataset_lengths = np.array(
+            [len(d) for d in datasets],
+            dtype=float,
+        )
+        logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
+        sample_probs = self._get_sample_prob(dataset_lengths)
+
+        logger.info(
+            "Sample probability by corpus: %s",
+            {
+                corpus: "{0:.4f}".format(sample_probs[id])
+                for id, corpus in enumerate(corpora)
+            },
+        )
+        size_ratio = (sample_probs * dataset_lengths.sum()) / dataset_lengths
+        # TODO: add an option for shrinking all size ratios to below 1
+        # if self.args.multicorpus_sampling_alpha != 1:
+        #   size_ratio /= size_ratio.max()
+
+        # Fix numeric errors in size ratio computation
+        #   0.999999999999999999 -> 1
+        #   1.000000000000000002 -> 1
+        for i in range(len(size_ratio)):
+            size_ratio[i] = round(size_ratio[i], 8)
+
+        logger.info(
+            "Up/Down Sampling ratio by corpus: %s",
+            {
+                corpus: "{0:.2f}".format(size_ratio[id])
+                for id, corpus in enumerate(corpora)
+            },
+        )
+        logger.info(
+            "Actual dataset size by corpus: %s",
+            {
+                corpus: "{0:.2f}".format(len(datasets[id]))
+                for id, corpus in enumerate(corpora)
+            },
+        )
+        resampled_datasets = [
+            ResamplingDataset(
+                datasets[i],
+                size_ratio=size_ratio[i],
+                seed=self.args.seed,
+                epoch=epoch,
+                replace=size_ratio[i] > 1.0,
+            )
+            for i, d in enumerate(datasets)
+        ]
+        # TODO: estimate the actual steps or tokens seen in training before launching experiments.
+        logger.info(
+            "Resampled dataset size by corpus: %s",
+            {
+                corpus: "{0:.2f}".format(len(resampled_datasets[id]))
+                for id, corpus in enumerate(corpora)
+            },
+        )
+        return resampled_datasets
+
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
@@ -198,7 +278,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         cur_shard_str = shards[(epoch - 1) % len(shards)]
 
         # concatenate any jsonl files that are part of the shard
-        datasets = []
+        datasets, corpora = [], []
         for file in sorted(
             os.listdir(os.path.join(self.args.data, split, cur_shard_str))
         ):
@@ -210,7 +290,12 @@ class StreamingLanguageModelingTask(LegacyTask):
                     tokenizer=self._tokenize_one_json,
                 )
             )
+            corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
+
+        if self.args.multicorpus_sampling_alpha != 1:
+            datasets = self._alpha_sampling(datasets, corpora, epoch)
+
         dataset = torch.utils.data.ConcatDataset(datasets)
 
         # shuffle order across epochs

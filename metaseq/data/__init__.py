@@ -18,6 +18,7 @@ from .indexed_dataset import (
     MMapIndexedDataset,
 )
 from .jsonl_dataset import JsonlDataset
+from .list_dataset import ListDataset
 from .lm_context_window_dataset import LMContextWindowDataset
 from .monolingual_dataset import MonolingualDataset
 from .nested_dictionary_dataset import NestedDictionaryDataset
@@ -25,6 +26,7 @@ from .numel_dataset import NumelDataset
 from .pad_dataset import LeftPadDataset, PadDataset, RightPadDataset
 from .partitioned_streaming_dataset import PartitionedStreamingDataset
 from .prepend_token_dataset import PrependTokenDataset
+from .resampling_dataset import ResamplingDataset
 from .sort_dataset import SortDataset
 from .streaming_shuffle_dataset import StreamingShuffleDataset
 from .streaming_token_block_dataset import StreamingTokenBlockDataset
@@ -55,6 +57,7 @@ __all__ = [
     "IndexedRawTextDataset",
     "JsonlDataset",
     "LeftPadDataset",
+    "ListDataset",
     "LMContextWindowDataset",
     "MMapIndexedDataset",
     "MonolingualDataset",
@@ -64,6 +67,7 @@ __all__ = [
     "PadDataset",
     "PartitionedStreamingDataset",
     "PrependTokenDataset",
+    "ResamplingDataset",
     "RightPadDataset",
     "ShardedIterator",
     "SortDataset",
