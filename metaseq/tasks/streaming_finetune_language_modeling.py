@@ -67,16 +67,6 @@ class StreamingFinetuneLanguageModelingConfig(MetaseqDataclass):
         default=1024,
         metadata={"help": "max number of tokens per sample for LM dataset"},
     )
-    example_proportional_sampling: int = field(
-        default=-1,
-        metadata={
-            "help": "Upper bound on size for example proportional sampling. -1 means disable it. "
-        },
-    )
-    actual_tokens_per_sample: int = field(
-        default=1024,
-        metadata={"help": "max number of tokens per sample for LM dataset"},
-    )
     max_source_positions: Optional[int] = field(
         default=None, metadata={"help": "max number of tokens in the source sequence"}
     )
@@ -238,7 +228,7 @@ class StreamingFinetuneLanguageModelingTask(LegacyTask):
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
-            block_size=self.args.actual_tokens_per_sample + 1,
+            block_size=self.args.tokens_per_sample + 1,
             break_mode=self.args.sample_break_mode,
             # we drop the remainder block during training
             drop_last=(split == "train"),
@@ -283,7 +273,7 @@ class StreamingFinetuneLanguageModelingTask(LegacyTask):
             },
             "target": target,
             "nsentences": input.size(0),
-            "ntokens": input.numel(),
+            "ntokens": (target != self.source_dictionary.pad()).sum().item() # use only tgt label tokens for gradient scaling
         }
 
     def dataset(self, split):
