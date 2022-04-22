@@ -273,7 +273,8 @@ class StreamingFinetuneLanguageModelingTask(LegacyTask):
             },
             "target": target,
             "nsentences": input.size(0),
-            "ntokens": (target != self.source_dictionary.pad()).sum().item() # use only tgt label tokens for gradient scaling
+            "ntokens": input.numel(),
+            "n_target_tokens": (target != self.source_dictionary.pad()).sum().item() # use only tgt label tokens for gradient scaling
         }
 
     def dataset(self, split):

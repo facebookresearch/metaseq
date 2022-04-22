@@ -46,7 +46,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         if has_pad:
             loss = loss * (target != self.padding_idx)
         loss = loss.sum()
-        sample_size = sample["ntokens"]
+        sample_size = sample["n_target_tokens"] if "n_target_tokens" in  sample else sample["ntokens"]
         logging_output = {
             "loss": loss.data,
             "ntokens": sample["ntokens"],
