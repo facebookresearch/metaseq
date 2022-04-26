@@ -22,7 +22,7 @@ try:
         RowParallelLinear,
         split_tensor_along_last_dim,
     )
-    from megatron.model.fused_softmax import ScaledUpperTriangMaskedSoftmax
+    from megatron.model.fused_softmax import ScaledUpperTriangMaskedSoftmax, ScaledMaskedSoftmax
     from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
@@ -367,10 +367,21 @@ class ModelParallelMultiheadAttention(nn.Module):
             if attn_mask is not None:
                 matmul_result = torch.nan_to_num(matmul_result)
 
-            # attention_scores = matmul_result.view(*output_size)
-            attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
-            # attn_probs = self.scale_mask_softmax(attention_scores,
-            #                                         attn_mask)
+            if len(attn_mask.size()) == 3:
+                # Going back to original scaled_masked_softmax to accomodate
+                # non-causal attention masking (use the given input attention)
+                attention_scores = matmul_result.view(*output_size)
+                attn_mask = attn_mask < -0.5
+                attn_mask = attn_mask.unsqueeze(1)
+                attn_probs = ScaledMaskedSoftmax.apply(attention_scores, attn_mask, 1.0)
+                attn_probs = attn_probs.view(output_size[0]*output_size[1],
+                    output_size[2],
+                    output_size[3])
+            else:
+                # attention_scores = matmul_result.view(*output_size)
+                attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
+                # attn_probs = self.scale_mask_softmax(attention_scores,
+                #                                         attn_mask)
             with get_cuda_rng_tracker().fork():
                 attn_probs = self.dropout_module(attn_probs)
 

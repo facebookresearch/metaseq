@@ -380,6 +380,7 @@ class TransformerDecoder(IncrementalDecoder):
             else None
         )
         self.use_alibi: bool = getattr(args, "alibi", False)
+        self.self_attn_doc_sep: int = getattr(args, 'self_attn_doc_sep', -1)
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -561,10 +562,30 @@ class TransformerDecoder(IncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
-        positions = None
+        if self.self_attn_doc_sep != -1:
+            # create own positions when self_attn_doc_sep is set
+            mask = tokens.ne(self.padding_idx).int()
+            mask_with_reset = tokens.ne(self.padding_idx).int()
+            doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
+            for batch_idx in range(tokens.size(0)):
+                batch_doc_indices = [index[1]  for index in doc_id_indices if index[0]==batch_idx]
+                batch_doc_indices.sort()
+                for k, doc_sep_idx in enumerate(batch_doc_indices):
+                    if k==0:
+                        mask_with_reset[batch_idx, doc_sep_idx] = -doc_sep_idx + 1
+                    else:
+                        mask_with_reset[batch_idx, doc_sep_idx] = batch_doc_indices[k-1] - doc_sep_idx + 1
+            positions = (torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask).long() + self.padding_idx
+            # HACK set padding_idx to None to work
+            if self.embed_positions is not None:
+                self.embed_positions.padding_idx = None
+        else:
+            positions = None
         if self.embed_positions is not None:
             positions = self.embed_positions(
-                tokens, incremental_state=incremental_state
+                tokens,
+                incremental_state=incremental_state,
+                positions=positions
             )
 
         # see IncrementalDecoder for important information about
@@ -706,7 +727,7 @@ class TransformerDecoder(IncrementalDecoder):
         # see IncrementalDecoder for important information about
         # incremental state. Note that it may be an empty dictionary.
         if not incremental_state and not full_context_alignment:
-            self_attn_mask = self.buffered_future_mask(x)
+            self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
         else:
             self_attn_mask = None
 
@@ -775,7 +796,7 @@ class TransformerDecoder(IncrementalDecoder):
             return self.max_target_positions
         return min(self.max_target_positions, self.embed_positions.max_positions)
 
-    def buffered_future_mask(self, tensor):
+    def buffered_future_mask(self, tensor, input_tokens=None):
         batch_size, cur_seq_len = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
         need_to_make_new_mask = (
@@ -797,6 +818,14 @@ class TransformerDecoder(IncrementalDecoder):
             if self.use_alibi:
                 alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
                 self._future_mask = self._future_mask.unsqueeze(0) + alibi
+            elif self.self_attn_doc_sep != -1:
+                # Code to accomodate dynamic attention when document seperator is used
+                assert input_tokens is not None
+                self._future_mask = self._future_mask[:cur_seq_len, :cur_seq_len]
+                self._future_mask = self._future_mask.unsqueeze(0).repeat(batch_size, 1, 1)
+                doc_id_indices = (input_tokens == self.self_attn_doc_sep).nonzero().tolist()
+                for indices in doc_id_indices:
+                    self._future_mask[indices[0], indices[1]:, :indices[1]] = float("-inf")
         self._future_mask = self._future_mask.to(tensor)
         if self.use_alibi:
             return self._future_mask[
@@ -804,6 +833,8 @@ class TransformerDecoder(IncrementalDecoder):
                 :cur_seq_len,
                 :cur_seq_len,
             ]
+        elif self.self_attn_doc_sep != -1:
+            return self._future_mask
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]
 
