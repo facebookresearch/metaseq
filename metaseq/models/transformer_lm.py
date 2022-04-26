@@ -123,6 +123,13 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "help": "use the ALiBi position method instead of regular position embeddings"
         },
     )
+    # Dynamic Attention
+    self_attn_doc_sep: int = field(
+        default=-1, 
+        metadata={
+            "help": "use dynamic self attention masking when document separator ID is specified"
+        }
+    )
     fsdp_checkpoint_wrap_layer_frequency: int = field(
         default=1,
         metadata={
