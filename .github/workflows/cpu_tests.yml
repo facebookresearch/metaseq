@@ -1,0 +1,79 @@
+name: cpu_tests
+
+on:
+  # Trigger the workflow on push to master or any pull request
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        platform: [ubuntu-latest]
+        python-version: [3.8, 3.9]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+    - name: Checkout branch 🛎️
+      uses: actions/checkout@v2
+
+    - name: Setup Conda Environment
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: metaseq
+        python-version: ${{ matrix.python-version }}
+        auto-update-conda: true
+        use-only-tar-bz2: true
+
+    - name: Cache Conda Environment
+      uses: actions/cache@v2
+      env:
+        # Increase this value to reset cache if nothing has changed but you still
+        # want to invalidate the cache
+        CACHE_NUMBER: 0
+      with:
+        path: |
+          /usr/share/miniconda/envs/
+          /usr/local/miniconda/envs/
+        key: metaseq-cpu-${{ matrix.platform }}-python${{ matrix.python-version }}-${{ env.CACHE_NUMBER }}-${{ hashFiles('**/.github/workflows/cpu_tests.yml') }}-${{ hashFiles('**/setup.py') }}
+
+
+    - name: Install Dependencies
+      shell: bash -l {0}
+      run: |
+        conda activate metaseq
+        pip install --upgrade pip
+        pip install --upgrade setuptools
+
+    - name: Install Fairscale From Source
+      shell: bash -l {0}
+      run: |
+        conda activate metaseq
+        cd ~/
+        git clone https://github.com/facebookresearch/fairscale.git
+        cd fairscale
+        git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
+        pip install .
+        cd ~/
+
+    - name: Install Repository
+      shell: bash -l {0}
+      run: |
+        conda activate metaseq
+        python setup.py clean --all
+        pip install --editable .[dev]
+        python setup.py build_ext --inplace
+
+
+    - name: Run CPU tests
+      shell: bash -l {0}
+      run: |
+        conda activate metaseq
+        export TOKENIZERS_PARALLELISM=false
+        python -m pytest --junitxml=test-results/junit.xml cpu_tests

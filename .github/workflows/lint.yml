@@ -1,0 +1,46 @@
+name: lint_tests
+
+on:
+  # Trigger the workflow on push to master or any pull request
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+
+    strategy:
+      max-parallel: 1
+      matrix:
+        platform: [ubuntu-latest]
+        python-version: [3.8]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install locally
+      run: |
+        python -m pip install --upgrade pip
+        python setup.py build_ext --inplace
+        python -m pip install --editable '.[dev]'
+
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --exit-zero --statistics
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # complain about lints
+        flake8 .
+
+    - name: Lint with black
+      run: |
+        pip install black
+        black --check .

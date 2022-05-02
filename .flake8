@@ -1,0 +1,7 @@
+[flake8]
+extend-ignore =
+    F541  # f-string is missing placeholders
+    E203  # whitespace with black
+    E741  # "l" is ambiguous
+# github size
+max-line-length=127

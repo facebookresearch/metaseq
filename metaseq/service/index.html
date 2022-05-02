@@ -1,0 +1,272 @@
+<html>
+<head>
+    <title>gpt &#x1F4A4;</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script type="text/javascript">
+    // these constants are only used for providing user expectations.
+    var OVERHEAD = 3;
+    var PER_TOKEN = 0.12;
+
+    // examples for the user
+    var EXAMPLES = {
+        "news": {
+            "prompt": "FACEBOOK DEVELOPS ARTIFICIAL INTELLIGENCE FOR TACO RECOMMENDATIONS\nBloomberg News - Menlo Park, CA\n\nThe technology world is reeling after Facebook ($FB) announced today",
+            "length": 256
+        },
+        "arxiv": {
+            "prompt": "Abstract\n\nWe introduce OPT-175B, a 175B parameter language model that",
+            "length": 256
+        },
+        "chatbot": {
+            "prompt": "A chat between a teacher and student who wants to learn about tacos.\n\nTeacher: Hi there. What would you like to learn about today?\nStudent:",
+            "length": 128
+        },
+        "question": {
+            "prompt": "Question: What color is the sky?\nAnswer: blue\n\nQuestion: Who was the first president of the United States?\nAnswer: George Washington\n\nQuestion: Who is the president in 2021?\nAnswer:",
+            "length": 64
+        },
+        "poetry": {
+            "prompt": "A sonnet about Dodos\n\n",
+            "length": 128
+        }
+    };
+
+    function getFormData($form){
+        var unindexed_array = $form.serializeArray();
+        var indexed_array = {};
+        $.map(unindexed_array, function(n, i){
+            indexed_array[n['name']] = n['value'].replace("\r\n", "\n");
+        });
+        return indexed_array;
+    }
+
+    function set_prompt(name) {
+        $("#length_slider").val(EXAMPLES[name]["length"]);
+        $("#length_slider_output").text(EXAMPLES[name]["length"]);
+        $("#textbox").val(EXAMPLES[name]["prompt"]);
+    }
+
+    // actual logic
+    $(document).ready(function() {
+      $("#generate-form").submit(function(event) {
+        event.preventDefault();
+        var length = $("#length_slider").val();
+        var eta = PER_TOKEN * length + OVERHEAD;
+        $("#eta").text(eta);
+        $("#loader_holder").css("visibility", "visible");
+        $("#generate-form-button").prop("disabled", true);
+        $("#error").text("");
+        var submitData = getFormData($("form"));
+        console.log(JSON.stringify(submitData));
+        $.ajax({
+            url: "/v1/engines/175b/completions",
+            type: "POST",
+            processData: true,
+            contentType: "application/json",
+            data: JSON.stringify(getFormData($("form"))),
+            complete: function () {
+                $("#loader_holder").css("visibility", "hidden");
+                $("#generate-form-button").prop("disabled", false);
+            },
+            success: function (data) {
+                console.log("Response:");
+                console.log(data);
+                console.log(data["choices"][0]["text"]);
+                $("#promptDisplay").text(submitData["prompt"]);
+                $("#response").text(data["choices"][0]["text"]);
+                $("#error").text("");
+            },
+            error: function (xhr) {
+                $("#promptDisplay").text("");
+                $("#response").text("");
+                $("#error").text(xhr.responseText);
+            }
+        });
+      });
+    });
+    </script>
+</head>
+<style type="text/css">
+body {
+    font-family: sans-serif;
+}
+.leftside {
+}
+.rightside {
+    width: 30em;
+}
+.submit-holder {
+    margin-top: 2em;
+}
+.submit input {
+    font-size: 16pt;
+}
+.slider {
+    width: 20em;
+}
+#faq {
+    max-width: 60em;
+}
+#result {
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 12pt;
+    clear: both;
+    margin-top: 1em;
+    border: 1px solid black;
+    padding: 1em;
+    width: 60em;
+    min-height: 12em;
+}
+#promptDisplay {
+    font-weight: bold;
+}
+.loader {
+    border: 4px solid #f3f3f3;
+    border-radius: 50%;
+    border-top: 4px solid #3498db;
+    width: 30px;
+    height: 30px;
+    animation: spin 2s linear infinite;
+    margin-right: 1em;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+#loader_holder {
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+}
+
+label {
+    margin-top: 1em;
+    display: inline-block;
+    width: 10em;
+    text-align: right;
+    font-size: 60%;
+}
+#loader_holder_super {
+}
+#error {
+    color: red;
+}
+#examples span {
+    margin-right: 1em;
+}
+</style>
+<body>
+<div class="header">
+    <h1>gpt &#x1F4A4;</h1>
+</div>
+<div id="about">
+<p>This is an alpha demo of the
+175B parameter model.</p>
+<p><span style="color: red">WARNING:</span>
+This model will generate MANY offensive things. Due to this being an alpha
+demo, NO safety measures are in place.
+</p>
+<p>Tips for better generation:</p>
+<ul>
+    <li>Use the examples to get an idea of how to control it.</li>
+    <li><b>Avoid spaces at the end of your query.</b> New lines are great though.</li>
+    <li>Simple questions trigger chatbot mode. Try "Question: ... Answer:" to get more factual responses.</li>
+    <li>Using proper capitalization and punctuation can help avoid chatbot mode. Sometimes.</li>
+</ul>
+<p id="examples">
+    <span style="font-weight: bold">Examples:</span>
+    <span><a href='javascript:set_prompt("news");'>News</a></span>
+    <span><a href='javascript:set_prompt("arxiv");'>ML paper</a></span>
+    <span><a href='javascript:set_prompt("chatbot");'>Chatbot</a></span>
+    <span><a href='javascript:set_prompt("question");'>QA</a></span>
+    <span><a href='javascript:set_prompt("poetry");'>Poetry</a></span>
+</div>
+<div class="request">
+<form method="POST" action="/generate" id="generate-form">
+    <div class="leftside">
+        <textarea name="prompt" rows="12" cols="100" id="textbox"></textarea>
+    </div>
+    <div class="rightside">
+    <div>
+    <label>Response Length:</label>
+    <input type="range" value="64" min="32" max="512" step="32" class="slider"
+        oninput="this.nextElementSibling.value = this.value" name="max_tokens"
+        id='length_slider'>
+    <output class='a' id="length_slider_output">64</output>
+    </div>
+    <div>
+    <label>Temperature:</label>
+    <input type="range" value="0.7" min="0.1" max="1.0" step="0.10" class="slider"
+        oninput="this.nextElementSibling.value = this.value" name="temperature">
+    <output>0.7</output>
+    </div>
+    <div>
+    <label>top-p:</label>
+    <input type="range" value="0.9" min="0.0" max="1.0" step="0.10" class="slider"
+        oninput="this.nextElementSibling.value = this.value" name="top_p">
+    <output>0.9</output>
+    </div>
+    <div class="submit-holder">
+        <input type="submit" value="Submit" id="generate-form-button"/>
+    </div>
+    </div>
+</form>
+</div>
+<div id="loader_holder_super">
+<div id="loader_holder">
+    <div class="loader"></div>
+    <div>
+        Please be patient. Your generation may take <span id="eta">X</span> seconds.
+    </div>
+</div>
+</div>
+<div id="result"><span id="promptDisplay"></span><span id="response"></span><span id="error"></span></div>
+<div id="faq">
+<h2>FAQ and Nerd stuff</h2>
+
+<h3>How does it work?</h3>
+<p>OPT-175B is a large <a href="https://en.wikipedia.org/wiki/Language_model">Language
+model</a>. It predicts the next word based on all the previous words. It's the same
+idea as the predictive auto-complete in your phone or email, but supercharged.</p>
+
+<h3>What's the model trained on?</h3>
+<p>A combination of CCNews, CommonCrawl, DM Mathematics, Enron corpus, Project
+Gutenberg, HackerNews, OpenSubtitles, OpenWebText2, USPTO, Wikipedia,
+BookCorpus, Stories, and Pushshift.io Reddit.</p>
+
+<h3>How up to date is the model?</h3>
+<p>The newest data in the model goes to roughly through September 2021, but <b>most</b>
+of the data is older. The model knows about COVID-19, knows Joe Biden is president,
+but isn't aware of the rebrand to Meta.</p>
+
+<p>You can encourage the model to focus on newer information by putting "2021"
+somewhere in your prompt.</p>
+
+<h3>It's not following my instructions or answering my question.</h3>
+<p>The model doesn't work well with declarative instructions, or point blank
+questions. See the Examples to understand how to best use the model.</p>
+
+<h3>It said something deeply offensive, or factually incorrect!</h3>
+<p>This is a well-known problem with language models, and there is great research
+being done at Meta AI to address these problems. Due to the alpha nature of this
+demo, we have not been able to incorporate that work yet.</p>
+
+<h3>It's really repetitive!</h3>
+<p>Yes, it definitely can be. We're sampling from the model, so you can try
+generating again and see if it helps. We will address repetition in future
+iterations.</p>
+
+<h3>What are you doing with my data in this demo?</h3>
+<p>During this alpha stage, we are not collecting or storing any data from this
+demo. We encourage you to create your own document with feedback or analysis of
+the model, and provide a link in the comments of the workplace post.</p>
+
+<h3>It can only generate 512 tokens?</h3>
+<p>The model has a context length of 2048, but limited 512 in this demo for compute reasons.</p>
+
+<h3>What generation algorithm is running?</h3>
+<p>For this demo, we use Nucleus sampling (p=0.9) with a softmax temperature of T=0.7.</p>
+</body>
+</html>
