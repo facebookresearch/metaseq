@@ -22,7 +22,10 @@ try:
         RowParallelLinear,
         split_tensor_along_last_dim,
     )
-    from megatron.model.fused_softmax import ScaledUpperTriangMaskedSoftmax, ScaledMaskedSoftmax
+    from megatron.model.fused_softmax import (
+        ScaledUpperTriangMaskedSoftmax,
+        ScaledMaskedSoftmax,
+    )
     from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
@@ -373,6 +376,11 @@ class ModelParallelMultiheadAttention(nn.Module):
             if attn_mask is not None:
                 matmul_result = torch.nan_to_num(matmul_result)
 
+            # The attn_mask shape can be either seq_length x seq_length, or batch_size x seq_length x seq_length
+            # depending on whether we are broadcasting the same attention mask across the batch, or
+            # masking dynamically based on the data (e.g. for document attention).
+            # If we have a per sequence mask, the condition len(attn_mask.size()) == 3
+            # is true.
             if len(attn_mask.size()) == 3:
                 # Going back to original scaled_masked_softmax to accomodate
                 # non-causal attention masking (use the given input attention)
@@ -380,9 +388,9 @@ class ModelParallelMultiheadAttention(nn.Module):
                 attn_mask = attn_mask < -0.5
                 attn_mask = attn_mask.unsqueeze(1)
                 attn_probs = ScaledMaskedSoftmax.apply(attention_scores, attn_mask, 1.0)
-                attn_probs = attn_probs.view(output_size[0]*output_size[1],
-                    output_size[2],
-                    output_size[3])
+                attn_probs = attn_probs.view(
+                    output_size[0] * output_size[1], output_size[2], output_size[3]
+                )
             else:
                 # attention_scores = matmul_result.view(*output_size)
                 attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
@@ -470,8 +478,24 @@ class ModelParallelMultiheadAttention(nn.Module):
             ]
 
             if attn_mask is not None:
-                attn_mask = attn_mask.unsqueeze(0)
-                attn_weights += attn_mask
+                # The attn_mask shape can be either seq_length x seq_length, or batch_size x seq_length x seq_length
+                # depending on whether we are broadcasting the same attention mask across the batch, or
+                # masking dynamically based on the data (e.g. for document attention).
+                # If we have a per sequence mask, the condition len(attn_mask.size()) == 3
+                # is true.
+                if len(attn_mask.size()) == 3:
+                    attn_mask = attn_mask.unsqueeze(1)
+                    attn_mask = attn_mask.repeat(1, self.num_heads_partition, 1, 1)
+                    attn_mask = attn_mask.view(
+                        bsz * self.num_heads_partition, tgt_len, src_len
+                    )
+                    attn_weights = attn_weights.masked_fill(
+                        attn_mask < -0.5,
+                        float("-inf"),
+                    )
+                else:
+                    attn_mask = attn_mask.unsqueeze(0)
+                    attn_weights += attn_mask
 
             if key_padding_mask is not None:
                 # don't attend to padding symbols

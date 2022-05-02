@@ -380,7 +380,7 @@ class TransformerDecoder(IncrementalDecoder):
             else None
         )
         self.use_alibi: bool = getattr(args, "alibi", False)
-        self.self_attn_doc_sep: int = getattr(args, 'self_attn_doc_sep', -1)
+        self.self_attn_doc_sep: int = getattr(args, "self_attn_doc_sep", -1)
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -578,16 +578,23 @@ class TransformerDecoder(IncrementalDecoder):
             # create own positions when self_attn_doc_sep is set
             mask = tokens.ne(self.padding_idx).int()
             mask_with_reset = tokens.ne(self.padding_idx).int()
+            mask_with_reset[:, :] = 1
             doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
             for batch_idx in range(tokens.size(0)):
-                batch_doc_indices = [index[1]  for index in doc_id_indices if index[0]==batch_idx]
+                batch_doc_indices = [
+                    index[1] for index in doc_id_indices if index[0] == batch_idx
+                ]
                 batch_doc_indices.sort()
                 for k, doc_sep_idx in enumerate(batch_doc_indices):
-                    if k==0:
+                    if k == 0:
                         mask_with_reset[batch_idx, doc_sep_idx] = -doc_sep_idx + 1
                     else:
-                        mask_with_reset[batch_idx, doc_sep_idx] = batch_doc_indices[k-1] - doc_sep_idx + 1
-            positions = (torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask).long() + self.padding_idx
+                        mask_with_reset[batch_idx, doc_sep_idx] = (
+                            batch_doc_indices[k - 1] - doc_sep_idx + 1
+                        )
+            positions = (
+                torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask
+            ).long() + self.padding_idx
             # HACK set padding_idx to None to work
             if self.embed_positions is not None:
                 self.embed_positions.padding_idx = None
@@ -595,9 +602,7 @@ class TransformerDecoder(IncrementalDecoder):
             positions = None
         if self.embed_positions is not None:
             positions = self.embed_positions(
-                tokens,
-                incremental_state=incremental_state,
-                positions=positions
+                tokens, incremental_state=incremental_state, positions=positions
             )
 
         # see IncrementalDecoder for important information about
@@ -820,6 +825,7 @@ class TransformerDecoder(IncrementalDecoder):
                 and self._future_mask.size(0)
                 != (batch_size * self.args.decoder_attention_heads)
             )
+            or (self.self_attn_doc_sep != -1)
         )
 
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
@@ -834,10 +840,16 @@ class TransformerDecoder(IncrementalDecoder):
                 # Code to accomodate dynamic attention when document seperator is used
                 assert input_tokens is not None
                 self._future_mask = self._future_mask[:cur_seq_len, :cur_seq_len]
-                self._future_mask = self._future_mask.unsqueeze(0).repeat(batch_size, 1, 1)
-                doc_id_indices = (input_tokens == self.self_attn_doc_sep).nonzero().tolist()
+                self._future_mask = self._future_mask.unsqueeze(0).repeat(
+                    batch_size, 1, 1
+                )
+                doc_id_indices = (
+                    (input_tokens == self.self_attn_doc_sep).nonzero().tolist()
+                )
                 for indices in doc_id_indices:
-                    self._future_mask[indices[0], indices[1]:, :indices[1]] = float("-inf")
+                    self._future_mask[
+                        indices[0], indices[1] + 1 :, : indices[1] + 1
+                    ] = float("-inf")
         self._future_mask = self._future_mask.to(tensor)
         if self.use_alibi:
             return self._future_mask[
