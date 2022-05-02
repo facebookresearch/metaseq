@@ -58,7 +58,7 @@ class MegatronTrainer(Trainer):
             aggregate_norm_fn=functools.partial(
                 _aggregate_model_parallel_grad_norm, norm_type
             ),
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            # skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def save_checkpoint(self, filename, extra_state, **kwargs):

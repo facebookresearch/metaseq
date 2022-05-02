@@ -771,6 +771,8 @@ class Trainer(object):
 
             with torch.autograd.profiler.record_function("clip-grads"):
                 # clip grads
+                if torch.distributed.get_rank() == 0:
+                    from metaseq import pdb; pdb.set_trace()
                 grad_norm = self.clip_grad_norm(
                     self.cfg.optimization.clip_norm,
                     self.cfg.optimization.clip_norm_type,
