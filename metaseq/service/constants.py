@@ -15,7 +15,7 @@ TOTAL_WORLD_SIZE = 8
 
 try:
     from metaseq_internal.constants import LOCAL_SSD, MODEL_SHARED_FOLDER
-except ImportError:
+except ModuleNotFoundError:
     # MODEL_SHARED_FOLDER should point to a shared drive (e.g. NFS) where the
     # checkpoints from S3 are stored. As an example:
     # MODEL_SHARED_FOLDER = "/example/175B/reshard_no_os"
