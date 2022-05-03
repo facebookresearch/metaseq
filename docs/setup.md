@@ -33,7 +33,7 @@ pip3 install -e .
 ```
 ## Install metaseq
 ```
-git clone https://github.com/fairinternal/metaseq.git
+git clone https://github.com/facebookresearch/metaseq.git
 cd metaseq
 pip3 install -e .
 

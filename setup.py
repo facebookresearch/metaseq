@@ -124,7 +124,7 @@ def do_setup(package_data):
         name="metaseq",
         version=version,
         description="MetaSeq, a framework for large language models, from Meta",
-        url="https://github.com/fairinternal/metaseq",
+        url="https://github.com/facebookresearch/metaseq",
         long_description=readme,
         long_description_content_type="text/markdown",
         setup_requires=[
