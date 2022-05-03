@@ -1,0 +1,26 @@
+# Accessing OPT-175B
+
+After receiving an email with a presigned URL to access the model weights, follow the below set of instructions to get started with hosting the model.
+
+## Download all shards
+Since we trained OPT-175B on 124 hosts, we have 124*8 = 992 files corresponding to the model parameters (8x tensor parallelism). The pre-signed URL that you receive in your email will look something like the following:
+
+```
+https://<cloudfront_url>/175b/checkpoint_last_20220503/stubbed.pt?&<super_long_query_string>
+```
+
+To download all 992 files, run:
+```
+bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>"
+```
+
+## Reshard the shards
+To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
+```
+bash metaseq/scripts/reshard_sbatch.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
+```
+
+## Run the API
+Follow the instructions in the [API docs](../../docs/api.md) to spin up the API.  You will need to update the constants in `metaseq/service/constants.py` to point to right directories.
+
+Note that the `gpt2-merges.txt` and `gpt2-vocab.json` files in `projects/OPT/assets/` will need to be moved to the corresponding directories defined in the `constants.py` file.
