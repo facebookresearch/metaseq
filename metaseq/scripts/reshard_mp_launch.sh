@@ -21,7 +21,7 @@ do
   srun --job-name=$jname \
     --gpus-per-node=8 --nodes=1 --ntasks-per-node=1 --cpus-per-task=64 \
    --output "$save_dir"/"$jname".log \
-    python -m metaseq_internal.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size &
+    python -m metaseq.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size &
 done
 echo "Waiting on slurm..."
 wait $(jobs -p)
