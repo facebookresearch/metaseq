@@ -270,7 +270,8 @@ class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
         else:
             scale_window = cfg.common.fp16_scale_window
 
-        self.scaler = DynamicLossScaler(
+        # No loss scaler required for training with bf16
+        self.scaler = None if cfg.common.bf16 else DynamicLossScaler(
             init_scale=cfg.common.fp16_init_scale,
             scale_window=scale_window,
             tolerance=cfg.common.fp16_scale_tolerance,
@@ -513,7 +514,8 @@ class MemoryEfficientFP16Optimizer(
         else:
             scale_window = cfg.common.fp16_scale_window
 
-        self.scaler = DynamicLossScaler(
+        # No loss scaler required for training with bf16
+        self.scaler = None if cfg.common.bf16 else DynamicLossScaler(
             init_scale=cfg.common.fp16_init_scale,
             scale_window=scale_window,
             tolerance=cfg.common.fp16_scale_tolerance,

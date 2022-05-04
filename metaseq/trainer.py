@@ -844,7 +844,7 @@ class Trainer(object):
             ):
                 torch.cuda.empty_cache()
 
-        if self.cfg.common.fp16:
+        if self.cfg.common.fp16 and not self.cfg.common.bf16:
             metrics.log_scalar(
                 "loss_scale",
                 self.optimizer.scaler.loss_scale,
@@ -1035,6 +1035,8 @@ class Trainer(object):
 
         def apply_half(t):
             if t.dtype is torch.float32:
+                if self.cfg.bf16:
+                    return t.bfloat16()
                 return t.half()
             return t
 

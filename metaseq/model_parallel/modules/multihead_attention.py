@@ -56,6 +56,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         full_megatron_init=False,
         megatron_init_sigma=None,
         num_layers=None,
+        dtype=torch.float32,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -190,6 +191,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 init_method=init_method_weights,
                 init_method_bias=init_method_bias,
                 use_cpu_initialization=use_cpu_initialization,
+                dtype=dtype,
             )
         else:
 
@@ -210,6 +212,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 if full_megatron_init
                 else partial(_init_method_bias, self.kdim),
                 use_cpu_initialization=use_cpu_initialization,
+                dtype=dtype,
             )
             self.v_proj = ColumnParallelLinear(
                 self.vdim,
@@ -221,6 +224,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 if full_megatron_init
                 else partial(_init_method_bias, self.vdim),
                 use_cpu_initialization=use_cpu_initialization,
+                dtype=dtype,
             )
             self.q_proj = ColumnParallelLinear(
                 embed_dim,
@@ -232,6 +236,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 if full_megatron_init
                 else partial(_init_method_bias, embed_dim),
                 use_cpu_initialization=use_cpu_initialization,
+                dtype=dtype,
             )
 
         def _init_method_weight(weight):
@@ -252,6 +257,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             init_method=init_method_weights,
             skip_bias_add=True,
             use_cpu_initialization=use_cpu_initialization,
+            dtype=dtype,
         )
 
     def forward(

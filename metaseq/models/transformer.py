@@ -383,6 +383,14 @@ class TransformerDecoder(IncrementalDecoder):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
+        def floating_point_precision_convertor(x):
+            if getattr(args, "memory_efficient_fp16", False):
+                if getattr(args, 'bf16', False):
+                    return x.bfloat16()
+                return x.half()
+            return x
+
+
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_target_positions,
@@ -397,7 +405,7 @@ class TransformerDecoder(IncrementalDecoder):
             else None
         )
         if initialize_params_on_gpu and self.embed_positions is not None:
-            self.embed_positions = self.embed_positions.cuda().half()
+            self.embed_positions = floating_point_precision_convertor(self.embed_positions.cuda())
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
@@ -455,7 +463,7 @@ class TransformerDecoder(IncrementalDecoder):
         if args.decoder_normalize_before:
             self.layer_norm = LayerNorm(embed_dim)
             if initialize_params_on_gpu:
-                self.layer_norm = self.layer_norm.cuda().half()
+                self.layer_norm = floating_point_precision_convertor(self.layer_norm.cuda())
         else:
             self.layer_norm = None
 

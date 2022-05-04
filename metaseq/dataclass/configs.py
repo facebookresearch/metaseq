@@ -125,6 +125,14 @@ class CommonConfig(MetaseqDataclass):
             "help": "use a memory-efficient version of FP16 training; implies --fp16"
         },
     )
+    bf16: bool = field(
+        default=False,
+        metadata={
+            "help": "use BF16 format"
+            " Currently --bf16 is an added argument with --fp16 for mixed precision bf16 training"
+            " or with --memory-efficient-fp16 for pure bf16 training."
+        }
+    )
     fp16_no_flatten_grads: bool = field(
         default=False, metadata={"help": "don't flatten FP16 grads tensor"}
     )
@@ -275,6 +283,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
     )
     fp16: bool = II("common.fp16")
     memory_efficient_fp16: bool = II("common.memory_efficient_fp16")
+    bf16: bool = II("common.bf16")
     # configuration for --ddp-backend=fully_sharded
     no_reshard_after_forward: bool = field(
         default=False,
