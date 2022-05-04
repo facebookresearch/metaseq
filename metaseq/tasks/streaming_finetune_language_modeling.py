@@ -159,14 +159,22 @@ class StreamingFinetuneLanguageModelingTask(LegacyTask):
         src = json["src"].rstrip(" ")
         tgt = json["tgt"].rstrip()
         full_tokens = torch.LongTensor(
+            [self.eod] +
             self.tokenizer.encode(
                 " ".join([src, tgt])
             ).ids
-            + [self.eod]
         )
         src_tokens_len = len(self.tokenizer.encode(src).ids)
         tgt_tokens = torch.clone(full_tokens)
         tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
+        pad_len = 256
+        if full_tokens.size(-1)<pad_len:
+            additional_pad_count = pad_len-full_tokens.size(-1)
+            full_tokens = torch.cat([full_tokens, torch.LongTensor(additional_pad_count*[1])], dim=-1)
+            tgt_tokens = torch.cat([tgt_tokens, torch.LongTensor(additional_pad_count*[1])], dim=-1)
+        else:
+            full_tokens = full_tokens[:pad_len]
+            tgt_tokens = tgt_tokens[:pad_len]
         return (full_tokens,tgt_tokens)
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):

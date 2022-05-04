@@ -571,6 +571,7 @@ class TransformerDecoder(IncrementalDecoder):
             # create own positions when self_attn_doc_sep is set
             mask = tokens.ne(self.padding_idx).int()
             mask_with_reset = tokens.ne(self.padding_idx).int()
+            mask_with_reset[:,:] = 1
             doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
             for batch_idx in range(tokens.size(0)):
                 batch_doc_indices = [index[1]  for index in doc_id_indices if index[0]==batch_idx]
