@@ -30,6 +30,7 @@ from .resampling_dataset import ResamplingDataset
 from .sort_dataset import SortDataset
 from .streaming_shuffle_dataset import StreamingShuffleDataset
 from .streaming_token_block_dataset import StreamingTokenBlockDataset
+from .streaming_src_tgt_dataset import StreamingSrcTgtDataset
 from .strip_token_dataset import StripTokenDataset
 from .token_block_dataset import TokenBlockDataset
 from .pad_dataset import MultiplePadDataset
