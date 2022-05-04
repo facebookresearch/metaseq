@@ -28,6 +28,11 @@ from metaseq.optim import lr_scheduler
 logger = logging.getLogger(__name__)
 
 
+print(f'====DEBUG==== torch.backends.cuda.matmul.allow_tf32 was {torch.backends.cuda.matmul.allow_tf32} , torch.backends.cudnn.allow_tf32 was {torch.backends.cudnn.allow_tf32}')
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
+print(f'====DEBUG==== torch.backends.cuda.matmul.allow_tf32 is {torch.backends.cuda.matmul.allow_tf32} , torch.backends.cudnn.allow_tf32 is {torch.backends.cudnn.allow_tf32}')
+
 class Trainer(object):
     """Main class for data parallel training.
 
