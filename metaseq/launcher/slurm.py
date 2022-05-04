@@ -551,3 +551,17 @@ def azure_support():
         fi
         """
     )
+
+def requeue():
+    """
+    Requeues the current running job.
+
+    Throws a RuntimeException if not in a SLURM environment.
+    """
+    jobid = os.environ.get('SLURM_JOB_ID')
+    if not jobid:
+        raise RuntimeError(
+            "Could not find $SLURM_JOB_ID. Perhaps this isn't running in SLURM?"
+        )
+    train_proc = subprocess.Popen(['scontrol', 'requeue', jobid])
+    train_proc.wait()
