@@ -17,7 +17,11 @@ bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>"
 ## Reshard the shards
 To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
 ```
-bash metaseq/scripts/reshard_sbatch.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
+bash metaseq/scripts/reshard_mp_launch.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
+```
+If you don't have slurm on your machine, run:
+```
+bash metaseq/scripts/reshard_mp_launch_no_slurm.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
 ```
 
 Note that most of our models expect to run with Model (Tensor) Parallelism. For smaller models, some
