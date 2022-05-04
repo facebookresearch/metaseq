@@ -782,9 +782,6 @@ class TransformerDecoder(IncrementalDecoder):
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
 
-        if torch.distributed.get_rank() == 0:
-            from metaseq import pdb; pdb.set_trace()
-
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
