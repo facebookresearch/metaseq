@@ -238,7 +238,7 @@ def _spawn_helper(main, cfg, kwargs):
         for p in spawncontext.processes:
             if p.is_alive():
                 os.kill(p.pid, signal.SIGTERM)
-            raise
+        raise
 
 
 def call_main(cfg: MetaseqConfig, main, **kwargs):

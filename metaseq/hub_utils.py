@@ -8,6 +8,7 @@ import ast
 import copy
 import logging
 import os
+import signal
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional

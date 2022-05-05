@@ -14,6 +14,7 @@ See docs/api.md for more information.
 import os
 import random
 import sys
+import logging
 
 import torch
 
@@ -49,7 +50,7 @@ def input_loop():
         except KeyboardInterrupt:
             # reset the formatting
             sys.stdout.write("\033[0m")
-            raise RuntimeError("time to die")
+            raise
         except EOFError:
             break
         # reset the formatting
