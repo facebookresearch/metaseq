@@ -217,7 +217,7 @@ def gen_train_command(args, env, config, oss_destination, save_dir, save_dir_key
     train_cmd.extend(["--cluster-env", cluster_env.value])
 
     for hp in config.values():
-        train_cmd.extend(map(str, hp.get_cli_args()))
+        train_cmd.extend(map(shlex.quote, map(str, hp.get_cli_args())))
     return train_cmd
 
 
