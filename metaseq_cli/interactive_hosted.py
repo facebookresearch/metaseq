@@ -24,6 +24,7 @@ from flask import Flask, request
 from metaseq import options
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
+from metaseq.launcher.slurm import requeue
 from metaseq.distributed import utils as dist_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.queue import PriorityQueueRingShard
@@ -301,4 +302,14 @@ def cli_main():
 
 
 if __name__ == "__main__":
-    cli_main()
+    try:
+        cli_main()
+    except Exception as e:
+        # if we're running in slurm, assume we want to keep the service running
+        # even on crashes. Tell slurm to requeue the job as a turn-it-off-and-on-
+        # again strategy.
+        try:
+            requeue()
+        except RuntimeError:
+            # not running in slurm, let us actually die
+            raise e
