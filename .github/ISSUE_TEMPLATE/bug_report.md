@@ -30,7 +30,7 @@ Minimal means having the shortest code but still preserving the bug. -->
 
  - fairseq Version (e.g., 1.0 or master):
  - PyTorch Version (e.g., 1.0)
- - OS (e.g., Linux):
+ - OS (e.g., Linux, Windows, MacOS):
  - How you installed fairseq (`pip`, source):
  - Build command you used (if compiling from source):
  - Python version:
