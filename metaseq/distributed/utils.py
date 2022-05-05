@@ -225,7 +225,7 @@ def _spawn_helper(main, cfg, kwargs):
             cfg.distributed_training.distributed_world_size,
         ),
         join=False,
-        start_method='spawn',
+        start_method="spawn",
     )
 
     try:
@@ -255,7 +255,9 @@ def call_main(cfg: MetaseqConfig, main, **kwargs):
             kwargs["start_rank"] = start_rank
             return _spawn_helper(main, cfg, kwargs)
         else:
-            return distributed_main(cfg.distributed_training.device_id, main, cfg, kwargs)
+            return distributed_main(
+                cfg.distributed_training.device_id, main, cfg, kwargs
+            )
     else:
         # single GPU main
         return main(cfg, **kwargs)

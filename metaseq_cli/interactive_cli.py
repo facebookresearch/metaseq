@@ -41,9 +41,9 @@ def input_loop():
         try:
             # green display, bold user prompt
             display = (
-                '\033[32mPrompt (ctrl-D to end input, ctrl-C to quit):\n\033[0;1m'
+                "\033[32mPrompt (ctrl-D to end input, ctrl-C to quit):\n\033[0;1m"
                 if not inp
-                else ''
+                else ""
             )
             data = input(display)
             inp.append(data)
@@ -80,14 +80,14 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
             prompt = input_loop()
             tokens = encode_fn(generator, prompt)
             request_object = {
-                'inputs': [tokens],
-                'max_tokens': [128],
+                "inputs": [tokens],
+                "max_tokens": [128],
             }
             dist_utils.broadcast_object(
                 request_object, src_rank=0, group=dist_utils.get_global_group()
             )
             generations = generator.generate(**request_object)
-            print(generations[0][0]['text'])
+            print(generations[0][0]["text"])
     else:
         # useful in FSDP setting
         while True:
