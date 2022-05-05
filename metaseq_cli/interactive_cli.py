@@ -24,10 +24,7 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.constants import (
-    MAX_SEQ_LEN,
     TOTAL_WORLD_SIZE,
-    CHECKPOINT_LOCAL,
-    CHECKPOINT_FOLDER,
     LAUNCH_ARGS,
 )
 from metaseq.service.utils import encode_fn, build_logger
