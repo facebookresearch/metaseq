@@ -59,12 +59,11 @@ def input_loop():
     return "\n".join(inp)
 
 
-def worker_main(cfg1: MetaseqConfig, namespace_args=None):
+def worker_main(cfg: MetaseqConfig, namespace_args=None):
     global generator
     # make sure generations are stochastic since we have many workers
     torch.manual_seed(random.randint(1, 20000))
     torch.cuda.manual_seed(random.randint(1, 20000))
-    cfg = cfg1
 
     generator = GeneratorInterface(cfg)
     models = generator.load_model()  # noqa: F841
@@ -102,9 +101,7 @@ def cli_main():
     """
     Command line interactive.
     """
-    global cfg
     parser = options.get_generation_parser()
-
     # dumb defaults overriding
     parser.set_defaults(lr_scheduler=None, criterion=None)
     flat_launch_args = []

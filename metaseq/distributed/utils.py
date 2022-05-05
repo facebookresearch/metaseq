@@ -181,7 +181,8 @@ def distributed_init(cfg: MetaseqConfig):
 
 def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
     if not cfg.distributed_training.distributed_no_spawn:
-        # local spawner is actually rank + 1
+        # if in local spawning, i is offset by -1 since torch.multiprocessing.spawn
+        # always starts at rank 0
         i = i + 1
     cfg.distributed_training.device_id = i
     if torch.cuda.is_available() and not cfg.common.cpu:
@@ -191,7 +192,7 @@ def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
         # able to pass local rank.
         os.environ["LOCAL_RANK"] = str(cfg.distributed_training.device_id)
     if cfg.distributed_training.distributed_rank is None:
-        # _span_helper
+        # start_rank is the rank of gpu 0 on this machine.
         cfg.distributed_training.distributed_rank = kwargs.pop("start_rank", 0) + i
 
     cfg.distributed_training.distributed_rank = distributed_init(cfg)
@@ -216,7 +217,8 @@ def _spawn_helper(main, cfg, kwargs):
     spawncontext = torch.multiprocessing.start_processes(
         distributed_main,
         # need to give rank offset as 1 to cover the fact that the main
-        # process is rank 0, but that spawn() doesn't let you control rank
+        # process is rank 0, but that spawn() doesn't let you control rank:
+        # it always starts at 0
         (main, cfg, kwargs),
         nprocs=min(
             torch.cuda.device_count(),
@@ -234,7 +236,6 @@ def _spawn_helper(main, cfg, kwargs):
         return retval
     except (KeyboardInterrupt, Exception):
         # weirdly KeyboardInterrupt is not an Exception
-        logger.info("Killing subworkers.")
         # propagate exceptions on the main node by killing workers
         for p in spawncontext.processes:
             if p.is_alive():
