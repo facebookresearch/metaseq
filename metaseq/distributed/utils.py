@@ -232,7 +232,8 @@ def _spawn_helper(main, cfg, kwargs):
         retval = distributed_main(-1, main, cfg, kwargs)
         spawncontext.join()
         return retval
-    except Exception:
+    except (KeyboardInterrupt, Exception):
+        # weirdly KeyboardInterrupt is not an Exception
         logger.info("Killing subworkers.")
         # propagate exceptions on the main node by killing workers
         for p in spawncontext.processes:
