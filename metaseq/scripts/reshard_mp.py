@@ -167,9 +167,7 @@ def reshard_mp(
 
 
 """
-model_dir=/private/home/sshleifer/metaseq-py/125_2part.me_fp16.fsdp.gelu.transformer_lm_megatron.nlay12.emb768.dummy_lm.tps2048.adam.b2_0.98.eps1e-08.cl0.0.lr0.0006.wu50.dr0.1.atdr0.1.ms16.uf1.mu20.s1.ngpu8
 python scripts/reshard_mp.py $model_dir/checkpoint_last  125_mp_reshard --mpart 0
-
 """
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 After receiving an email with a presigned URL to access the model weights, follow the below set of instructions to get started with hosting the model.
 
 ## Download all shards
-Since we trained OPT-175B on 124 hosts, we have 124\*8 = 992 files corresponding to the model parameters (8x tensor parallelism). The pre-signed URL that you receive in your email will look something like the following:
+Since we trained OPT-175B on 124 hosts, we have 124\*8 = 992 files corresponding to the model parameters (8x tensor parallelism). The presigned URL that you receive in your email will look something like the following:
 
 ```
 https://<cloudfront_url>/175b/checkpoint_last_20220503/stubbed.pt?&<super_long_query_string>
@@ -13,6 +13,8 @@ To download all 992 files, run:
 ```
 bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>"
 ```
+
+Make sure to wrap the url in quotes here.  You will get a 403 error otherwise.
 
 ## Reshard the shards
 To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
