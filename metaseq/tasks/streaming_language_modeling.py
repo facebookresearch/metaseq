@@ -280,7 +280,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         # shuffles them, then chunks them into blocks of tokens (e.g., 2048).
 
         # determine number of shards for this split
-        cur_shard_str = get_shard_str(epoch, split)
+        cur_shard_str = self.get_shard_str(epoch, split)
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
