@@ -255,7 +255,6 @@ class StreamingLanguageModelingTask(LegacyTask):
         cur_shard_str = shards[(epoch - 1) % len(shards)]
         return cur_shard_str
 
-
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
