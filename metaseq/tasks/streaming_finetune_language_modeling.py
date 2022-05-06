@@ -9,8 +9,7 @@ on-the-fly tokenization.
 
 import logging
 import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import torch
 
