@@ -59,6 +59,9 @@ class LanguageModelingConfig(MetaseqDataclass):
     )
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
+    )
+    final_vocab_size: Optional[int] = field(
+        default=None, metadata={"help": "force vocab size to this"}
     )  # End of args from StreamingLanguageModelingConfig
     sample_break_mode: SAMPLE_BREAK_MODE_CHOICES = field(
         default="none",
