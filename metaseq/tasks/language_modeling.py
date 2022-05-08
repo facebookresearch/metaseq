@@ -174,16 +174,6 @@ class LanguageModelingTask(LegacyTask):
     def setup_task(cls, args, **kwargs):
         return cls(args)
 
-    def build_model(self, args):
-        model = super().build_model(args)
-        for target in self.targets:
-            if target not in model.supported_targets:
-                raise ValueError(
-                    f"Unsupported language modeling target: {target} not in {model.supported_targets}"
-                )
-
-        return model
-
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
