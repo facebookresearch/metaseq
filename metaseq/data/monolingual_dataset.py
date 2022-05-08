@@ -121,6 +121,7 @@ class MonolingualDataset(BaseDataset):
 
     def _filter_vocab(self, target):
         if len(self.tgt_vocab) != len(self.vocab):
+
             def _filter(target):
                 mask = target.ge(len(self.tgt_vocab))
                 if mask.any():
