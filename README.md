@@ -30,5 +30,5 @@ Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.
 ## License
 
 The majority of metaseq is licensed under the MIT license, however portions of the project are available under separate license terms: 
-* Megatron-LM is licensed under the Megatron-LM license (https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE
+* Megatron-LM is licensed under the [Megatron-LM license](https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE)
 
