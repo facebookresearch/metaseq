@@ -18,7 +18,7 @@ class TokenBlockDataset(BaseDataset):
     Args:
         dataset (~torch.utils.data.Dataset): dataset to break into blocks
         sizes (List[int]): sentence lengths (required for 'complete' and 'eos')
-        block_size (int): maximum block size (ignored in 'eos' break mode)
+        block_size (int, optional): maximum block size (ignored in 'eos' break mode)
         break_mode (str, optional): Mode used for breaking tokens. Values can
             be one of:
             - 'none': break tokens into equally sized blocks (up to block_size)

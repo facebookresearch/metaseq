@@ -261,7 +261,6 @@ class LanguageModelingTask(LegacyTask):
             tgt_vocab=self.dictionary,
             add_eos_for_other_targets=add_eos_for_other_targets,
             shuffle=True,
-            targets=self.targets,
             add_bos_token=self.args.add_bos_token,
             fixed_pad_length=fixed_pad_length,
             pad_to_bsz=pad_to_bsz,
@@ -370,12 +369,8 @@ class LanguageModelingTask(LegacyTask):
 
     @property
     def source_dictionary(self):
-        """Return the :class:`~metaseq.data.Dictionary` for the language
-        model."""
         return self.dictionary
 
     @property
     def target_dictionary(self):
-        """Return the :class:`~metaseq.data.Dictionary` for the language
-        model."""
         return self.dictionary
