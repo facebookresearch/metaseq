@@ -49,7 +49,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default="", metadata={"help": "path to bpe-vocab.json"}
     )
     merges_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-merges.json"}
+        default="", metadata={"help": "path to bpe-merges.txt"}
     )
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
