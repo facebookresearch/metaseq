@@ -34,6 +34,7 @@ from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
+from metaseq.distributed.stitch_fsdp_ckpt import glue_megatron_parts
 
 
 def worker_main(cfg: MetaseqConfig):
@@ -45,7 +46,7 @@ def worker_main(cfg: MetaseqConfig):
 
     def _build_model(cfg, task):
         # hardcoded to cpu & fp16
-        model = task.build_model(cfg.model).half().cpu()
+        model = task.build_model(cfg.model).half().cuda()
         return fsdp_wrap(model)
 
     with fsdp_enable_wrap(
@@ -63,9 +64,24 @@ def worker_main(cfg: MetaseqConfig):
         )
         model = models[0]
 
+    # consolidate everything on rank0
+    mp_size = dist_utils.get_model_parallel_world_size()
+    model_parts = [{} for _ in range(mp_size)]
+    sd = model.module.state_dict()
+    for key in sorted(sd.keys()):
+        tensor = sd[key]
+        gathered = [tensor for _ in range(mp_size)]
+        torch.distributed.all_gather(gathered, tensor, group=dist_utils.get_global_group())
+        for r, t in enumerate(gathered):
+            model_parts[r][key] = t.cpu()
+
+    glued = glue_megatron_parts(model_parts)
+    # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
+    del glued['decoder.output_projection.weight']
+
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
-            torch.save(model.module.state_dict(), f)
+            torch.save(glued, f)
 
 
 def main():
