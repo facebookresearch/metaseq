@@ -20,7 +20,6 @@ except ModuleNotFoundError:
     # checkpoints from S3 are stored. As an example:
     # MODEL_SHARED_FOLDER = "/example/175B/reshard_no_os"
     # $ ls /example/175B/reshard_no_os
-    # dict.txt
     # reshard-model_part-0.pt
     # reshard-model_part-1.pt
     # reshard-model_part-2.pt
