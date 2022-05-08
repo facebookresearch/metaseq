@@ -95,7 +95,7 @@ def main():
 
     MP = len(files)
     BPE_MERGES = args.location + "/gpt2-merges.txt"
-    BPE_VOCAB = args.location + "/gpt2-vocab.txt"
+    BPE_VOCAB = args.location + "/gpt2-vocab.json"
 
     # Skeleton out all the annoying command line args we can infer
     ARGS = [
