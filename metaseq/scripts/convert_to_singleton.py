@@ -81,16 +81,24 @@ def main():
 
     # Skeleton out all the annoying command line args we can infer
     ARGS = [
-        "--model-parallel-size", str(MP),
-        "--distributed-world-size", str(MP),
-        "--task", "language_modeling",
-        "--bpe-merges", BPE_MERGES,
-        "--bpe-vocab", BPE_VOCAB,
-        "--bpe", "hf_byte_bpe",
-        "--path", args.location + "/reshard.pt",
-        "--checkpoint-shard-count", "1",
+        "--model-parallel-size",
+        str(MP),
+        "--distributed-world-size",
+        str(MP),
+        "--task",
+        "language_modeling",
+        "--bpe-merges",
+        BPE_MERGES,
+        "--bpe-vocab",
+        BPE_VOCAB,
+        "--bpe",
+        "hf_byte_bpe",
+        "--path",
+        args.location + "/reshard.pt",
+        "--checkpoint-shard-count",
+        "1",
         "--use-sharded-state",
-        args.location
+        args.location,
     ]
 
     # build up the config file
@@ -103,5 +111,5 @@ def main():
     dist_utils.call_main(cfg, worker_main)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
