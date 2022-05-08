@@ -71,13 +71,15 @@ def worker_main(cfg: MetaseqConfig):
     for key in sorted(sd.keys()):
         tensor = sd[key]
         gathered = [tensor for _ in range(mp_size)]
-        torch.distributed.all_gather(gathered, tensor, group=dist_utils.get_global_group())
+        torch.distributed.all_gather(
+            gathered, tensor, group=dist_utils.get_global_group()
+        )
         for r, t in enumerate(gathered):
             model_parts[r][key] = t.cpu()
 
     glued = glue_megatron_parts(model_parts)
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
-    del glued['decoder.output_projection.weight']
+    del glued["decoder.output_projection.weight"]
 
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
