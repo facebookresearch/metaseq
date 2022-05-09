@@ -79,7 +79,7 @@ def worker_main(cfg: MetaseqConfig):
 
     glued = glue_megatron_parts(model_parts)
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
-    if "decoder.output_projection.weight":
+    if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
 
     if dist_utils.get_global_rank() == 0:
