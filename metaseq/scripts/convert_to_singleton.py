@@ -82,9 +82,13 @@ def worker_main(cfg: MetaseqConfig):
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
 
+    output_sd = checkpoint_utils.load_checkpoint_to_cpu(cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt"))
+    output_sd['model'] = utils.move_to_cpu(glued)
+    output_sd['cfg']['model'].arch = 'transformer_lm'
+
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
-            torch.save(glued, f)
+            torch.save(output_sd, f)
 
 
 def main():
@@ -128,6 +132,28 @@ def main():
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = MP
     dist_utils.call_main(cfg, worker_main)
+
+    # now test it
+    def _build_model(cfg, task):
+        # hardcoded to cpu & fp16
+        model = task.build_model(cfg.model).half().cuda()
+        return fsdp_wrap(model)
+
+    with fsdp_enable_wrap(
+        cfg.distributed_training,
+        use_sharded_state=cfg.distributed_training.use_sharded_state,
+    ):
+        models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
+            utils.split_paths(cfg.common_eval.path),
+            arg_overrides=None,
+            task=task,
+            suffix=cfg.checkpoint.checkpoint_suffix,
+            strict=True,
+            num_shards=cfg.checkpoint.checkpoint_shard_count,
+            build_model_hook=_build_model,
+        )
+        model = models[0]
+
 
 
 if __name__ == "__main__":
