@@ -104,6 +104,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             padding_idx=self.source_dictionary.pad(),
             # 1284 is a randomly-generated offset to decouple the seed used here
             # from the seed used above in StreamingShuffleDataset
+            # TODO: Track this seed to avoid collisions. See issue #65
             seed=1284 + self.args.seed,
         )
 
