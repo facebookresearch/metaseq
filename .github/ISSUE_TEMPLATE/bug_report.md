@@ -28,10 +28,10 @@ Minimal means having the shortest code but still preserving the bug. -->
 
 ### Environment
 
- - fairseq Version (e.g., 1.0 or master):
+ - metaseq Version (e.g., 1.0 or master):
  - PyTorch Version (e.g., 1.0)
- - OS (e.g., Linux):
- - How you installed fairseq (`pip`, source):
+ - OS (e.g., Linux, Windows, MacOS):
+ - How you installed metaseq (`pip`, source):
  - Build command you used (if compiling from source):
  - Python version:
  - CUDA/cuDNN version:
