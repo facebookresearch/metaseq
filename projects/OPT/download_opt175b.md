@@ -3,7 +3,7 @@
 After receiving an email with a presigned URL to access the model weights, follow the below set of instructions to get started with hosting the model.
 
 ## Download all shards
-Since we trained OPT-175B on 124 hosts, we have 124\*8 = 992 files corresponding to the model parameters (8x tensor parallelism). The presigned URL that you receive in your email will look something like the following:
+Since we trained OPT-175B on 124 hosts, we have 124\*8 = 992 files corresponding to the model parameters (8x tensor parallelism) which will take approximately 328GB of available storage. The presigned URL that you receive in your email will look something like the following:
 
 ```
 https://<cloudfront_url>/175b/checkpoint_last_20220503/stubbed.pt?&<super_long_query_string>
