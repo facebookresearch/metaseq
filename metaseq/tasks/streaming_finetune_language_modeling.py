@@ -60,6 +60,9 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         cycle back over the same data. We also have two different data sources
         in each shard (foo and bar), which will be combined and shuffled.
 
+        Each jsonl entry is a dict with "src" and "tgt" keys. Loss is computed
+        only on the tgt tokens.
+
         Args:
             split (str): name of the split (e.g., train, valid, valid1, test)
         """

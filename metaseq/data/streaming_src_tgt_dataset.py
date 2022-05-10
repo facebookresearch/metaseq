@@ -86,16 +86,15 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
         if self.seed is not None:
             # add a random offset (2273) to the given seed to decouple this RNG
             # from any other RNG instances elsewhere
-            rng = np.random.default_rng(2273 + self.seed)
+            self.rng = np.random.default_rng(2273 + self.seed)
         else:
-            rng = None
+            self.rng = None
 
         buffer = []
 
         def get_next_item_and_replace_in_buffer(replacement_item):
             # return a random item from the buffer and replace with a new item
-            nonlocal rng
-            idx = rng.integers(len(buffer)) if rng is not None else 0
+            idx = self.rng.integers(len(buffer)) if self.rng is not None else 0
             item = buffer[idx]
             if replacement_item is not None:
                 buffer[idx] = replacement_item
@@ -125,6 +124,7 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
     for idx, (src, tgt) in enumerate(iterable):
         if src.numel() > block_size:
             # truncate right side
+            # TODO: Switch this to left truncate so that the target isnt ever truncated
             src = src[:block_size]
             tgt = tgt[:block_size]
 

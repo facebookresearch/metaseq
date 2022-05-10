@@ -46,6 +46,8 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         if has_pad:
             loss = loss * (target != self.padding_idx)
         loss = loss.sum()
+        # When using target loss only, use num tokens in target only as the sample_size
+        # See StreamingSrcTgtDataset
         sample_size = (
             sample["ntokens_target"]
             if "ntokens_target" in sample
