@@ -222,7 +222,7 @@ def _spawn_helper(main, cfg, kwargs):
         (main, cfg, kwargs),
         nprocs=min(
             torch.cuda.device_count(),
-            cfg.distributed_training.distributed_world_size,
+            cfg.distributed_training.distributed_world_size - 1,
         ),
         join=False,
         start_method="spawn",
