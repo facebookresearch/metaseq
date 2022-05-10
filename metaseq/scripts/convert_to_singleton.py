@@ -25,9 +25,13 @@ Usage:
     restored.pt
 """
 
-import torch
 import argparse
 import glob
+import logging
+import os
+import sys
+
+import torch
 
 from metaseq import options, tasks, checkpoint_utils, utils
 from metaseq.dataclass.configs import MetaseqConfig
@@ -35,6 +39,14 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.distributed.stitch_fsdp_ckpt import glue_megatron_parts
+
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=os.environ.get("LOGLEVEL", "INFO").upper(),
+    stream=sys.stdout,
+)
+logger = logging.getLogger("convert_to_singleton")
 
 
 def worker_main(cfg: MetaseqConfig):
@@ -123,6 +135,7 @@ def main():
         "--use-sharded-state",
         args.location,
     ]
+    print(ARGS)
 
     # build up the config file
     parser = options.get_generation_parser()
@@ -133,28 +146,6 @@ def main():
     cfg.distributed_training.distributed_world_size = MP
     dist_utils.call_main(cfg, worker_main)
 
-    # now test it
-    def _build_model(cfg, task):
-        # hardcoded to cpu & fp16
-        model = task.build_model(cfg.model).half().cuda()
-        return fsdp_wrap(model)
 
-    with fsdp_enable_wrap(
-        cfg.distributed_training,
-        use_sharded_state=cfg.distributed_training.use_sharded_state,
-    ):
-        models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
-            utils.split_paths(cfg.common_eval.path),
-            arg_overrides=None,
-            task=task,
-            suffix=cfg.checkpoint.checkpoint_suffix,
-            strict=True,
-            num_shards=cfg.checkpoint.checkpoint_shard_count,
-            build_model_hook=_build_model,
-        )
-        model = models[0]
-
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
