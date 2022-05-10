@@ -271,12 +271,6 @@ def _copy_checkpoint_cache():
         )
         shutil.copytree(CHECKPOINT_FOLDER, os.path.dirname(CHECKPOINT_LOCAL))
 
-    dict_path = os.path.join(os.path.dirname(CHECKPOINT_LOCAL), "dict.txt")
-    if not os.path.exists(dict_path):
-        with open(dict_path, "w+") as f:
-            f.write("\n".join([f"{i} 1" for i in range(4, 50271 + 1)]))
-        logger.info("Hackishly generated a dict.txt for use with 175B model")
-
 
 def cli_main():
     """

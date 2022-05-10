@@ -133,40 +133,22 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
     """
     This class is specially developed for inference of models trained
     with the new StreamingLanguageModeling but follows closely the language_modeling implementation.
-
-    Args:
-        dictionary (~metaseq.data.Dictionary): the dictionary for the input of
-            the language model
-        output_dictionary (~metaseq.data.Dictionary): the dictionary for the
-            output of the language model. In most cases it will be the same as
-            *dictionary*, but could possibly be a more limited version of the
-            dictionary (if ``--output-dictionary-size`` is used).
-        targets (List[str]): list of the target types that the language model
-            should predict.  Can be one of "self", "future", and "past".
-            Defaults to "future".
-
-    .. note::
-
-        The language modeling task is compatible with :mod:`metaseq-train`,
-        :mod:`metaseq-generate`, :mod:`metaseq-interactive` and
-        :mod:`metaseq-eval-lm`.
-
-    The language modeling task provides the following additional command-line
-    arguments:
-
-    .. argparse::
-        :ref: metaseq.tasks.language_modeling_parser
-        :prog:
     """
 
-    def __init__(self, args, tokenizer, targets=None):
+    def __init__(self, args):
         super().__init__(args)
 
-        self.tokenizer = tokenizer
+        if not has_hf_tokenizers:
+            raise ImportError("Please install tokenizers with: pip install tokenizers")
+
+        self.tokenizer = ByteLevelBPETokenizer.from_file(
+            args.vocab_filename, args.merges_filename
+        )
 
         self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
         if self.eod is None:
             # fix for 7B_punctsplit_bpe_relu2_229k
+            # TODO(susanz): Figure out why this is different from StreamingLanguageModelingTask
             self.eod = self.tokenizer.token_to_id("<endoftext|>")
 
         assert (
@@ -201,52 +183,12 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
 
         self.output_dictionary = self.dictionary
 
-        if targets is None:
-            targets = ["future"]
-        self.targets = targets
-
     @classmethod
     def setup_task(cls, args, **kwargs):
-        """Setup the task (e.g., load dictionaries).
-
-        Args:
-            args (argparse.Namespace): parsed command-line arguments
-        """
-
-        if not has_hf_tokenizers:
-            raise ImportError("Please install tokenizers with: pip install tokenizers")
-
-        # set bytelevel bpe tokenizer
-        tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename, args.merges_filename
-        )
-
         # upgrade old checkpoints
         if getattr(args, "exclude_self_target", False):
             args.self_target = False
-
-        targets = []
-        if getattr(args, "self_target", False):
-            targets.append("self")
-        if getattr(args, "future_target", False):
-            targets.append("future")
-        if getattr(args, "past_target", False):
-            targets.append("past")
-        if len(targets) == 0:
-            # standard language modeling
-            targets = ["future"]
-
-        return cls(args, tokenizer, targets=targets)
-
-    def build_model(self, args):
-        model = super().build_model(args)
-        for target in self.targets:
-            if target not in model.supported_targets:
-                raise ValueError(
-                    f"Unsupported language modeling target: {target} not in {model.supported_targets}"
-                )
-
-        return model
+        return cls(args)
 
     def load_dataset(
         self, split: str, epoch=1, combine=False, **kwargs
@@ -311,7 +253,6 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             tgt_vocab=self.output_dictionary,
             add_eos_for_other_targets=add_eos_for_other_targets,
             shuffle=True,
-            targets=self.targets,
             add_bos_token=self.args.add_bos_token,
             fixed_pad_length=fixed_pad_length,
             pad_to_bsz=pad_to_bsz,
