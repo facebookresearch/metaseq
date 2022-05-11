@@ -9,6 +9,7 @@ on-the-fly tokenization.
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 import torch
@@ -17,6 +18,7 @@ from metaseq.data import (
     JsonlDataset,
     StreamingShuffleDataset,
     StreamingSrcTgtDataset,
+    StreamingMultiCorpusDataset,
     data_utils,
 )
 from metaseq.tasks.streaming_language_modeling import (
@@ -28,8 +30,22 @@ from metaseq.tasks import register_task
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
+    example_proportional_sampling: int = field(
+        default=-1,
+        metadata={
+            "help": "Upper bound on size for example proportional sampling. -1 means disable it. "
+        },
+    )
+    data: Optional[str] = field(
+        default=None, metadata={"help": "path to data directory with JSONL files"}
+    )
+
+
 @register_task(
-    "streaming_finetune_language_modeling", dataclass=StreamingLanguageModelingConfig
+    "streaming_finetune_language_modeling",
+    dataclass=StreamingFinetuneLanguageModelingConfig,
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
     def _tokenize_src_tgt_json(self, json):
@@ -91,10 +107,18 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         if self.args.multicorpus_sampling_alpha != 1:
             raise NotImplementedError
 
-        dataset = torch.utils.data.ConcatDataset(datasets)
-
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
+        if self.args.example_proportional_sampling == -1:
+            dataset = torch.utils.data.ConcatDataset(datasets)
+            # shuffle order across epochs
+            dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
+        else:
+            datasets_sizes = [len(d) for d in datasets]
+            distributions = [
+                min(self.args.example_proportional_sampling, len(d)) for d in datasets
+            ]
+            total_dist = sum(distributions)
+            distributions = [d / total_dist for d in distributions]
+            dataset = StreamingMultiCorpusDataset(datasets, distributions)
 
         self.datasets[split] = StreamingSrcTgtDataset(
             dataset,
