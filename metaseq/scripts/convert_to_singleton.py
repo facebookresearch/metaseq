@@ -94,9 +94,11 @@ def worker_main(cfg: MetaseqConfig):
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
 
-    output_sd = checkpoint_utils.load_checkpoint_to_cpu(cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt"))
-    output_sd['model'] = utils.move_to_cpu(glued)
-    output_sd['cfg']['model'].arch = 'transformer_lm'
+    output_sd = checkpoint_utils.load_checkpoint_to_cpu(
+        cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt")
+    )
+    output_sd["model"] = utils.move_to_cpu(glued)
+    output_sd["cfg"]["model"].arch = "transformer_lm"
 
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
@@ -147,5 +149,5 @@ def main():
     dist_utils.call_main(cfg, worker_main)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
