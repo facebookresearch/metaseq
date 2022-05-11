@@ -133,6 +133,7 @@ def do_setup(package_data):
             "setuptools>=18.0",
         ],
         install_requires=[
+            "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
             "black==22.1.0",
