@@ -242,6 +242,19 @@ class StreamingLanguageModelingTask(LegacyTask):
         )
         return resampled_datasets
 
+    def get_shard_str(self, epoch, split):
+        shards = {}
+        for shard_id in os.listdir(os.path.join(self.args.data, split)):
+            assert (
+                int(shard_id) not in shards
+            ), f"shard id: {shard_id} not in shards: {shards}"
+            shards[int(shard_id)] = shard_id
+        assert min(shards.keys()) == 0
+        assert max(shards.keys()) == len(shards) - 1
+
+        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        return cur_shard_str
+
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
@@ -266,16 +279,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         # shuffles them, then chunks them into blocks of tokens (e.g., 2048).
 
         # determine number of shards for this split
-        shards = {}
-        for shard_id in os.listdir(os.path.join(self.args.data, split)):
-            assert (
-                int(shard_id) not in shards
-            ), f"shard id: {shard_id} not in shards: {shards}"
-            shards[int(shard_id)] = shard_id
-        assert min(shards.keys()) == 0
-        assert max(shards.keys()) == len(shards) - 1
-
-        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        cur_shard_str = self.get_shard_str(epoch, split)
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
