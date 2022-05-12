@@ -60,32 +60,6 @@ def progress_bar(
     return bar
 
 
-def build_progress_bar(
-    args,
-    iterator,
-    epoch: Optional[int] = None,
-    prefix: Optional[str] = None,
-    default: str = "json",
-    no_progress_bar: str = "none",
-):
-    """Legacy wrapper that takes an argparse.Namespace."""
-    if getattr(args, "no_progress_bar", False):
-        default = no_progress_bar
-    if getattr(args, "distributed_rank", 0) == 0:
-        tensorboard_logdir = getattr(args, "tensorboard_logdir", None)
-    else:
-        tensorboard_logdir = None
-    return progress_bar(
-        iterator,
-        log_format=args.log_format,
-        log_interval=args.log_interval,
-        epoch=epoch,
-        prefix=prefix,
-        tensorboard_logdir=tensorboard_logdir,
-        default_log_format=default,
-    )
-
-
 def format_stat(stat):
     if isinstance(stat, Number):
         stat = "{:g}".format(stat)
