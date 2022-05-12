@@ -107,7 +107,6 @@ def main(cfg: DictConfig, override_args=None):
             log_format=cfg.common.log_format,
             log_interval=cfg.common.log_interval,
             prefix=f"valid on '{subset}' subset",
-            default_log_format="json",
         )
 
         log_outputs = []

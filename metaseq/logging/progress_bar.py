@@ -27,19 +27,15 @@ logger = logging.getLogger(__name__)
 
 def progress_bar(
     iterator,
-    log_format: Optional[str] = None,
+    log_format: str = "json",
     log_interval: int = 100,
     log_file: Optional[str] = None,
     epoch: Optional[int] = None,
     prefix: Optional[str] = None,
     tensorboard_logdir: Optional[str] = None,
-    default_log_format: str = "json",
     wandb_project: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
 ):
-    if log_format is None:
-        log_format = default_log_format
-
     if log_file is not None:
         handler = logging.FileHandler(filename=log_file)
         logger.addHandler(handler)

@@ -252,7 +252,6 @@ def train(
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
-        default_log_format="json",
         wandb_project=(
             cfg.common.wandb_project
             if distributed_utils.is_master(cfg.distributed_training)
@@ -514,7 +513,6 @@ def validate(
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
-                default_log_format="json",
                 wandb_project=(
                     cfg.common.wandb_project
                     if distributed_utils.is_master(cfg.distributed_training)
