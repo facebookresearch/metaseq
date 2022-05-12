@@ -18,7 +18,8 @@ __all__ = ["pdb"]
 
 # backwards compatibility to support `from metaseq.X import Y`
 from metaseq.distributed import utils as distributed_utils
-from metaseq.logging import meters, metrics, progress_bar  # noqa
+from metaseq.logging import meters, metrics  # noqa
+from .logging.progress_bar_dir import progress_bar
 
 sys.modules["metaseq.distributed_utils"] = distributed_utils
 sys.modules["metaseq.meters"] = meters

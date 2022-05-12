@@ -15,7 +15,8 @@ from omegaconf import DictConfig
 
 from metaseq import checkpoint_utils, distributed_utils, options, utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.logging import metrics, progress_bar
+from metaseq.logging import metrics
+from metaseq.logging.progress_bar_dir import progress_bar
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
