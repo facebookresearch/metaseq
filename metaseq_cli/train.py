@@ -34,7 +34,7 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
-from metaseq.logging.progress_bar_dir import progress_bar
+from metaseq.logging.progress_bar_dir import base_progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
