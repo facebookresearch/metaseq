@@ -2,7 +2,11 @@
 # Metaseq
 A codebase for working with [Open Pre-trained Transformers](projects/OPT).
 
-## Getting Started
+## Using OPT with 🤗 Transformers
+
+The OPT 125M--30B models are now available in [HuggingFace Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0).
+
+## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
 
 ### Documentation on workflows
