@@ -46,8 +46,6 @@ def progress_bar(
 
     if log_format == "json":
         bar = JsonProgressBar(iterator, epoch, prefix, log_interval)
-    elif log_format == "none":
-        bar = NoopProgressBar(iterator, epoch, prefix)
     else:
         raise ValueError("Unknown log format: {}".format(log_format))
 
@@ -189,25 +187,6 @@ class JsonProgressBar(BaseProgressBar):
         for key in stats.keys():
             postfix[key] = format_stat(stats[key])
         return postfix
-
-
-class NoopProgressBar(BaseProgressBar):
-    """No logging."""
-
-    def __init__(self, iterable, epoch=None, prefix=None):
-        super().__init__(iterable, epoch, prefix)
-
-    def __iter__(self):
-        for obj in self.iterable:
-            yield obj
-
-    def log(self, stats, tag=None, step=None):
-        """Log intermediate stats according to log_interval."""
-        pass
-
-    def print(self, stats, tag=None, step=None):
-        """Print end-of-epoch stats."""
-        pass
 
 
 try:
