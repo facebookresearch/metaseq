@@ -88,8 +88,8 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
-        if self.args.multicorpus_sampling_alpha != 1:
-            raise NotImplementedError
+        if self.args.multicorpus_sampling_alpha != 1 or self.args.multicorpus_sampling_maximum > 0:
+            datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
