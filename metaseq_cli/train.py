@@ -93,7 +93,7 @@ def main(cfg: DictConfig) -> None:
     assert cfg.criterion, "Please specify criterion to train a model"
 
     # Build model and criterion
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
+    if cfg.distributed_training.ddp_backend in ["fully_sharded", "ptd_fully_sharded"]:
         extra = {
             "use_sharded_state": cfg.distributed_training.use_sharded_state,
         }
@@ -398,8 +398,8 @@ def validate_and_save(
         )
     ) and not cfg.dataset.disable_validation
     valid_losses = [None]
-    if do_validate:
-        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+    #if do_validate:
+    #    valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 

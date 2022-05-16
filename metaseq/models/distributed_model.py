@@ -66,6 +66,20 @@ def DistributedModel(args, model, process_group, device):
             wrapped_model = wrapped_model.half()
         if not args.cpu_offload:
             wrapped_model = wrapped_model.to(device=device)
+    elif args.ddp_backend == "ptd_fully_sharded":
+        try:
+            from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
+        except ImportError:
+            raise ImportError(
+                "Cannot find FullyShardedDataParallel. "
+                "Please install fairscale with:  pip3 install torch torchvision torchaudio"
+            )
+        assert isinstance(model, FSDP), "expected model to already be wrapped in FSDP"
+        wrapped_model = model
+        if args.memory_efficient_fp16:
+            wrapped_model = wrapped_model.half()
+        if not args.cpu_offload:
+            wrapped_model = wrapped_model.to(device=device)
     else:
         raise ValueError("Unknown --ddp-backend: " + args.ddp_backend)
 
