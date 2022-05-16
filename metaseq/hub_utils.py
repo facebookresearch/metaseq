@@ -456,6 +456,8 @@ class GeneratorInterface:
         if isinstance(self.cfg, Namespace):
             self.cfg = convert_namespace_to_omegaconf(self.cfg)
 
+    # TODO (mingzhe)
+    # test this part to work with PTD FSDP.
     def load_model(self):
         utils.import_user_module(self.cfg.common)
 
