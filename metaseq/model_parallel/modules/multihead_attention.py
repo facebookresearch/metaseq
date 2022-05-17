@@ -381,7 +381,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             # masking dynamically based on the data (e.g. for document attention).
             # If we have a per sequence mask, the condition len(attn_mask.size()) == 3
             # is true.
-            if len(attn_mask.size()) == 3:
+            if (attn_mask is not None) and (len(attn_mask.size()) == 3):
                 # Going back to original scaled_masked_softmax to accomodate
                 # non-causal attention masking (use the given input attention)
                 attention_scores = matmul_result.view(*output_size)

@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+
 from metaseq import utils
 from metaseq.distributed import utils as dist_utils, fsdp_wrap
 from metaseq.models import BaseEncoder, IncrementalDecoder
@@ -380,7 +382,9 @@ class TransformerDecoder(IncrementalDecoder):
             else None
         )
         self.use_alibi: bool = getattr(args, "alibi", False)
-        self.self_attn_doc_sep: int = getattr(args, "self_attn_doc_sep", -1)
+        self.self_attn_doc_sep: int = getattr(
+            args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
+        )
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -574,15 +578,31 @@ class TransformerDecoder(IncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
-        if self.self_attn_doc_sep != -1:
+        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             # create own positions when self_attn_doc_sep is set
+            # We are essentially resetting positions based on document separator tokens.
+            # For instance, if the doc separator is 2, and the tokens are
+            # 143 345 2 5435 2
+            # The default positions would be
+            # 2 3 4 5 6
+            # But with document level attention, we would like to reset positions
+            # as well on sentence boundaries. So, the positions become
+            # 2 3 4 2 3
+
             mask = tokens.ne(self.padding_idx).int()
             mask_with_reset = tokens.ne(self.padding_idx).int()
             mask_with_reset[:, :] = 1
             doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
+
+            # Based on the location of document seperator token (batch_doc_indices), we would reset
+            # positional embeddings. The document seperator token marks the end of the preceding
+            # document.
             for batch_idx in range(tokens.size(0)):
                 batch_doc_indices = [
-                    index[1] for index in doc_id_indices if index[0] == batch_idx
+                    index[1] + 1
+                    for index in doc_id_indices
+                    # index[1] + 1 < tokens.size(1) to prevent overflow
+                    if index[0] == batch_idx and index[1] + 1 < tokens.size(1)
                 ]
                 batch_doc_indices.sort()
                 for k, doc_sep_idx in enumerate(batch_doc_indices):
@@ -825,7 +845,7 @@ class TransformerDecoder(IncrementalDecoder):
                 and self._future_mask.size(0)
                 != (batch_size * self.args.decoder_attention_heads)
             )
-            or (self.self_attn_doc_sep != -1)
+            or (self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP)
         )
 
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
@@ -836,7 +856,7 @@ class TransformerDecoder(IncrementalDecoder):
             if self.use_alibi:
                 alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
                 self._future_mask = self._future_mask.unsqueeze(0) + alibi
-            elif self.self_attn_doc_sep != -1:
+            elif self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
                 # Code to accomodate dynamic attention when document seperator is used
                 assert input_tokens is not None
                 self._future_mask = self._future_mask[:cur_seq_len, :cur_seq_len]
@@ -857,7 +877,7 @@ class TransformerDecoder(IncrementalDecoder):
                 :cur_seq_len,
                 :cur_seq_len,
             ]
-        elif self.self_attn_doc_sep != -1:
+        elif self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             return self._future_mask
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]

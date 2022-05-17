@@ -11,6 +11,8 @@ from typing import Optional
 
 from omegaconf import II
 
+from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.models import (
@@ -125,7 +127,7 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     # Dynamic Attention
     self_attn_doc_sep: int = field(
-        default=-1,
+        default=UNSPECIFIED_DOC_SEP,
         metadata={
             "help": "use dynamic self attention masking when document separator ID is specified"
         },
