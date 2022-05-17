@@ -44,3 +44,8 @@ jobs:
       run: |
         pip install black
         black --check .
+
+    - name: Type Checking with MyPy
+      run:  |
+        pip install mypy
+        mypy || true
