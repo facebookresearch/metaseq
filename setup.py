@@ -149,6 +149,7 @@ def do_setup(package_data):
             "Jinja2==3.1.1",  # for evals
             "markupsafe",  # for evals
             "more_itertools",
+            "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf",
