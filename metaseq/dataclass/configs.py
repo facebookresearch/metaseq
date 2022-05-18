@@ -131,7 +131,7 @@ class CommonConfig(MetaseqDataclass):
             "help": "use BF16 format"
             " Currently --bf16 is an added argument with --fp16 for mixed precision bf16 training"
             " or with --memory-efficient-fp16 for pure bf16 training."
-        }
+        },
     )
     fp16_no_flatten_grads: bool = field(
         default=False, metadata={"help": "don't flatten FP16 grads tensor"}

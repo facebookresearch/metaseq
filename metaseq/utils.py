@@ -607,7 +607,9 @@ def get_random_port():
     return port
 
 
-def floating_point_precision_convertor(x, fp16: bool, memory_efficient_fp16: bool, bf16: bool):
+def floating_point_precision_convertor(
+    x, fp16: bool, memory_efficient_fp16: bool, bf16: bool
+):
     """
     Convert a tensor x into the desired dtype.
 

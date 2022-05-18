@@ -271,10 +271,10 @@ class TransformerDecoderLayer(nn.Module):
         )
         if initialize_params_on_gpu and self.attn_ln is not None:
             self.attn_ln = utils.floating_point_precision_convertor(
-                self.attn_ln.cuda()
-                fp16=getattr(args, 'fp16', False),
-                memory_efficient_fp16=getattr(args, 'memory_efficient_fp16', False),
-                bf16=getattr(args, 'bf16', False)
+                self.attn_ln.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
             )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
@@ -293,10 +293,10 @@ class TransformerDecoderLayer(nn.Module):
 
         if initialize_params_on_gpu:
             self.self_attn_layer_norm = utils.floating_point_precision_convertor(
-                self.self_attn_layer_norm.cuda()
-                fp16=getattr(args, 'fp16', False),
-                memory_efficient_fp16=getattr(args, 'memory_efficient_fp16', False),
-                bf16=getattr(args, 'bf16', False)
+                self.self_attn_layer_norm.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
             )
 
         if no_encoder_attn:
@@ -307,10 +307,10 @@ class TransformerDecoderLayer(nn.Module):
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
             if initialize_params_on_gpu:
                 self.encoder_attn_layer_norm = utils.floating_point_precision_convertor(
-                    self.encoder_attn_layer_norm.cuda()
-                    fp16=getattr(args, 'fp16', False),
-                    memory_efficient_fp16=getattr(args, 'memory_efficient_fp16', False),
-                    bf16=getattr(args, 'bf16', False)
+                    self.encoder_attn_layer_norm.cuda(),
+                    fp16=getattr(args, "fp16", False),
+                    memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                    bf16=getattr(args, "bf16", False),
                 )
 
         ffn_dim = args.decoder_ffn_embed_dim
@@ -342,10 +342,12 @@ class TransformerDecoderLayer(nn.Module):
                 self.ffn_layernorm = LayerNorm(ffn_dim)
                 if initialize_params_on_gpu:
                     self.ffn_layernorm = utils.floating_point_precision_convertor(
-                        self.ffn_layernorm.cuda()
-                        fp16=getattr(args, 'fp16', False),
-                        memory_efficient_fp16=getattr(args, 'memory_efficient_fp16', False),
-                        bf16=getattr(args, 'bf16', False)
+                        self.ffn_layernorm.cuda(),
+                        fp16=getattr(args, "fp16", False),
+                        memory_efficient_fp16=getattr(
+                            args, "memory_efficient_fp16", False
+                        ),
+                        bf16=getattr(args, "bf16", False),
                     )
         self.skip_bias_add = (self.activation_fn == gelu) and has_fused_bias_gelu
         self.fc1 = self.build_fc1(
@@ -370,10 +372,10 @@ class TransformerDecoderLayer(nn.Module):
         self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
         if initialize_params_on_gpu:
             self.final_layer_norm = utils.floating_point_precision_convertor(
-                self.final_layer_norm.cuda()
-                fp16=getattr(args, 'fp16', False),
-                memory_efficient_fp16=getattr(args, 'memory_efficient_fp16', False),
-                bf16=getattr(args, 'bf16', False)
+                self.final_layer_norm.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
             )
         self.need_attn = True
 
