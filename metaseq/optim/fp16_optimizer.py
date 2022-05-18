@@ -496,9 +496,7 @@ class MemoryEfficientFP16Optimizer(
     ):
         if cfg.common.bf16:
             # sanity check configs
-            raise ValueError(
-                "Do not combine --bf16 and --memory-efficient-fp16."
-            )
+            raise ValueError("Do not combine --bf16 and --memory-efficient-fp16.")
 
         if not allow_unsupported and not optimizer.supports_memory_efficient_fp16:
             raise ValueError(

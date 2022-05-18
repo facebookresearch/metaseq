@@ -115,7 +115,9 @@ class TestBF16(unittest.TestCase):
         weight = 3.0
         bias = 5.0
         self.error = 1.0
-        self.target = torch.tensor([self.x * weight + bias + self.error]).cuda().bfloat16()
+        self.target = (
+            torch.tensor([self.x * weight + bias + self.error]).cuda().bfloat16()
+        )
         self.loss_fn = torch.nn.L1Loss()
 
         self.model = torch.nn.Linear(1, 1)
@@ -200,10 +202,10 @@ class TestBF16(unittest.TestCase):
         model = copy.deepcopy(self.model)
         params = list(model.parameters())
         with self.assertRaises(ValueError):
-            optimizer = MemoryEfficientFP16Optimizer.build_optimizer(self.cfg_dls, params)
+            optimizer = MemoryEfficientFP16Optimizer.build_optimizer(
+                self.cfg_dls, params
+            )
             self.run_iter(model, params, optimizer)
-
-
 
 
 if __name__ == "__main__":
