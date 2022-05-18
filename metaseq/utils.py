@@ -605,3 +605,21 @@ def get_random_port():
     port = random.randint(10000, 20000)
     random.setstate(old_state)
     return port
+
+
+def floating_point_precision_convertor(x, fp16: bool, memory_efficient_fp16: bool, bf16: bool):
+    """
+    Convert a tensor x into the desired dtype.
+
+    Also sanity checks combinations of options.
+    """
+    if memory_efficient_fp16:
+        assert not bf16, "Do not combined bf16 with memory_efficient_fp16."
+    if bf16:
+        assert fp16, "You should set fp16 true when using bf16."
+    if not fp16 and not bf16:
+        return x
+    elif bf16:
+        return x.bfloat16()
+    else:
+        return x.half()
