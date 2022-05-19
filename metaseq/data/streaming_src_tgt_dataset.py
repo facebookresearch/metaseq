@@ -7,6 +7,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+import math
 
 
 class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
@@ -50,8 +51,8 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
         self.seed = seed
         if break_mode == "none" or break_mode == "complete":
             self.block_iterator = yield_src_tgt_blocks
-        elif break_mode == "eos":
-            raise NotImplementedError(f"EOS break mode is currently not implemented!")
+        elif break_mode == "eos_pad_8": # Single example per sequence
+            self.block_iterator = yield_src_tgt_single_sentences_pad_8
         else:
             raise NotImplementedError(f"Unknown break mode: {break_mode}")
 
@@ -163,4 +164,45 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
             "ids": torch.LongTensor(cur_src_block_ids),
             "src_block": src_block,
             "tgt_block": tgt_block,
+        }
+
+def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
+    """Mimics sample-break-mode eos i.e. 1 example per sequence without any packing.
+    When multiple examples are packed into a single sequence, example tokens would attend
+    to tokens in neighbouring examples, which may be undesirable. This mode can
+    avoid that. Since there is no packing, this mode is considerably slower.
+    We round up the example length to a multiple of 8, pad to this length and
+    return the example as is, without packing, truncating to block_size in cases of
+    very long examples.
+    """
+
+    for idx, (src, tgt) in enumerate(iterable):
+        cur_src_block = []
+        cur_src_block_ids = []
+        cur_tgt_block = []
+        if src.numel() > block_size:
+            # truncate right side
+            # TODO: Enable left side truncation
+            src = src[:block_size]
+            tgt = tgt[:block_size]
+
+        cur_src_block.append(src)
+        cur_src_block_ids.append(idx)
+        cur_tgt_block.append(tgt)
+
+        # We round up to a multiple of 8 + 1, because later on
+        # one element is removed for src/target tensor creation
+        # which brings it back to a multiple of 8. block_size is
+        # already passed with + 1 included.
+        # cur_block_remain = int(min(math.pow(2, math.ceil(math.log(src.numel(), 2))) + 1, block_size))
+        cur_block_remain = min(int(math.ceil(src.numel() / 8)) * 8 + 1, block_size)
+        cur_block_remain -= src.numel()
+        padding = cur_src_block[-1].new_full((cur_block_remain,), padding_idx)
+        cur_src_block.append(padding)
+        cur_tgt_block.append(padding)
+
+        yield {
+            "ids": torch.LongTensor(cur_src_block_ids),
+            "src_block": torch.cat(cur_src_block),
+            "tgt_block": torch.cat(cur_tgt_block),
         }

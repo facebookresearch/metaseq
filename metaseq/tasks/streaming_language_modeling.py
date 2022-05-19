@@ -427,7 +427,6 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, StreamingTokenBlockDataset)
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
