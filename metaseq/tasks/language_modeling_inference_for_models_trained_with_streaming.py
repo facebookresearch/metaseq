@@ -288,9 +288,9 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                 # flexible soluton.
             ),
         )
-        src_dataset = MultiplePadDataset(
-            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-        )
+        # src_dataset = MultiplePadDataset(
+            # src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+        # )
         tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
         return NestedDictionaryDataset(
             {
