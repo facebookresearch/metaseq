@@ -16,6 +16,12 @@ bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>"
 
 Make sure to wrap the url in quotes here.  You will get a 403 error otherwise.
 
+By default this will download the files into the directory that the command is run in. You can also optionally include a target directory by running:
+
+```
+bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>" "<target directory>"
+```
+
 ## Reshard the shards
 To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
 ```
