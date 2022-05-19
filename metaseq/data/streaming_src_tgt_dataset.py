@@ -51,7 +51,7 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
         self.seed = seed
         if break_mode == "none" or break_mode == "complete":
             self.block_iterator = yield_src_tgt_blocks
-        elif break_mode == "eos_pad_8": # Single example per sequence
+        elif break_mode == "eos_pad_8":  # Single example per sequence
             self.block_iterator = yield_src_tgt_single_sentences_pad_8
         else:
             raise NotImplementedError(f"Unknown break mode: {break_mode}")
@@ -165,6 +165,7 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
             "src_block": src_block,
             "tgt_block": tgt_block,
         }
+
 
 def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
     """Mimics sample-break-mode eos i.e. 1 example per sequence without any packing.
