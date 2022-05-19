@@ -17,7 +17,7 @@ do
   for shard_id in $(seq 0 123)
   do
     filename="checkpoint_last-model_part-$part_id-shard$shard_id.pt"
-    wget -O "$filename" "${presigned_url/$str_to_replace/$filename}"
+    wget -O "$filename" "${presigned_url/$str_to_replace/$filename}" -P $2
   done
 done
 
