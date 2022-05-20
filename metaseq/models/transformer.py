@@ -615,7 +615,9 @@ class TransformerDecoder(IncrementalDecoder):
             positions = (
                 torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask
             ).long() + self.padding_idx
-            # HACK set padding_idx to None to work
+
+            # If the positions are pre-computed, padding_idx should not be set.
+            # Ref metaseq/metaseq/modules/learned_positional_embedding.py
             if self.embed_positions is not None:
                 self.embed_positions.padding_idx = None
         else:
