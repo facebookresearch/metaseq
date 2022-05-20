@@ -66,19 +66,7 @@ class GCMLMConfig(MetaseqDataclass):
         default=None, metadata={"help": "force vocab size to this"}
     )
 
-    shorten_method: SHORTEN_METHOD_CHOICES = field(
-        default="none",
-        metadata={
-            "help": "if not none, shorten sequences that exceed --tokens-per-sample"
-        },
-    )
-    shorten_data_split_list: str = field(
-        default="",
-        metadata={
-            "help": "comma-separated list of dataset splits to apply shortening to, "
-            'e.g., "train,valid" (default: all dataset splits)'
-        },
-    )
+    # GCMLM related args
     mask_prob: float = field(
         default=0.15,
         metadata={
