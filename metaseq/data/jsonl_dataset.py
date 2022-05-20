@@ -46,7 +46,7 @@ class JsonlDataset(torch.utils.data.Dataset):
             self.offsets = np.load(self.cache)
         else:
             self.offsets = self._build_index(path)
-            np.save(self.cache, self.offsets)
+            np.save(self.cache, self.offsets, allow_pickle=False)
         # print(f'n offsets: {len(self.offsets)}')
 
     def _get_mmap(self):
