@@ -39,6 +39,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MULTICORPUS_MAX = -1
+
 
 @dataclass
 class StreamingLanguageModelingConfig(MetaseqDataclass):
@@ -84,7 +86,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         },
     )
     multicorpus_sampling_maximum: Optional[float] = field(
-        default=-1,
+        default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
 
@@ -178,7 +180,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         """
         Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
         """
-        if self.args.multicorpus_sampling_maximum == -1:
+        if self.args.multicorpus_sampling_maximum == DEFAULT_MULTICORPUS_MAX:
             prob = dataset_lens / dataset_lens.sum()
             smoothed_prob = prob**self.args.multicorpus_sampling_alpha
             smoothed_prob = smoothed_prob / smoothed_prob.sum()
