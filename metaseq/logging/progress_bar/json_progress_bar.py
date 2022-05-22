@@ -7,7 +7,7 @@ from metaseq.logging.progress_bar.base_progress_bar import (
     logger,
     format_stat,
 )
-from metaseq.logging.progress_bar.utils import get_precise_epoch
+from metaseq.utils import get_precise_epoch
 
 
 @contextmanager

@@ -605,3 +605,11 @@ def get_random_port():
     port = random.randint(10000, 20000)
     random.setstate(old_state)
     return port
+
+
+def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:
+    return (
+        epoch - 1 + (count + 1) / float(iterator_size)
+        if epoch is not None and iterator_size > 0
+        else None
+    )
