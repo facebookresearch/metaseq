@@ -22,7 +22,6 @@ import torch
 import torch.profiler as profiler
 from omegaconf import DictConfig, OmegaConf
 
-import metaseq.logging.progress_bar.utils
 from metaseq import (
     checkpoint_utils,
     options,
@@ -35,7 +34,7 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
-from metaseq.logging.progress_bar import base_progress_bar
+from metaseq.logging import progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
@@ -243,7 +242,7 @@ def train(
             ),
         )
 
-    progress = metaseq.logging.progress_bar.utils.get_progress_bar(
+    progress = progress_bar.utils.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
         log_file=cfg.common.log_file,
@@ -504,7 +503,7 @@ def validate(
                 )
             )
 
-            progress = metaseq.logging.progress_bar.utils.get_progress_bar(
+            progress = progress_bar.utils.get_progress_bar(
                 itr,
                 log_format=cfg.common.log_format,
                 log_interval=cfg.common.log_interval,

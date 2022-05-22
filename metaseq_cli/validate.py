@@ -13,11 +13,9 @@ from itertools import chain
 import torch
 from omegaconf import DictConfig
 
-import metaseq.logging.progress_bar.utils
 from metaseq import checkpoint_utils, distributed_utils, options, utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.logging import metrics
-from metaseq.logging.progress_bar import base_progress_bar
+from metaseq.logging import metrics, progress_bar
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -104,7 +102,7 @@ def main(cfg: DictConfig, override_args=None):
             num_workers=cfg.dataset.num_workers,
             data_buffer_size=cfg.dataset.data_buffer_size,
         ).next_epoch_itr(shuffle=False)
-        progress = metaseq.logging.progress_bar.utils.get_progress_bar(
+        progress = progress_bar.utils.get_progress_bar(
             itr,
             log_format=cfg.common.log_format,
             log_interval=cfg.common.log_interval,
