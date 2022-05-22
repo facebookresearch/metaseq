@@ -4,8 +4,8 @@ from metaseq.logging.meters import AverageMeter
 from metaseq.logging.progress_bar.base_progress_bar import (
     BaseProgressBar,
     logger,
-    get_precise_epoch,
 )
+from metaseq.logging.progress_bar.utils import get_precise_epoch
 
 wandb = None
 

@@ -22,6 +22,7 @@ import torch
 import torch.profiler as profiler
 from omegaconf import DictConfig, OmegaConf
 
+import metaseq.logging.progress_bar.utils
 from metaseq import (
     checkpoint_utils,
     options,
@@ -242,7 +243,7 @@ def train(
             ),
         )
 
-    progress = progress_bar.progress_bar(
+    progress = metaseq.logging.progress_bar.utils.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
         log_file=cfg.common.log_file,
@@ -503,7 +504,7 @@ def validate(
                 )
             )
 
-            progress = progress_bar.progress_bar(
+            progress = metaseq.logging.progress_bar.utils.get_progress_bar(
                 itr,
                 log_format=cfg.common.log_format,
                 log_interval=cfg.common.log_interval,

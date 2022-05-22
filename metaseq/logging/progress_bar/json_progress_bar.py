@@ -1,13 +1,22 @@
 import json
 from collections import OrderedDict
+from contextlib import contextmanager
 
 from metaseq.logging.progress_bar.base_progress_bar import (
     BaseProgressBar,
-    get_precise_epoch,
-    rename_logger,
     logger,
     format_stat,
 )
+from metaseq.logging.progress_bar.utils import get_precise_epoch
+
+
+@contextmanager
+def rename_logger(logger, new_name):
+    old_name = logger.name
+    if new_name is not None:
+        logger.name = new_name
+    yield logger
+    logger.name = old_name
 
 
 class JsonProgressBar(BaseProgressBar):

@@ -9,65 +9,13 @@ Wrapper around various loggers and progress bars (e.g., json).
 
 import logging
 from collections import OrderedDict
-from contextlib import contextmanager
 from numbers import Number
-from typing import Optional
 
 import torch
 
-from metaseq.logging.meters import AverageMeter, StopwatchMeter, TimeMeter
-from metaseq.logging.progress_bar.json_progress_bar import JsonProgressBar
-from metaseq.logging.progress_bar.tensorboard_progress_bar import (
-    TensorboardProgressBarWrapper,
-)
-from metaseq.logging.progress_bar.wandb_progress_bar import WandBProgressBarWrapper
+from metaseq.logging.meters import AverageMeter, TimeMeter, StopwatchMeter
 
 logger = logging.getLogger(__name__)
-
-
-def progress_bar(
-    iterator,
-    log_format: str = "json",
-    log_interval: int = 100,
-    log_file: Optional[str] = None,
-    epoch: Optional[int] = None,
-    prefix: Optional[str] = None,
-    tensorboard_logdir: Optional[str] = None,
-    wandb_project: Optional[str] = None,
-    wandb_run_name: Optional[str] = None,
-):
-    if log_file is not None:
-        handler = logging.FileHandler(filename=log_file)
-        logger.addHandler(handler)
-
-    if log_format == "json":
-        bar = JsonProgressBar(iterator, epoch, prefix, log_interval)
-    else:
-        raise ValueError("Unknown log format: {}".format(log_format))
-
-    if tensorboard_logdir:
-        bar = TensorboardProgressBarWrapper(bar, tensorboard_logdir)
-
-    if wandb_project:
-        bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
-
-    return bar
-
-
-def format_stat(stat):
-    if isinstance(stat, Number):
-        stat = "{:g}".format(stat)
-    elif isinstance(stat, AverageMeter):
-        stat = "{:.3f}".format(stat.avg)
-    elif isinstance(stat, TimeMeter):
-        stat = "{:g}".format(round(stat.avg))
-    elif isinstance(stat, StopwatchMeter):
-        stat = "{:g}".format(round(stat.sum))
-    elif torch.is_tensor(stat):
-        stat = stat.tolist()
-        if isinstance(stat, float):
-            stat = f'{float(f"{stat:.3g}"):g}'  # 3 significant figures
-    return stat
 
 
 class BaseProgressBar(object):
@@ -121,18 +69,17 @@ class BaseProgressBar(object):
         return postfix
 
 
-@contextmanager
-def rename_logger(logger, new_name):
-    old_name = logger.name
-    if new_name is not None:
-        logger.name = new_name
-    yield logger
-    logger.name = old_name
-
-
-def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:
-    return (
-        epoch - 1 + (count + 1) / float(iterator_size)
-        if epoch is not None and iterator_size > 0
-        else None
-    )
+def format_stat(stat):
+    if isinstance(stat, Number):
+        stat = "{:g}".format(stat)
+    elif isinstance(stat, AverageMeter):
+        stat = "{:.3f}".format(stat.avg)
+    elif isinstance(stat, TimeMeter):
+        stat = "{:g}".format(round(stat.avg))
+    elif isinstance(stat, StopwatchMeter):
+        stat = "{:g}".format(round(stat.sum))
+    elif torch.is_tensor(stat):
+        stat = stat.tolist()
+        if isinstance(stat, float):
+            stat = f'{float(f"{stat:.3g}"):g}'  # 3 significant figures
+    return stat
