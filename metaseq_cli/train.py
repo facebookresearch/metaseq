@@ -241,7 +241,7 @@ def train(
             ),
         )
 
-    progress = progress_bar.utils.get_progress_bar(
+    progress = progress_bar.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
         log_file=cfg.common.log_file,
@@ -502,7 +502,7 @@ def validate(
                 )
             )
 
-            progress = progress_bar.utils.get_progress_bar(
+            progress = progress_bar.get_progress_bar(
                 itr,
                 log_format=cfg.common.log_format,
                 log_interval=cfg.common.log_interval,

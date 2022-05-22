@@ -102,7 +102,7 @@ def main(cfg: DictConfig, override_args=None):
             num_workers=cfg.dataset.num_workers,
             data_buffer_size=cfg.dataset.data_buffer_size,
         ).next_epoch_itr(shuffle=False)
-        progress = progress_bar.utils.get_progress_bar(
+        progress = progress_bar.get_progress_bar(
             itr,
             log_format=cfg.common.log_format,
             log_interval=cfg.common.log_interval,
