@@ -47,6 +47,8 @@ class DynamicLossScaler(object):
 
     def _decrease_loss_scale(self):
         self.loss_scale /= self.scale_factor
+        # also decrease the scale_window (lower loss scale, smaller window)
+        self.scale_window = max(int(self.scale_window / self.scale_factor), 1)
         if self.threshold is not None:
             self.loss_scale = max(self.loss_scale, self.threshold)
 
