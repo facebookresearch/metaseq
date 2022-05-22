@@ -3,7 +3,9 @@ from typing import Optional
 
 from metaseq.logging.progress_bar.base_progress_bar import logger
 from metaseq.logging.progress_bar.json_progress_bar import JsonProgressBar
-from metaseq.logging.progress_bar.tensorboard_progress_bar import TensorboardProgressBarWrapper
+from metaseq.logging.progress_bar.tensorboard_progress_bar import (
+    TensorboardProgressBarWrapper,
+)
 from metaseq.logging.progress_bar.wandb_progress_bar import WandBProgressBarWrapper
 
 
