@@ -67,17 +67,9 @@ class DynamicLossScaler(object):
                 self._last_rescale_iter = self._iter
                 self._overflows_since_rescale = 0
 
-            if self.loss_scale <= self.min_loss_scale:
-                # Use FloatingPointError as an uncommon error that parent
-                # functions can safely catch to stop training.
+            if self.loss_scale < self.min_loss_scale:
+                # Don't scale down past min_loss_scale, just continue to skip grad after overflow error is raised.
                 self.loss_scale = prev_scale
-                raise FloatingPointError(
-                    (
-                        "Minimum loss scale reached ({}). Your loss is probably exploding. "
-                        "Try lowering the learning rate, using gradient clipping or "
-                        "increasing the batch size."
-                    ).format(self.min_loss_scale)
-                )
 
             self._iter += 1
             raise OverflowError("setting loss scale to: " + str(self.loss_scale))
