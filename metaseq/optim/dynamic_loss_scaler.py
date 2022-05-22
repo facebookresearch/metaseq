@@ -3,20 +3,29 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class DynamicLossScaler(object):
     def __init__(
         self,
-        init_scale=2.0**15,
+        init_scale=4.0,
         scale_factor=2.0,
-        scale_window=2000,
+        scale_window=256,
         tolerance=0.0,
         threshold=None,
-        min_loss_scale=1e-4,
+        min_loss_scale=0.03125,
     ):
         self.loss_scale = init_scale
         self.scale_factor = scale_factor
         self.scale_window = scale_window
+
+        logger.info(
+            f"*** SCALE_WINDOW: {self.scale_window}, loss scale: {self.loss_scale} ***"
+        )
+
         self.tolerance = tolerance
         self.threshold = threshold
         self._iter = 0
@@ -32,6 +41,8 @@ class DynamicLossScaler(object):
         if (self._iter - self._last_overflow_iter) % self.scale_window == 0:
             self.loss_scale *= self.scale_factor
             self._last_rescale_iter = self._iter
+            # When scaling up loss_scale, also scale up the scale_window.
+            self.scale_window *= self.scale_factor
         self._iter += 1
 
     def _decrease_loss_scale(self):
@@ -42,7 +53,7 @@ class DynamicLossScaler(object):
     def check_overflow(self, grad_norm):
         # detect inf and nan
         if grad_norm == float("inf") or grad_norm != grad_norm:
-            # overflow has occured
+            # overflow has occurred
             prev_scale = self.loss_scale
             iter_since_rescale = self._iter - self._last_rescale_iter
 

@@ -254,25 +254,9 @@ class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
         self.fp32_optimizer = fp32_optimizer
         self.fp32_params = fp32_params
 
-        if getattr(cfg.common, "fp16_scale_window", None) is None:
-            if len(cfg.optimization.update_freq) > 1:
-                raise ValueError(
-                    "--fp16-scale-window must be given explicitly when using a "
-                    "custom --update-freq schedule"
-                )
-            data_parallel_size = int(
-                cfg.distributed_training.distributed_world_size
-                / cfg.common.model_parallel_size
-            )
-            scale_window = int(
-                2**14 / data_parallel_size / cfg.optimization.update_freq[0]
-            )
-        else:
-            scale_window = cfg.common.fp16_scale_window
-
         self.scaler = DynamicLossScaler(
             init_scale=cfg.common.fp16_init_scale,
-            scale_window=scale_window,
+            scale_window=cfg.common.fp16_scale_window,
             tolerance=cfg.common.fp16_scale_tolerance,
             threshold=cfg.common.threshold_loss_scale,
             min_loss_scale=cfg.common.min_loss_scale,
