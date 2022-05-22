@@ -19,12 +19,12 @@ __all__ = ["pdb"]
 # backwards compatibility to support `from metaseq.X import Y`
 from metaseq.distributed import utils as distributed_utils
 from metaseq.logging import meters, metrics  # noqa
-from .logging.progress_bar import base_progress_bar
+from metaseq.logging.progress_bar.utils import get_progress_bar
 
 sys.modules["metaseq.distributed_utils"] = distributed_utils
 sys.modules["metaseq.meters"] = meters
 sys.modules["metaseq.metrics"] = metrics
-sys.modules["metaseq.progress_bar"] = progress_bar
+sys.modules["metaseq.progress_bar"] = get_progress_bar
 
 # initialize hydra
 from metaseq.dataclass.initialize import hydra_init  # noqa: E402
