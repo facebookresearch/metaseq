@@ -142,7 +142,7 @@ class CommonConfig(MetaseqDataclass):
         },
     )
     min_loss_scale: float = field(
-        default=0.03125,
+        default=2 ** -5,
         metadata={"help": "minimum FP16 loss scale, after which training is stopped"},
     )
     threshold_loss_scale: Optional[float] = field(
