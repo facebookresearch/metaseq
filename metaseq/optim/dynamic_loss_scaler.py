@@ -16,7 +16,7 @@ class DynamicLossScaler(object):
         scale_window=256,
         tolerance=0.0,
         threshold=None,
-        min_loss_scale=2 ** -5,
+        min_loss_scale=2**-5,
     ):
         self.loss_scale = init_scale
         self.scale_factor = scale_factor
