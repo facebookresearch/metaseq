@@ -598,6 +598,8 @@ class TransformerDecoder(IncrementalDecoder):
             # positional embeddings. The document seperator token marks the end of the preceding
             # document.
             for batch_idx in range(tokens.size(0)):
+                # The self_attn_doc_sep token marks the end of the previous document. Therefore,
+                # we need to add 1 to the indices to mark the start of documents.
                 batch_doc_indices = [
                     index[1] + 1
                     for index in doc_id_indices
@@ -855,10 +857,7 @@ class TransformerDecoder(IncrementalDecoder):
             self._future_mask = torch.triu(
                 utils.fill_with_neg_inf(torch.zeros([max_seq_len, max_seq_len])), 1
             )
-            if self.use_alibi:
-                alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
-                self._future_mask = self._future_mask.unsqueeze(0) + alibi
-            elif self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
+            if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
                 # Code to accomodate dynamic attention when document seperator is used
                 assert input_tokens is not None
                 self._future_mask = self._future_mask[:cur_seq_len, :cur_seq_len]
@@ -872,6 +871,11 @@ class TransformerDecoder(IncrementalDecoder):
                     self._future_mask[
                         indices[0], indices[1] + 1 :, : indices[1] + 1
                     ] = float("-inf")
+
+            if self.use_alibi:
+                alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
+                self._future_mask = self._future_mask.unsqueeze(0) + alibi
+
         self._future_mask = self._future_mask.to(tensor)
         if self.use_alibi:
             return self._future_mask[

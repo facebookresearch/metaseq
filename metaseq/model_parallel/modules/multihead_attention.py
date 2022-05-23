@@ -392,10 +392,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                     output_size[0] * output_size[1], output_size[2], output_size[3]
                 )
             else:
-                # attention_scores = matmul_result.view(*output_size)
                 attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
-                # attn_probs = self.scale_mask_softmax(attention_scores,
-                #                                         attn_mask)
             with get_cuda_rng_tracker().fork():
                 attn_probs = self.dropout_module(attn_probs)
 
