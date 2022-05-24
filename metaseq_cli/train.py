@@ -404,17 +404,17 @@ def validate_and_save(
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save or should_stop:
-        checkpoint_utils.save_checkpoint(
-            cfg.checkpoint,
-            trainer,
-            epoch_itr,
-            valid_losses[0],
-            training_finished=should_stop,
-            async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
-            if cfg.checkpoint.cloud_upload_path
-            else None,
-        )
+    #if do_save or should_stop:
+    #    checkpoint_utils.save_checkpoint(
+    #        cfg.checkpoint,
+    #        trainer,
+    #        epoch_itr,
+    #        valid_losses[0],
+    #        training_finished=should_stop,
+    #        async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
+    #        if cfg.checkpoint.cloud_upload_path
+    #        else None,
+    #    )
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop

@@ -11,6 +11,7 @@ import torch
 from omegaconf import II, MISSING
 
 from metaseq.dataclass.constants import (
+    BACKWARD_PREFETCH_CHOICES,
     DATASET_IMPL_CHOICES,
     DDP_BACKEND_CHOICES,
     LOG_FORMAT_CHOICES,
@@ -293,6 +294,13 @@ class DistributedTrainingConfig(MetaseqDataclass):
     gradient_predivide_factor: Optional[float] = field(
         default=None,
         metadata={"help": "factor to predivide gradients before reducee scatter"},
+    )
+    backward_prefetch: Optional[BACKWARD_PREFETCH_CHOICES] = field(
+        default=None,
+        metadata={
+            "help": "where to prefetch next layer's full parameters"
+            "during backward pass"
+        },
     )
 
 

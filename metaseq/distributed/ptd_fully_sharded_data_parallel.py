@@ -19,10 +19,14 @@ logger = logging.getLogger(__name__)
 # update state_dict interface.
 
 try:
-    from torch.distributed.fsdp.fully_sharded_data_parallel  import (
+    from torch.distributed.fsdp.fully_sharded_data_parallel import (
         FullyShardedDataParallel as FSDP,
         StateDictType,
-        FullStateDictConfig
+        FullStateDictConfig,
+        ShardingStrategy,
+        MixedPrecision,
+        BackwardPrefetch,
+        CPUOffload,
     )
     from fairscale.utils.testing import DummyProcessGroup
 
@@ -70,8 +74,12 @@ class FullyShardedDataParallel(FSDP):
         else:
             # TODO (mingzhe)
             # this needs to be updated.
-            full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-            with FSDP.state_dict_type(self, StateDictType.FULL_STATE_DICT, full_state_dict_config):
+            full_state_dict_config = FullStateDictConfig(
+                offload_to_cpu=True, rank0_only=True
+            )
+            with FSDP.state_dict_type(
+                self, StateDictType.FULL_STATE_DICT, full_state_dict_config
+            ):
                 return super().state_dict(
                     destination=destination, prefix=prefix, keep_vars=keep_vars
                 )
@@ -103,19 +111,24 @@ def fsdp_enable_wrap(
     group = dist_utils.get_data_parallel_group()
     if group is None and cfg.distributed_world_size == 1:
         group = DummyProcessGroup(rank=0, size=1)
-    # TODO (mingzhe)
-    # use PTD FSDP configs.
     fsdp_config = {
         "process_group": group,
-        # "reshard_after_forward": not cfg.no_reshard_after_forward,
-        # "mixed_precision": cfg.fp16 and not cfg.memory_efficient_fp16,
-        # "fp32_reduce_scatter": cfg.fp32_reduce_scatter,
-        # "flatten_parameters": True,
-        # "cpu_offload": cfg.cpu_offload and not cfg.memory_efficient_fp16,
-        # "compute_dtype": torch.float16 if cfg.fp16 else torch.float32,
-        # "bucket_cap_mb": cfg.bucket_cap_mb,
-        # "state_dict_device": torch.device("cpu"),
-        # "gradient_predivide_factor": cfg.gradient_predivide_factor,
+        "sharding_strategy": ShardingStrategy.SHARD_GRAD_OP
+        if cfg.no_reshard_after_forward
+        else ShardingStrategy.FULL_SHARD,  # SHARD_GRAD_OP, NO_SHARD, HYBRID_SHARD
+        "mixed_precision": MixedPrecision(
+            param_dtype=torch.float16,
+            reduce_dtype=torch.float32 if cfg.fp32_reduce_scatter else torch.float16,
+            buffer_dtype=torch.float16,
+        )
+        if cfg.fp16 and not cfg.memory_efficient_fp16
+        else None,
+        "cpu_offload": CPUOffload(offload_params=True) if cfg.cpu_offload else None,
+        "backward_prefetch": None
+        if cfg.backward_prefetch is None
+        else BackwardPrefetch.BACKWARD_PRE
+        if cfg.backward_prefetch == "pre"
+        else BackwardPrefetch.BACKWARD_POST,
         **kwargs,
     }
     with enable_wrap(
