@@ -20,6 +20,8 @@ from metaseq.data import (
     Dictionary,
     CausalMaskedDataset,
     PartitionedStreamingDataset,
+    StreamingShuffleDataset,
+    JsonlDataset,
     iterators
 )
 from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingConfig, StreamingLanguageModelingTask
@@ -138,14 +140,55 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         assert token_index != self.sentinel_end_ind
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
-        super().load_dataset(split, epoch, combine, **kwargs)
+        # This function reads a bunch of jsonl files, concats them together,
+        # shuffles them, then chunks them into blocks of tokens (e.g., 2048).
+
+        # determine number of shards for this split
+        cur_shard_str = self.get_shard_str(epoch, split)
+
+        # concatenate any jsonl files that are part of the shard
+        datasets, corpora = [], []
+        for file in sorted(
+            os.listdir(os.path.join(self.args.data, split, cur_shard_str))
+        ):
+            if not file.endswith(".jsonl"):
+                continue
+            datasets.append(
+                JsonlDataset(
+                    path=os.path.join(self.args.data, split, cur_shard_str, file),
+                    tokenizer=self._tokenize_one_json,
+                )
+            )
+            corpora.append(os.path.splitext(file)[0])
+        assert len(datasets) > 0
+
+        if self.args.multicorpus_sampling_alpha != 1:
+            datasets = self._alpha_sampling(datasets, corpora, epoch)
+
+        dataset = torch.utils.data.ConcatDataset(datasets)
+
+        # shuffle order across epochs
+        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
+
+        # chunk into blocks of tokens
         self.datasets[split] = CausalMaskedDataset(
-            self.datasets[split],
             self.args.lambda_sentinel_tokens,
             self.sentinel_tokens_ind,
             "poisson",
-            self.args.tokens_per_sample,
-            self.sentinel_end_ind)
+            self.args.tokens_per_sample + 1,
+            self.sentinel_end_ind,
+            dataset,
+            # We generate blocks with one extra token, so that we have a target
+            # for the final input token. This results in slight data loss.
+            block_size=self.args.tokens_per_sample + 1,
+            break_mode=self.args.sample_break_mode,
+            # we drop the remainder block during training
+            drop_last=(split == "train"),
+            padding_idx=self.source_dictionary.pad(),
+            # 1284 is a randomly-generated offset to decouple the seed used here
+            # from the seed used above in StreamingShuffleDataset
+            seed=1284 + self.args.seed,
+        )
 
     def get_batch_iterator(
         self,

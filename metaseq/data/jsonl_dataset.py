@@ -43,7 +43,10 @@ class JsonlDataset(torch.utils.data.Dataset):
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{path}.fairseq.idx.npy")
         if self.cache.exists() and not recache:
-            self.offsets = np.load(self.cache)
+            try:
+                self.offsets = np.load(self.cache)
+            except BaseException:
+                self.offsets = self._build_index(path)
         else:
             self.offsets = self._build_index(path)
             np.save(self.cache, self.offsets, allow_pickle=False)
