@@ -11,7 +11,7 @@ def span_intersection(left: Tuple[int, int], right: Tuple[int, int]) -> bool:
     return max(left_x, right_x) < min(left_y, right_y)
 
 
-class CausalMaskedDataset(torch.utils.data.IterableDataset):
+class CausalMaskedDataset(StreamingTokenBlockDataset):
     def __init__(
         self,
         sentinel_token_expectation: int,
