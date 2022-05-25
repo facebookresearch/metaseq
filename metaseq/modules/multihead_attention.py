@@ -4,17 +4,18 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+import sys
 from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor, nn
-from torch.nn import Parameter
-
 from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
-from metaseq.modules.dropout import Dropout
 from metaseq.modules.linear import Linear
+from metaseq.modules.dropout import Dropout
+from torch import Tensor, nn
+from torch.nn import Parameter
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 
 @with_incremental_state
@@ -175,10 +176,12 @@ class MultiheadAttention(nn.Module):
 
         if (
             not self.onnx_trace
+            and False
             and incremental_state is None
             and not static_kv
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
+            and not isinstance(self.q_proj.weight, ShardedTensor)
             and not torch.jit.is_scripting()
         ):
             assert key is not None and value is not None
@@ -236,7 +239,7 @@ class MultiheadAttention(nn.Module):
             q = self.q_proj(query)
             k = self.k_proj(key)
             v = self.v_proj(value)
-        q *= self.scaling
+        q = q * self.scaling
 
         if self.bias_k is not None:
             assert self.bias_v is not None
@@ -255,25 +258,24 @@ class MultiheadAttention(nn.Module):
                     dim=1,
                 )
 
-        q = (
-            q.contiguous()
-            .view(tgt_len, bsz * self.num_heads, self.head_dim)
-            .transpose(0, 1)
-        )
+        head_dim = self.head_dim
+        bsz_heads_dim = bsz * self.num_heads
+        if isinstance(self.q_proj.weight, ShardedTensor):
+            sharding_spec = self.q_proj.weight.sharding_spec()
+            world_size = len(sharding_spec.placements)
+            tgt_len *= world_size
+            src_len *= world_size
+            head_dim *= world_size
+            bsz_heads_dim //= world_size
+            if key_padding_mask is not None:
+                key_padding_mask = key_padding_mask.repeat(1, world_size)
+        q = q.contiguous().view(tgt_len, bsz_heads_dim, head_dim).transpose(0, 1)
         if k is not None:
-            k = (
-                k.contiguous()
-                .view(-1, bsz * self.num_heads, self.head_dim)
-                .transpose(0, 1)
-            )
+            k = k.contiguous().view(-1, bsz_heads_dim, head_dim).transpose(0, 1)
         if v is not None:
-            v = (
-                v.contiguous()
-                .view(-1, bsz * self.num_heads, self.head_dim)
-                .transpose(0, 1)
-            )
+            v = v.contiguous().view(-1, bsz_heads_dim, head_dim).transpose(0, 1)
 
-        if saved_state is not None:
+        if saved_state is not None and not isinstance(q, ShardedTensor):
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
             if "prev_key" in saved_state:
                 _prev_key = saved_state["prev_key"]
@@ -312,6 +314,24 @@ class MultiheadAttention(nn.Module):
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
+
+        if isinstance(q, ShardedTensor):
+            sharding_spec = q.sharding_spec()
+            sharding_spec.dim = 0
+            st_size = (bsz * self.num_heads, q.size(1), self.head_dim)
+            q = ShardedTensor._init_from_local_tensor(
+                q.local_tensor(), sharding_spec, st_size
+            )
+            if k is not None:
+                st_size = (bsz * self.num_heads, k.size(1), self.head_dim)
+                k = ShardedTensor._init_from_local_tensor(
+                    k.local_tensor(), sharding_spec, st_size
+                )
+            if v is not None:
+                st_size = (bsz * self.num_heads, v.size(1), self.head_dim)
+                v = ShardedTensor._init_from_local_tensor(
+                    v.local_tensor(), sharding_spec, st_size
+                )
         assert k is not None
         assert k.size(1) == src_len
 
@@ -345,6 +365,17 @@ class MultiheadAttention(nn.Module):
                 )
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
+        if isinstance(attn_weights, ShardedTensor):
+            zero_mask = torch.ones(
+                *attn_weights.size(), device=attn_weights.local_tensor().device
+            )
+            row, col = attn_weights.size(1), attn_weights.size(2)
+            row //= world_size
+            col //= world_size
+            for i in range(world_size):
+                zero_mask[:, row * i : row * (i + 1), col * i : col * (i + 1)] = 0
+            zero_mask = zero_mask.type(torch.BoolTensor).cuda()
+            attn_weights = attn_weights.masked_fill(zero_mask, 0.0)
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
@@ -357,7 +388,16 @@ class MultiheadAttention(nn.Module):
             attn_mask = attn_mask.unsqueeze(0)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(attn_weights.size(0), 1, 1)
-            attn_weights += attn_mask
+            if isinstance(attn_weights, ShardedTensor):
+                attn_mask = attn_mask.repeat(1, 8, 8)
+                attn_local = attn_weights.local_tensor()
+                attn_local += attn_mask
+                attn_weights = ShardedTensor._init_from_local_tensor(
+                    attn_local, attn_weights.sharding_spec(), attn_weights.size()
+                )
+               
+            else:
+                attn_weights += attn_mask
 
         if key_padding_mask is not None:
             # don't attend to padding symbols
@@ -371,11 +411,17 @@ class MultiheadAttention(nn.Module):
         if before_softmax:
             return attn_weights, v
 
+        if isinstance(attn_weights, ShardedTensor):
+            attn_weights = attn_weights.masked_fill(zero_mask, float("-inf"))
         attn_weights_float = utils.softmax(
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )
         attn_weights = attn_weights_float.type_as(attn_weights)
+        # For tensor parallel(TP) case, the size of attn_weights are different, so we
+        # cannot make it work same as non-TP scenario. For the sake of concept proof,
+        # we override it with deterministic result for now.
         attn_probs = self.dropout_module(attn_weights)
+        attn_probs = attn_weights
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
@@ -385,7 +431,20 @@ class MultiheadAttention(nn.Module):
             # the transpose is a no-op copy before view, thus unnecessary
             attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
         else:
-            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+            attn = attn.transpose(0, 1).contiguous()
+            if isinstance(attn, ShardedTensor):
+                sharding_spec = attn.sharding_spec()
+                sharding_spec.dim = -1
+                st_size = (
+                    attn.size(0),
+                    attn.size(1) // world_size,
+                    attn.size(2) * world_size,
+                )
+                attn = ShardedTensor._init_from_local_tensor(
+                    attn.local_tensor(), sharding_spec, st_size
+                )
+            attn = attn.view(tgt_len, bsz, embed_dim)
+
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:

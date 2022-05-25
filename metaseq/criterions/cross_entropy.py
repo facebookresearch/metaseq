@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+import sys
 
 import torch
 import torch.nn.functional as F
@@ -51,7 +52,9 @@ class CrossEntropyCriterion(BaseCriterion):
         3) logging outputs to display while training
         """
         net_output = model(**sample["net_input"])
+        print("forward model done ", file=sys.stderr)
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
+        print("loss calculation ", file=sys.stderr)
         sample_size = sample["ntokens"]
         logging_output = {
             "loss": loss.data,

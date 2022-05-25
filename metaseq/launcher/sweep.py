@@ -127,6 +127,8 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         action="store_true",
         help="resume any runs that failed",
     )
+    parser.add_argument("--tp-enabled", action="store_true")
+    parser.add_argument("--arch", default="transformer_lm_megatron", type=str, help="model type")
     parser.add_argument(
         "--dry-run",
         action="store_true",

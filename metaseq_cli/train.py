@@ -37,6 +37,11 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
+    
+from torch.distributed._shard import shard_module
+from torch.distributed._shard.sharding_plan import ShardingPlan
+from torch.distributed._shard.sharding_spec import ChunkShardingSpec
+
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -46,6 +51,50 @@ logging.basicConfig(
 logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
 logger = logging.getLogger("metaseq_cli.train")
 
+
+def _generate_chunk_sharding_spec(world_size):
+    placements = [f"rank:{idx}/cuda:{idx}" for idx in range(world_size)]
+    colwise_spec = ChunkShardingSpec(
+        dim=0,
+        placements=placements,
+    )
+    rowwise_spec = ChunkShardingSpec(
+        dim=1,
+        placements=placements,
+    )
+    return colwise_spec, rowwise_spec
+
+
+def _decoder_sharding_plan(specs, num_layers):
+    colwise_spec, rowwise_spec = specs[0], specs[1]
+    plan = {}
+    output_plan = {}
+    return_local_tensor = []
+    prefix = "decoder.layers."
+    for i in range(0, num_layers):
+        pre = prefix + str(i)
+        plan.update({
+            pre + ".fc1.weight": colwise_spec,
+            pre + ".fc2.weight": rowwise_spec,
+            pre + ".self_attn.k_proj.weight": colwise_spec,
+            pre + ".self_attn.v_proj.weight": colwise_spec,
+            pre + ".self_attn.q_proj.weight": colwise_spec,
+            pre + ".self_attn.out_proj.weight": rowwise_spec,
+        })
+        output_plan.update({
+            pre + ".fc2": colwise_spec,
+            pre + ".self_attn.out_proj": colwise_spec,
+        })
+        return_local_tensor.extend([
+            pre + ".fc2", 
+            pre + ".self_attn.out_proj"
+        ])
+
+    return ShardingPlan(
+        plan=plan, 
+        output_plan=output_plan, 
+        return_local_tensor=return_local_tensor,
+    )
 
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
@@ -93,6 +142,12 @@ def main(cfg: DictConfig) -> None:
     assert cfg.criterion, "Please specify criterion to train a model"
 
     # Build model and criterion
+    built_model = task.build_model(cfg.model)
+    if cfg.distributed_training.tp_enabled:
+        sharding_specs = _generate_chunk_sharding_spec(cfg.model.world_size)
+        decoder_sharding_plan = _decoder_sharding_plan(sharding_specs, cfg.model.decoder_layers)
+        shard_module(built_model, decoder_sharding_plan)        
+
     if cfg.distributed_training.ddp_backend == "fully_sharded":
         extra = {
             "use_sharded_state": cfg.distributed_training.use_sharded_state,
@@ -100,11 +155,11 @@ def main(cfg: DictConfig) -> None:
 
         with fsdp_enable_wrap(cfg.distributed_training, **extra):
             model = fsdp_wrap(
-                task.build_model(cfg.model),
+                built_model,
                 process_group=distributed_utils.get_data_parallel_group(),
             )
     else:
-        model = task.build_model(cfg.model)
+        model = built_model
     criterion = task.build_criterion(cfg.criterion)
 
     logger.info(model)
@@ -133,7 +188,7 @@ def main(cfg: DictConfig) -> None:
             task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
     # Build trainer
-    if cfg.common.model_parallel_size == 1:
+    if cfg.common.model_parallel_size == 1 or cfg.distributed_training.tp_enabled:
         trainer = Trainer(cfg, task, model, criterion)
     else:
         trainer = MegatronTrainer(cfg, task, model, criterion)

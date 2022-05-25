@@ -20,6 +20,7 @@ from metaseq.modules.fused_bias_gelu import (
 )
 from metaseq.modules.layer_norm import LayerNorm, SyncedModelParallelFusedLayerNorm
 from metaseq.modules.linear import Linear
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 
 def _linear(x, weight, bias=None):
@@ -58,7 +59,14 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
         x = fc1(x)
         x = activation_fn(x)
         if ffn_ln is not None:
-            x = ffn_ln(x)
+            if isinstance(x, ShardedTensor):
+                x = ffn_ln(x)
+            else:
+                m_list = x.chunk(4, dim=-1)
+                x = []
+                for m in m_list:
+                    x.append(ffn_ln(m))
+                x = torch.cat(x, dim=-1)
         x = fc2(x)
     x = x.view(x_shape)
     x = dropout_module(x)
@@ -196,7 +204,7 @@ class TransformerEncoderLayer(nn.Module):
             need_weights=False,
             attn_mask=attn_mask,
         )
-
+        torch.manual_seed(31)
         x = self.dropout_module(x)
         x = self.residual_connection(x, residual)
         if not self.normalize_before:
@@ -211,7 +219,7 @@ class TransformerEncoderLayer(nn.Module):
             self.activation_fn,
             self.fc2,
             self.dropout_module,
-            ffn_ln=self.ffn_layernorm,
+            ffn_ln=None,  # No initialization code.
         )
         l_aux = None
         x = self.residual_connection(x, residual)
@@ -433,6 +441,7 @@ class TransformerDecoderLayer(nn.Module):
             x = x.view(tgt_len, bsz, self.nh, self.head_dim)
             x = torch.einsum("tbhd,h->tbhd", x, self.c_attn)
             x = x.reshape(tgt_len, bsz, self.embed_dim)
+        torch.manual_seed(64)
         x = self.dropout_module(x)
         if self.attn_ln is not None:
             x = self.attn_ln(x)
@@ -544,6 +553,7 @@ class TransformerDecoderLayer(nn.Module):
                 need_weights=need_attn or (not self.training and self.need_attn),
                 need_head_weights=need_head_weights,
             )
+            torch.manual_seed(128)
             x = self.dropout_module(x)
             x = self.residual_connection(x, residual)
             if not self.normalize_before:

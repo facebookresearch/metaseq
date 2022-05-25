@@ -112,6 +112,7 @@ def parse_args_and_arch(
     usr_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     usr_parser.add_argument("--user-dir", default=None)
     usr_args, _ = usr_parser.parse_known_args(input_args)
+    print("input args ", input_args)
     utils.import_user_module(usr_args)
 
     if modify_parser is not None:
@@ -161,7 +162,7 @@ def parse_args_and_arch(
     # Modify the parser a second time, since defaults may have been reset
     if modify_parser is not None:
         modify_parser(parser)
-
+    args = parser.parse_args(input_args)
     # Parse a second time.
     if parse_known:
         args, extra = parser.parse_known_args(input_args)
@@ -177,7 +178,6 @@ def parse_args_and_arch(
         args.max_tokens_valid = args.max_tokens
     if getattr(args, "memory_efficient_fp16", False):
         args.fp16 = True
-
     if getattr(args, "seed", None) is None:
         args.seed = 1  # default seed for training
         args.no_seed_provided = True

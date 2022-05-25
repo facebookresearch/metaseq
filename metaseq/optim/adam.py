@@ -5,6 +5,7 @@
 
 import logging
 import math
+
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import List
@@ -16,6 +17,10 @@ from omegaconf import II, DictConfig
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.optim import BaseOptimizer, register_optimizer
 from metaseq.optim.fused_adam import get_fused_adam_class
+
+from torch.distributed._shard.sharded_optim import (
+     ShardedOptimizer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +65,19 @@ class MetaseqAdam(BaseOptimizer):
             and fused_adam_cls is not None
             and torch.cuda.is_available()
         )
-        if use_fused_adam:
+        tp_enabled = getattr(cfg.optimization, "tp_enabled", False)
+        config = cfg.optimizer
+        if tp_enabled:
+            logger.info("using PTD sharding Adam")
+            self._optimizer = ShardedOptimizer(
+                params,
+                torch.optim.Adam,
+                lr=config.lr[0],
+                betas=eval(config.adam_betas),
+                eps=config.adam_eps,
+                weight_decay=config.weight_decay,
+            )
+        elif use_fused_adam:
             logger.info("using FusedAdam")
             self._optimizer = fused_adam_cls(
                 params, use_fp16_stats=self.cfg.fp16_adam_stats, **self.optimizer_config
