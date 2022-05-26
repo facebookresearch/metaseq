@@ -52,6 +52,7 @@ class CrossEntropyCriterion(BaseCriterion):
         """
         net_output = model(**sample["net_input"])
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
+        target_tokens = (sample["target"] != self.padding_idx).sum()
         sample_size = sample["ntokens"]
         logging_output = {
             "loss": loss.data,
