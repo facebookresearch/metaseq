@@ -152,7 +152,7 @@ def do_setup(package_data):
             "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
-            "omegaconf",
+            "omegaconf==2.1.1",
             "pre-commit",
             "pytest",
             "regex",
