@@ -158,7 +158,7 @@ def do_setup(package_data):
             "regex",
             "sklearn",  # for evals
             "sacrebleu",  # for evals
-            "tensorboard",
+            "tensorboard==2.8.0",
             "timeout-decorator",
             "tokenizers",
             "torch",
