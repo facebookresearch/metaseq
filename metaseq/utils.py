@@ -628,3 +628,11 @@ def floating_point_precision_convertor(
         return x.bfloat16()
     else:
         return x.half()
+
+
+def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:
+    return (
+        epoch - 1 + (count + 1) / float(iterator_size)
+        if epoch is not None and iterator_size > 0
+        else None
+    )

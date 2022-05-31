@@ -8,6 +8,7 @@ import logging
 import os
 import pickle
 import random
+import signal
 import socket
 import struct
 import subprocess
@@ -179,6 +180,10 @@ def distributed_init(cfg: MetaseqConfig):
 
 
 def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
+    if not cfg.distributed_training.distributed_no_spawn:
+        # if in local spawning, i is offset by -1 since torch.multiprocessing.spawn
+        # always starts at rank 0
+        i = i + 1
     cfg.distributed_training.device_id = i
     if torch.cuda.is_available() and not cfg.common.cpu:
         torch.cuda.set_device(cfg.distributed_training.device_id)
@@ -186,7 +191,8 @@ def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
         # the env. To make it work in cleaner way, we might need to change their interfaces to be
         # able to pass local rank.
         os.environ["LOCAL_RANK"] = str(cfg.distributed_training.device_id)
-    if cfg.distributed_training.distributed_rank is None:  # torch.multiprocessing.spawn
+    if cfg.distributed_training.distributed_rank is None:
+        # start_rank is the rank of gpu 0 on this machine.
         cfg.distributed_training.distributed_rank = kwargs.pop("start_rank", 0) + i
 
     cfg.distributed_training.distributed_rank = distributed_init(cfg)
@@ -200,6 +206,43 @@ def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
         torch.distributed.barrier(get_global_group())
 
 
+def _spawn_helper(main, cfg, kwargs):
+    """
+    Perform a fork() to many processes.
+
+    Intentionally runs the rank0 in the main process so that signals
+    can be more easily caught and we can cleanup processes.
+    """
+    # Launch multiple subprocesses
+    spawncontext = torch.multiprocessing.start_processes(
+        distributed_main,
+        # need to give rank offset as 1 to cover the fact that the main
+        # process is rank 0, but that spawn() doesn't let you control rank:
+        # it always starts at 0
+        (main, cfg, kwargs),
+        nprocs=min(
+            torch.cuda.device_count(),
+            cfg.distributed_training.distributed_world_size - 1,
+        ),
+        join=False,
+        start_method="spawn",
+    )
+
+    try:
+        # -1 because we offset by +1 inside distributed_main when using
+        # spawn_helper
+        retval = distributed_main(-1, main, cfg, kwargs)
+        spawncontext.join()
+        return retval
+    except (KeyboardInterrupt, Exception):
+        # weirdly KeyboardInterrupt is not an Exception
+        # propagate exceptions on the main node by killing workers
+        for p in spawncontext.processes:
+            if p.is_alive():
+                os.kill(p.pid, signal.SIGTERM)
+        raise
+
+
 def call_main(cfg: MetaseqConfig, main, **kwargs):
     if cfg.distributed_training.distributed_init_method is None:
         infer_init_method(cfg.distributed_training)
@@ -210,20 +253,14 @@ def call_main(cfg: MetaseqConfig, main, **kwargs):
             start_rank = cfg.distributed_training.distributed_rank
             cfg.distributed_training.distributed_rank = None  # assign automatically
             kwargs["start_rank"] = start_rank
-            torch.multiprocessing.spawn(
-                fn=distributed_main,
-                args=(main, cfg, kwargs),
-                nprocs=min(
-                    torch.cuda.device_count(),
-                    cfg.distributed_training.distributed_world_size,
-                ),
-                join=True,
-            )
+            return _spawn_helper(main, cfg, kwargs)
         else:
-            distributed_main(cfg.distributed_training.device_id, main, cfg, kwargs)
+            return distributed_main(
+                cfg.distributed_training.device_id, main, cfg, kwargs
+            )
     else:
         # single GPU main
-        main(cfg, **kwargs)
+        return main(cfg, **kwargs)
 
 
 def new_groups(grouped_ranks: List[List[int]]):

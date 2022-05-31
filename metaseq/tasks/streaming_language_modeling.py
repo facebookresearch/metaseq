@@ -39,6 +39,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MULTICORPUS_MAX = -1
+
 
 @dataclass
 class StreamingLanguageModelingConfig(MetaseqDataclass):
@@ -49,7 +51,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default="", metadata={"help": "path to bpe-vocab.json"}
     )
     merges_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-merges.json"}
+        default="", metadata={"help": "path to bpe-merges.txt"}
     )
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
@@ -82,6 +84,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         metadata={
             "help": "smoothing alpha for sample rations across multiple datasets"
         },
+    )
+    multicorpus_sampling_maximum: Optional[float] = field(
+        default=DEFAULT_MULTICORPUS_MAX,
+        metadata={"help": "Maximum size for example proportional sampling"},
     )
 
     # TODO common vars below add to parent
@@ -174,9 +180,15 @@ class StreamingLanguageModelingTask(LegacyTask):
         """
         Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
         """
-        prob = dataset_lens / dataset_lens.sum()
-        smoothed_prob = prob**self.args.multicorpus_sampling_alpha
-        smoothed_prob = smoothed_prob / smoothed_prob.sum()
+        if self.args.multicorpus_sampling_maximum == DEFAULT_MULTICORPUS_MAX:
+            prob = dataset_lens / dataset_lens.sum()
+            smoothed_prob = prob**self.args.multicorpus_sampling_alpha
+            smoothed_prob = smoothed_prob / smoothed_prob.sum()
+        else:
+            dataset_lens = [
+                min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens
+            ]
+            smoothed_prob = dataset_lens / sum(dataset_lens)
         return smoothed_prob
 
     def _alpha_sampling(self, datasets, corpora, epoch=1):
@@ -242,6 +254,19 @@ class StreamingLanguageModelingTask(LegacyTask):
         )
         return resampled_datasets
 
+    def get_shard_str(self, epoch, split):
+        shards = {}
+        for shard_id in os.listdir(os.path.join(self.args.data, split)):
+            assert (
+                int(shard_id) not in shards
+            ), f"shard id: {shard_id} not in shards: {shards}"
+            shards[int(shard_id)] = shard_id
+        assert min(shards.keys()) == 0
+        assert max(shards.keys()) == len(shards) - 1
+
+        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        return cur_shard_str
+
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
@@ -266,16 +291,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         # shuffles them, then chunks them into blocks of tokens (e.g., 2048).
 
         # determine number of shards for this split
-        shards = {}
-        for shard_id in os.listdir(os.path.join(self.args.data, split)):
-            assert (
-                int(shard_id) not in shards
-            ), f"shard id: {shard_id} not in shards: {shards}"
-            shards[int(shard_id)] = shard_id
-        assert min(shards.keys()) == 0
-        assert max(shards.keys()) == len(shards) - 1
-
-        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        cur_shard_str = self.get_shard_str(epoch, split)
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []

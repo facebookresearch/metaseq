@@ -20,7 +20,6 @@ except ModuleNotFoundError:
     # checkpoints from S3 are stored. As an example:
     # MODEL_SHARED_FOLDER = "/example/175B/reshard_no_os"
     # $ ls /example/175B/reshard_no_os
-    # dict.txt
     # reshard-model_part-0.pt
     # reshard-model_part-1.pt
     # reshard-model_part-2.pt
@@ -57,6 +56,8 @@ LAUNCH_ARGS = [
     f"--bpe-merges {BPE_MERGES}",
     f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
+    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {CHECKPOINT_LOCAL}",
     "--beam 1 --nbest 1",
     "--distributed-port 13000",

@@ -70,7 +70,6 @@ class MonolingualDataset(BaseDataset):
         tgt_vocab=None,
         add_eos_for_other_targets=False,
         shuffle=False,
-        targets=None,
         add_bos_token=False,
         fixed_pad_length=None,
         pad_to_bsz=None,
@@ -89,85 +88,25 @@ class MonolingualDataset(BaseDataset):
         self.src_lang_idx = src_lang_idx
         self.tgt_lang_idx = tgt_lang_idx
 
-        # TODO(susanz): remove targets, given "future" being the only option in this codebase.
-        assert targets is None or all(
-            t in {"self", "future", "past"} for t in targets
-        ), "targets must be none or one of 'self', 'future', 'past'"
-        if targets is not None and len(targets) == 0:
-            targets = None
-        self.targets = targets
-
     def __getitem__(self, index):
-        if self.targets is not None:
-            # *future_target* is the original sentence
-            # *source* is shifted right by 1 (maybe left-padded with eos)
-            # *past_target* is shifted right by 2 (left-padded as needed)
-            #
-            # Left-to-right language models should condition on *source* and
-            # predict *future_target*.
-            # Right-to-left language models should condition on *source* and
-            # predict *past_target*.
-            source, future_target, past_target = self.dataset[index]
-            source, target = self._make_source_target(
-                source, future_target, past_target
-            )
-        else:
-            source = self.dataset[index]
-            target = None
+        # *future_target* is the original sentence
+        # *source* is shifted right by 1 (maybe left-padded with eos)
+        #
+        # Left-to-right language models should condition on *source* and
+        # predict *future_target*.
+        source, future_target, _ = self.dataset[index]
+        target = self._filter_vocab(future_target)
+
         source, target = self._maybe_add_bos(source, target)
         return {"id": index, "source": source, "target": target}
 
     def __len__(self):
         return len(self.dataset)
 
-    def _make_source_target(self, source, future_target, past_target):
-        if self.targets is not None:
-            target = []
-
-            if (
-                self.add_eos_for_other_targets
-                and (("self" in self.targets) or ("past" in self.targets))
-                and source[-1] != self.vocab.eos()
-            ):
-                # append eos at the end of source
-                source = torch.cat([source, source.new([self.vocab.eos()])])
-
-                if "future" in self.targets:
-                    future_target = torch.cat(
-                        [future_target, future_target.new([self.vocab.pad()])]
-                    )
-                if "past" in self.targets:
-                    # first token is before the start of sentence which is only used in "none" break mode when
-                    # add_eos_for_other_targets is False
-                    past_target = torch.cat(
-                        [
-                            past_target.new([self.vocab.pad()]),
-                            past_target[1:],
-                            source[-2, None],
-                        ]
-                    )
-
-            for t in self.targets:
-                if t == "self":
-                    target.append(source)
-                elif t == "future":
-                    target.append(future_target)
-                elif t == "past":
-                    target.append(past_target)
-                else:
-                    raise Exception("invalid target " + t)
-
-            if len(target) == 1:
-                target = target[0]
-        else:
-            target = future_target
-
-        return source, self._filter_vocab(target)
-
     def _maybe_add_bos(self, source, target):
         if self.add_bos_token:
             # src_lang_idx and tgt_lang_idx are passed in for multilingual LM, with the
-            # first token being an lang_id token.
+            # first token being a lang_id token.
             bos = self.src_lang_idx or self.vocab.bos()
             source = torch.cat([source.new([bos]), source])
             if target is not None:

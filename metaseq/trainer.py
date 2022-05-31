@@ -852,6 +852,13 @@ class Trainer(object):
                 round=4,
                 weight=0,
             )
+            metrics.log_scalar(
+                "scale_window",
+                self.optimizer.scaler.scale_window,
+                priority=700,
+                round=4,
+                weight=0,
+            )
 
         metrics.log_stop_time("train_wall")
         return logging_output

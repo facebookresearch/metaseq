@@ -8,7 +8,7 @@
 # filename format: checkpoint_last-model_part-[0-7]-shard[0-123].pt
 
 # To download all the of the parameters for the 175B model, run:
-# bash ./download_opt175b.sh "<presigned_url_given_in_email>"
+# bash ./download_opt175b.sh "<presigned_url_given_in_email>" "<target directory>"
 
 presigned_url=$1
 str_to_replace='stubbed.pt'
@@ -17,7 +17,7 @@ do
   for shard_id in $(seq 0 123)
   do
     filename="checkpoint_last-model_part-$part_id-shard$shard_id.pt"
-    wget "${presigned_url/$str_to_replace/$filename}"
+    wget -O "$2$filename" "${presigned_url/$str_to_replace/$filename}"
   done
 done
 

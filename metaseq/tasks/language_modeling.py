@@ -33,6 +33,13 @@ from metaseq.data.shorten_dataset import maybe_shorten_dataset
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
+try:
+    from tokenizers import ByteLevelBPETokenizer
+
+    has_hf_tokenizers = True
+except ImportError:
+    has_hf_tokenizers = False
+
 SAMPLE_BREAK_MODE_CHOICES = ChoiceEnum(["none", "complete", "complete_doc", "eos"])
 SHORTEN_METHOD_CHOICES = ChoiceEnum(["none", "truncate", "random_crop"])
 logger = logging.getLogger(__name__)
@@ -43,6 +50,19 @@ class LanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory"}
     )
+    # Begin args from StreamingLanguageModelingConfig
+    vocab_filename: Optional[str] = field(
+        default="", metadata={"help": "path to bpe-vocab.json"}
+    )
+    merges_filename: Optional[str] = field(
+        default="", metadata={"help": "path to bpe-merges.txt"}
+    )
+    end_of_document_symbol: Optional[str] = field(
+        default="</s>", metadata={"help": "symbol indicating an end-of-document"}
+    )
+    final_vocab_size: Optional[int] = field(
+        default=None, metadata={"help": "force vocab size to this"}
+    )  # End of args from StreamingLanguageModelingConfig
     sample_break_mode: SAMPLE_BREAK_MODE_CHOICES = field(
         default="none",
         metadata={
@@ -106,69 +126,66 @@ class LanguageModelingConfig(MetaseqDataclass):
     plasma_path: str = II("common.plasma_path")
 
 
+# TODO(susanz): Deprecate this task. This pre-date StreamingLanguageModelingTask,
+#  when tokenization happened offline.
 @register_task("language_modeling", dataclass=LanguageModelingConfig)
 class LanguageModelingTask(LegacyTask):
     """
-    Train a language model.
-
-    Args:
-        dictionary (~metaseq.data.Dictionary): the dictionary for the input of
-            the language model
-        targets (List[str]): list of the target types that the language model
-            should predict.  Can be one of "self", "future", and "past".
-            Defaults to "future".
-
-    .. note::
-
-        The language modeling task is compatible with :mod:`metaseq-train`,
-        :mod:`metaseq-generate`, and :mod:`metaseq-eval-lm`.
-
-    The language modeling task provides the following additional command-line
-    arguments:
-
-    .. argparse::
-        :ref: metaseq.tasks.language_modeling_parser
-        :prog:
+    Train a language model.  To be deprecated.
     """
 
-    def __init__(self, args, dictionary, targets=None):
+    def __init__(self, args):
         super().__init__(args)
-        self.dictionary = dictionary
 
-        # TODO(susanz): remove targets completely, given "future" being the only option.
-        if targets is None:
-            targets = ["future"]
-        self.targets = targets
+        if not has_hf_tokenizers:
+            raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-    @classmethod
-    def setup_dictionary(cls, args, **kwargs):
-        dictionary = None
-        if args.data:
-            paths = utils.split_paths(args.data)
-            assert len(paths) > 0
-            dictionary = Dictionary.load(os.path.join(paths[0], "dict.txt"))
-            logger.info("dictionary: {} types".format(len(dictionary)))
-        return dictionary
+        self.tokenizer = ByteLevelBPETokenizer.from_file(
+            args.vocab_filename, args.merges_filename
+        )
+
+        self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
+        if self.eod is None:
+            # This will be executed for old models that do not have the args.end_of_document_symbol explicitly set
+            # and do not use <s/> (the default) but <EOS>
+            self.eod = self.tokenizer.token_to_id("<EOS>")
+
+        assert (
+            self.eod is not None
+        ), "Cannot find end-of-document symbol ({}) in tokenizer".format(
+            args.end_of_document_symbol
+        )
+
+        # construct a dummy metaseq Dictionary corresponding to the given tokenizer
+        self.dictionary = Dictionary()
+        tok_vocab_size = self.tokenizer.get_vocab_size()
+
+        for id in range(self.dictionary.nspecial, tok_vocab_size):
+            self.dictionary.add_symbol(self.tokenizer.id_to_token(id))
+        final_vocab_size = args.final_vocab_size
+        # final_vocab_size = 51200 for roberta dictionary
+        if final_vocab_size is not None:
+            if final_vocab_size < tok_vocab_size:
+                raise ValueError(
+                    f"incompatible: {final_vocab_size}, tok_vocab_size: {tok_vocab_size}"
+                )
+            self.dictionary.pad_to_multiple_(final_vocab_size)
+        else:
+            self.dictionary.pad_to_multiple_(8)
+
+        # confirm that metaseq dictionary and BPE have matching special symbols
+        assert self.dictionary.bos_index == 0
+        assert self.tokenizer.id_to_token(0) in {"<BOS>", "<s>"}
+        assert self.dictionary.pad_index == 1
+        assert self.tokenizer.id_to_token(1) in {"<PAD>", "<pad>"}
+        assert self.dictionary.eos_index == 2
+        assert self.tokenizer.id_to_token(2) in {"<EOS>", "</s>"}
+        assert self.dictionary.unk_index == 3
+        assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
 
     @classmethod
     def setup_task(cls, args, **kwargs):
-        """Setup the task (e.g., load dictionaries).
-
-        Args:
-            args (argparse.Namespace): parsed command-line arguments
-        """
-        dictionary = cls.setup_dictionary(args, **kwargs)
-        return cls(args, dictionary, targets=["future"])
-
-    def build_model(self, args):
-        model = super().build_model(args)
-        for target in self.targets:
-            if target not in model.supported_targets:
-                raise ValueError(
-                    f"Unsupported language modeling target: {target} not in {model.supported_targets}"
-                )
-
-        return model
+        return cls(args)
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
@@ -257,7 +274,6 @@ class LanguageModelingTask(LegacyTask):
             tgt_vocab=self.dictionary,
             add_eos_for_other_targets=add_eos_for_other_targets,
             shuffle=True,
-            targets=self.targets,
             add_bos_token=self.args.add_bos_token,
             fixed_pad_length=fixed_pad_length,
             pad_to_bsz=pad_to_bsz,
@@ -366,12 +382,8 @@ class LanguageModelingTask(LegacyTask):
 
     @property
     def source_dictionary(self):
-        """Return the :class:`~metaseq.data.Dictionary` for the language
-        model."""
         return self.dictionary
 
     @property
     def target_dictionary(self):
-        """Return the :class:`~metaseq.data.Dictionary` for the language
-        model."""
         return self.dictionary

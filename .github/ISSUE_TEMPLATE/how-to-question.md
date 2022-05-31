@@ -22,10 +22,10 @@ labels: 'question, needs triage'
 
 #### What's your environment?
 
- - fairseq Version (e.g., 1.0 or master):
+ - metaseq Version (e.g., 1.0 or master):
  - PyTorch Version (e.g., 1.0)
  - OS (e.g., Linux):
- - How you installed fairseq (`pip`, source):
+ - How you installed metaseq (`pip`, source):
  - Build command you used (if compiling from source):
  - Python version:
  - CUDA/cuDNN version:
