@@ -10,6 +10,7 @@ from .base_dataset import BaseDataset
 from .base_wrapper_dataset import BaseWrapperDataset
 from .append_token_dataset import AppendTokenDataset
 from .concat_dataset import ConcatDataset
+from .gcmlm_dataset import GCMLMDataset
 from .id_dataset import IdDataset
 from .indexed_dataset import (
     IndexedCachedDataset,
@@ -51,6 +52,7 @@ __all__ = [
     "Dictionary",
     "EpochBatchIterator",
     "BaseDataset",
+    "GCMLMDataset",
     "GroupedIterator",
     "IdDataset",
     "IndexedCachedDataset",
