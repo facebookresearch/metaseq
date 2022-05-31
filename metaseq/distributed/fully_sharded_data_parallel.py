@@ -98,6 +98,10 @@ def fsdp_enable_wrap(
     group = dist_utils.get_data_parallel_group()
     if group is None and cfg.distributed_world_size == 1:
         group = DummyProcessGroup(rank=0, size=1)
+    if cfg.fp16:
+        compute_dtype = torch.bfloat16 if cfg.bf16 else torch.float16
+    else:
+        compute_dtype = torch.float32
     fsdp_config = {
         "process_group": group,
         "reshard_after_forward": not cfg.no_reshard_after_forward,
@@ -105,7 +109,7 @@ def fsdp_enable_wrap(
         "fp32_reduce_scatter": cfg.fp32_reduce_scatter,
         "flatten_parameters": True,
         "cpu_offload": cfg.cpu_offload and not cfg.memory_efficient_fp16,
-        "compute_dtype": torch.float16 if cfg.fp16 else torch.float32,
+        "compute_dtype": compute_dtype,
         "bucket_cap_mb": cfg.bucket_cap_mb,
         "state_dict_device": torch.device("cpu"),
         "gradient_predivide_factor": cfg.gradient_predivide_factor,

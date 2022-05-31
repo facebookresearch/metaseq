@@ -289,10 +289,18 @@ def clip_grad_norm_(
     elif len(grads) == 1:
         total_norm = norm(grads[0], norm_type)
     else:
-        if multi_tensor_l2norm_available and norm_type == "l2":
+        if (
+            multi_tensor_l2norm_available
+            and norm_type == "l2"
+            and grads[0].dtype != torch.bfloat16
+        ):
             total_norm = multi_tensor_l2_total_norm(grads)
         else:
-            if torch.cuda.is_available() and norm_type == "l2":
+            if (
+                torch.cuda.is_available()
+                and norm_type == "l2"
+                and grads[0].dtype != torch.bfloat16
+            ):
                 warnings.warn(
                     "amp_C fused kernels unavailable, disabling multi_tensor_l2norm; "
                     "you may get better performance by installing NVIDIA's apex library"
@@ -605,6 +613,29 @@ def get_random_port():
     port = random.randint(10000, 20000)
     random.setstate(old_state)
     return port
+
+
+def floating_point_precision_convertor(
+    x, fp16: bool, memory_efficient_fp16: bool, bf16: bool
+):
+    """
+    Convert a tensor x into the desired dtype.
+
+    Also sanity checks combinations of options.
+    """
+    if memory_efficient_fp16:
+        assert not bf16, "Do not combined bf16 with memory_efficient_fp16."
+    if bf16:
+        assert fp16, "Setting --bf16 requires also setting --fp16 for legacy reasons."
+    if not fp16 and not bf16:
+        return x
+    if not memory_efficient_fp16:
+        # original parameters stay in fp32 and are converted by fairscale
+        return x
+    elif bf16:
+        return x.bfloat16()
+    else:
+        return x.half()
 
 
 def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:
