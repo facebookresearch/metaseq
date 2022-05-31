@@ -65,6 +65,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         initialize_params_on_gpu,
         full_megatron_init,
         megatron_init_sigma,
+        dtype,
     ):
         def _init_method_bias(bias):
             fan_in = input_dim
@@ -87,6 +88,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             skip_bias_add=self.skip_bias_add,
             init_method_bias=init_method_bias,
             use_cpu_initialization=not initialize_params_on_gpu,
+            dtype=dtype,
         )
 
     def build_fc2(
@@ -97,6 +99,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         full_megatron_init,
         megatron_init_sigma,
         num_layers,
+        dtype,
     ):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
@@ -113,6 +116,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             init_method=init_method_weights,
             skip_bias_add=skip_bias_add,
             use_cpu_initialization=not initialize_params_on_gpu,
+            dtype=dtype,
         )
         if not full_megatron_init:
             # Copy nn.linear initialization to get same initialization as of non-model-parallel.
@@ -134,6 +138,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
+            dtype=self._get_model_init_dtype(),
         )
 
     def build_encoder_attention(self, embed_dim, args, **unused_kwargs):
@@ -147,6 +152,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
+            dtype=self._get_model_init_dtype(),
         )
 
     def forward_attention(
