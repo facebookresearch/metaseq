@@ -28,20 +28,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GCMLMConfig(MetaseqDataclass):
-    # Data parsing related arguments
     data: Optional[str] = field(
-        default=None, metadata={"help": "path to data directory with JSONL files"}
+        default=None, metadata={"help": "path to data directory"}
     )
-    vocab_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-vocab.json"}
-    )
-    merges_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-merges.txt"}
-    )
-    end_of_document_symbol: Optional[str] = field(
-        default="</s>", metadata={"help": "symbol indicating an end-of-document"}
-    )
-
     sample_break_mode: SAMPLE_BREAK_MODE_CHOICES = field(
         default="none",
         metadata={
@@ -62,11 +51,19 @@ class GCMLMConfig(MetaseqDataclass):
     max_target_positions: Optional[int] = field(
         default=None, metadata={"help": "max number of tokens in the target sequence"}
     )
-    final_vocab_size: Optional[int] = field(
-        default=None, metadata={"help": "force vocab size to this"}
+    shorten_method: SHORTEN_METHOD_CHOICES = field(
+        default="none",
+        metadata={
+            "help": "if not none, shorten sequences that exceed --tokens-per-sample"
+        },
     )
-
-    # GCMLM related args
+    shorten_data_split_list: str = field(
+        default="",
+        metadata={
+            "help": "comma-separated list of dataset splits to apply shortening to, "
+            'e.g., "train,valid" (default: all dataset splits)'
+        },
+    )
     mask_prob: float = field(
         default=0.15,
         metadata={
