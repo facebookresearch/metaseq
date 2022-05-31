@@ -17,6 +17,8 @@ from metaseq.data import (
     data_utils,
 )
 from metaseq.dataclass import MetaseqDataclass, ChoiceEnum
+from metaseq.data.indexed_dataset import get_available_dataset_impl
+from metaseq.data.shorten_dataset import maybe_shorten_dataset
 from metaseq.tasks import LegacyTask, register_task
 from omegaconf import II
 
