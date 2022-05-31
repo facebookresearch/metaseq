@@ -626,7 +626,6 @@ def train_language_model(
             data_dir,
             "--max-epoch",
             "1",
-            "--no-progress-bar",
             "--distributed-world-size",
             str(world_size),
             "--ddp-backend",
@@ -655,7 +654,6 @@ def train_language_model(
                 "valid",
                 "--max-tokens",
                 "500",
-                "--no-progress-bar",
                 "--num-workers",
                 "0",
             ]
