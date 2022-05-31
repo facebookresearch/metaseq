@@ -43,11 +43,11 @@ SPEECH_PREFIX = "S"
 @dataclass
 class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
     image_tokens: int = field(
-        default=1024,
+        default=8192,
         metadata={"help": "total number of vision tokens used"},
     )
     speech_tokens: int = field(
-        default=1024,
+        default=512,
         metadata={"help": "total number of speech tokens used"},
     )
     num_sentinel_tokens: int = field(

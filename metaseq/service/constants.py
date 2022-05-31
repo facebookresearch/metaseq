@@ -9,7 +9,7 @@ MAX_SEQ_LEN = 2048
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
-MODEL_PARALLEL = 8
+MODEL_PARALLEL = 2
 TOTAL_WORLD_SIZE = 8
 
 
@@ -45,14 +45,14 @@ BPE_MERGES = os.path.join(MODEL_SHARED_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(MODEL_SHARED_FOLDER, "gpt2-vocab.json")
 
 # where to find the raw files on nfs
-CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "175B", "reshard_no_os")
+CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "13B", "reshard_no_os/reshard")
 # where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "175B", "reshard_no_os", "reshard.pt")
+CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "13B", "reshard", "reshard.pt")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
-    "--task language_modeling",
+    "--task streaming_CM3_language_modeling",
     f"--bpe-merges {BPE_MERGES}",
     f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
@@ -66,5 +66,11 @@ LAUNCH_ARGS = [
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
+    "--image-tokens 8192",
+    "--speech-tokens 512",
+    # "--decoder-layers 40",
+    # "--decoder-embed-dim 5120",
+    # f"--decoder-ffn-embed-dim {5120*4}",
+    # "--decoder-attention-heads 40",
     "/tmp",  # required "data" argument.
 ]

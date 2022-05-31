@@ -44,9 +44,12 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.cache = Path(f"{path}.fairseq.idx.npy")
         if self.cache.exists() and not recache:
             try:
-                self.offsets = np.load(self.cache)
-            except BaseException:
+                logger.info(f"Loading up cache: {self.cache}")
+                self.offsets = np.load(self.cache, allow_pickle=True)
+            except Exception as e:
+                logger.error(f"Loading up cache failed: {self.cache} with {e}")
                 self.offsets = self._build_index(path)
+                np.save(self.cache, self.offsets, allow_pickle=False)
         else:
             self.offsets = self._build_index(path)
             np.save(self.cache, self.offsets, allow_pickle=False)
