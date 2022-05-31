@@ -1033,16 +1033,16 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
-        def apply_precision_conversion(t):
+        def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
-            if t.dtype is torch.float32 or t.dtype is torch.float16:
+            if t.dtype is torch.float32:
                 if self.cfg.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
 
         if self.cfg.common.fp16:
-            sample = utils.apply_to_sample(apply_precision_conversion, sample)
+            sample = utils.apply_to_sample(lower_precision, sample)
 
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample

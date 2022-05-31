@@ -198,15 +198,6 @@ class TestBF16(unittest.TestCase):
             )
         )
 
-    def test_memory_efficient(self):
-        model = copy.deepcopy(self.model)
-        params = list(model.parameters())
-        with self.assertRaises(ValueError):
-            optimizer = MemoryEfficientFP16Optimizer.build_optimizer(
-                self.cfg_dls, params
-            )
-            self.run_iter(model, params, optimizer)
-
 
 if __name__ == "__main__":
     unittest.main()
