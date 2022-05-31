@@ -259,11 +259,12 @@ class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
             None
             if cfg.common.bf16
             else DynamicLossScaler(
-            init_scale=cfg.common.fp16_init_scale,
-            scale_window=cfg.common.fp16_scale_window,
-            tolerance=cfg.common.fp16_scale_tolerance,
-            threshold=cfg.common.threshold_loss_scale,
-            min_loss_scale=cfg.common.min_loss_scale,
+                init_scale=cfg.common.fp16_init_scale,
+                scale_window=cfg.common.fp16_scale_window,
+                tolerance=cfg.common.fp16_scale_tolerance,
+                threshold=cfg.common.threshold_loss_scale,
+                min_loss_scale=cfg.common.min_loss_scale,
+            )
         )
 
     @classmethod
@@ -490,11 +491,12 @@ class MemoryEfficientFP16Optimizer(
             None
             if cfg.common.bf16
             else DynamicLossScaler(
-            init_scale=cfg.common.fp16_init_scale,
-            scale_window=cfg.common.fp16_scale_window,
-            tolerance=cfg.common.fp16_scale_tolerance,
-            threshold=cfg.common.threshold_loss_scale,
-            min_loss_scale=cfg.common.min_loss_scale,
+                init_scale=cfg.common.fp16_init_scale,
+                scale_window=cfg.common.fp16_scale_window,
+                tolerance=cfg.common.fp16_scale_tolerance,
+                threshold=cfg.common.threshold_loss_scale,
+                min_loss_scale=cfg.common.min_loss_scale,
+            )
         )
 
     @classmethod
