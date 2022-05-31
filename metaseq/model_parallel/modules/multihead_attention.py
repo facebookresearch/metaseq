@@ -365,10 +365,13 @@ class ModelParallelMultiheadAttention(nn.Module):
             # we may get NaN when adding attn_mask or computing softmax.
             if attn_mask is not None:
                 matmul_result = torch.nan_to_num(matmul_result)
-
+            
+            # attn_mask size (2048,2048)
+            # print("attn_mask: ",attn_mask.size())
             if len(attn_mask.size()) == 3:
                 # Going back to original scaled_masked_softmax to accomodate
                 # non-causal attention masking (use the given input attention)
+                # print("output_size: ",output_size)
                 attention_scores = matmul_result.view(*output_size)
                 attn_mask = attn_mask < -0.5
                 attn_mask = attn_mask.unsqueeze(1)
@@ -496,6 +499,11 @@ class ModelParallelMultiheadAttention(nn.Module):
         ]
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
+        # print("query size: ",query.size())
+        # print("key size: ",key.size())
+        # print("q size: ",q.size())
+        # print("k size: ",k.size())
+        # print("attn size: ",attn.size())
         attn, attn_bias = self.out_proj(attn)
         # return attn_weights None to keep the return type same as single gpu multihead attention
         # This will be deprecated.

@@ -567,25 +567,34 @@ class TransformerDecoder(IncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
+        # print('self_attn_doc_sep: ',self.self_attn_doc_sep)
         if self.self_attn_doc_sep != -1:
             # create own positions when self_attn_doc_sep is set
             mask = tokens.ne(self.padding_idx).int()
             mask_with_reset = tokens.ne(self.padding_idx).int()
+            # print("tokens: ",tokens[0])
             doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
+            # print("doc_id_indices: ",doc_id_indices)
             for batch_idx in range(tokens.size(0)):
                 batch_doc_indices = [index[1]  for index in doc_id_indices if index[0]==batch_idx]
+                # print("batch_doc_indices: ",batch_doc_indices)
                 batch_doc_indices.sort()
+                # print("batch_doc_indices after sort: ",batch_doc_indices)
                 for k, doc_sep_idx in enumerate(batch_doc_indices):
                     if k==0:
                         mask_with_reset[batch_idx, doc_sep_idx] = -doc_sep_idx + 1
                     else:
                         mask_with_reset[batch_idx, doc_sep_idx] = batch_doc_indices[k-1] - doc_sep_idx + 1
+            # print("mask_with_reset: ",mask_with_reset)
+            # print("mask: ",mask)
             positions = (torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask).long() + self.padding_idx
             # HACK set padding_idx to None to work
+            # print("positions: ",positions)
             if self.embed_positions is not None:
                 self.embed_positions.padding_idx = None
         else:
             positions = None
+        # print("self.embed_positions: ",self.embed_positions)
         if self.embed_positions is not None:
             positions = self.embed_positions(
                 tokens,
