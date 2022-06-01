@@ -43,7 +43,7 @@ RUN pip3 install -e .
 
 # Install metaseq
 WORKDIR /build
-RUN git clone --branch dockerfilefix https://github.com/QIU-Shuo/metaseq.git
+RUN git clone https://github.com/facebookresearch/metaseq.git
 WORKDIR /build/metaseq
 RUN pip3 install -e .
 RUN python3 setup.py install
