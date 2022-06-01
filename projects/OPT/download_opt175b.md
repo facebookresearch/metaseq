@@ -44,4 +44,10 @@ python metaseq.scripts.consolidate_fsdp_shards ${FOLDER_PATH}/checkpoint_last --
 ## Run the API
 Follow the instructions in the [API docs](../../docs/api.md) to spin up the API.  You will need to update the constants in `metaseq/service/constants.py` to point to right directories.
 
-Note that the `gpt2-merges.txt` and `gpt2-vocab.json` files in `projects/OPT/assets/` will need to be moved to the corresponding directories defined in the `constants.py` file.
+Note that the `gpt2-merges.txt` and `gpt2-vocab.json` files in [`projects/OPT/assets/`](/projects/OPT/assets) will need to be moved to the corresponding directories defined in the `constants.py` file. You can directly download them with:
+
+```bash
+cd /path/to/resharded-weights
+wget https://github.com/facebookresearch/metaseq/raw/main/projects/OPT/assets/gpt2-merges.txt
+wget https://github.com/facebookresearch/metaseq/raw/main/projects/OPT/assets/gpt2-vocab.json
+```
