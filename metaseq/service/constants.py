@@ -52,7 +52,7 @@ CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "13B", "reshard", "reshard.pt")
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
-    "--task streaming_CM3_language_modeling",
+    "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
     f"--bpe-merges {BPE_MERGES}",
     f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
