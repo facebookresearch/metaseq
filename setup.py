@@ -145,7 +145,7 @@ def do_setup(package_data):
             "editdistance",
             "fire",
             "flask==2.1.1",  # for api
-            "hydra-core>=1.1.0",
+            "hydra-core>=1.1.0,<1.2",
             "iopath",
             "ipdb",
             "ipython",
@@ -155,7 +155,7 @@ def do_setup(package_data):
             "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
-            "omegaconf==2.1.1",
+            "omegaconf<=2.1.1",
             "pre-commit",
             "pytest",
             "regex",
