@@ -10,7 +10,7 @@ BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 2
-TOTAL_WORLD_SIZE = 8
+TOTAL_WORLD_SIZE = 2
 
 
 try:
@@ -45,7 +45,7 @@ BPE_MERGES = os.path.join(MODEL_SHARED_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(MODEL_SHARED_FOLDER, "gpt2-vocab.json")
 
 # where to find the raw files on nfs
-CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "13B", "reshard_no_os/reshard")
+CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "13B", "reshard")
 # where to store them on SSD for faster loading
 CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "13B", "reshard", "reshard.pt")
 

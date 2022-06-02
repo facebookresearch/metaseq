@@ -69,7 +69,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
 
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
-
+        print(args.vocab_filename)
+        print(args.merges_filename)
         tokenizer = ByteLevelBPETokenizer.from_file(
             args.vocab_filename,
             args.merges_filename
