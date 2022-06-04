@@ -12,7 +12,8 @@ from metaseq.data import Dictionary
 from metaseq.tasks import register_task
 from metaseq.tasks.language_modeling_inference_for_models_trained_with_streaming import (
     LanguageModelingInferenceForModelsTrainedWithStreamingConfig as LMInferenceStreamingConfig,
-    LanguageModelingInferenceForModelsTrainedWithStreamingTask as LMInferenceStreamingTask)
+    LanguageModelingInferenceForModelsTrainedWithStreamingTask as LMInferenceStreamingTask,
+)
 from metaseq.tasks.streaming_CM3_language_modeling import IMAGE_PREFIX, SPEECH_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,9 @@ except ImportError:
 
 
 @dataclass
-class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(LMInferenceStreamingConfig):
+class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(
+    LMInferenceStreamingConfig
+):
     image_tokens: int = field(
         default=8192,
         metadata={"help": "total number of vision tokens used"},
@@ -49,7 +52,9 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(LMInferenc
     "cm3_language_modeling_inference_for_models_trained_with_streaming",
     dataclass=CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig,
 )
-class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(LMInferenceStreamingTask):
+class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
+    LMInferenceStreamingTask
+):
     """
     This class is specially developed for inference of models trained
     with the new StreamingLanguageModeling but follows closely the language_modeling implementation.
@@ -64,14 +69,19 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(LMInferenceS
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
         tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename,
-            args.merges_filename
+            args.vocab_filename, args.merges_filename
         )
-        self.sentinel_tokens = [f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)]
+        self.sentinel_tokens = [
+            f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
+        ]
         self.sentinel_end = "<eoss>"
 
-        tokenizer.add_special_tokens([f"{IMAGE_PREFIX}{x} " for x in range(args.image_tokens)])
-        tokenizer.add_special_tokens([f"{SPEECH_PREFIX}{x} " for x in range(args.speech_tokens)])
+        tokenizer.add_special_tokens(
+            [f"{IMAGE_PREFIX}{x} " for x in range(args.image_tokens)]
+        )
+        tokenizer.add_special_tokens(
+            [f"{SPEECH_PREFIX}{x} " for x in range(args.speech_tokens)]
+        )
         tokenizer.add_special_tokens(self.sentinel_tokens)
         tokenizer.add_special_tokens([self.sentinel_end])
 

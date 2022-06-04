@@ -18,13 +18,17 @@ from metaseq.data import (
     PartitionedStreamingDataset,
     StreamingShuffleDataset,
     JsonlDataset,
-    iterators
+    iterators,
 )
-from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingConfig, StreamingLanguageModelingTask
+from metaseq.tasks.streaming_language_modeling import (
+    StreamingLanguageModelingConfig,
+    StreamingLanguageModelingTask,
+)
 from metaseq.tasks import register_task
 
 try:
     from tokenizers import ByteLevelBPETokenizer
+
     has_hf_tokenizers = True
 except ImportError:
     has_hf_tokenizers = False
@@ -56,7 +60,9 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
     )
 
 
-@register_task("streaming_CM3_language_modeling", dataclass=StreamingCM3LanguageModelingConfig)
+@register_task(
+    "streaming_CM3_language_modeling", dataclass=StreamingCM3LanguageModelingConfig
+)
 class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
     def __init__(self, args):
         self.args = args
@@ -68,14 +74,19 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         print(args.vocab_filename)
         print(args.merges_filename)
         tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename,
-            args.merges_filename
+            args.vocab_filename, args.merges_filename
         )
-        self.sentinel_tokens = [f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)]
+        self.sentinel_tokens = [
+            f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
+        ]
         self.sentinel_end = "<eoss>"
 
-        tokenizer.add_special_tokens([f"{IMAGE_PREFIX}{x} " for x in range(args.image_tokens)])
-        tokenizer.add_special_tokens([f"{SPEECH_PREFIX}{x} " for x in range(args.speech_tokens)])
+        tokenizer.add_special_tokens(
+            [f"{IMAGE_PREFIX}{x} " for x in range(args.image_tokens)]
+        )
+        tokenizer.add_special_tokens(
+            [f"{SPEECH_PREFIX}{x} " for x in range(args.speech_tokens)]
+        )
         tokenizer.add_special_tokens(self.sentinel_tokens)
         tokenizer.add_special_tokens([self.sentinel_end])
 

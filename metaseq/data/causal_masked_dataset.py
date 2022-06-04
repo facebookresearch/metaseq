@@ -27,7 +27,15 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
         shuffle_buffer_size: int = 1,
         seed: Optional[int] = None,
     ):
-        super().__init__(dataset, block_size, break_mode, drop_last, padding_idx, shuffle_buffer_size, seed)
+        super().__init__(
+            dataset,
+            block_size,
+            break_mode,
+            drop_last,
+            padding_idx,
+            shuffle_buffer_size,
+            seed,
+        )
         self.sentinel_token_expectation = sentinel_token_expectation
         self.sentinel_tokens = sentinel_tokens
         self.sentinel_method = sentinel_method
@@ -48,7 +56,7 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
 
         for i, span in enumerate(spans):
             document_clone[span[0]] = self.get_sentinel(i)
-            document_retrieve_mask[span[0] + 1:span[1]] = False
+            document_retrieve_mask[span[0] + 1 : span[1]] = False
 
         return document_clone[document_retrieve_mask]
 
@@ -66,7 +74,7 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
             target[index] = self.get_sentinel(i)
             index += 1
             size = span[1] - span[0]
-            target[index: index + size] = document[span[0]:span[1]]
+            target[index : index + size] = document[span[0] : span[1]]
             target[index + size] = self.eos
             index = index + size + 1
         return target
@@ -79,8 +87,12 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
         if self.sentinel_fixed:
             len_sentinel_tokens = self.sentinel_token_expectation
         else:
-            len_sentinel_tokens = torch.poisson(torch.tensor([float(self.sentinel_token_expectation)])).clamp(
-                0, len(self.sentinel_tokens) - 1).to(torch.int).item()
+            len_sentinel_tokens = (
+                torch.poisson(torch.tensor([float(self.sentinel_token_expectation)]))
+                .clamp(0, len(self.sentinel_tokens) - 1)
+                .to(torch.int)
+                .item()
+            )
         if len_sentinel_tokens == 0:
             return None
         if len_sentinel_tokens == 1:
@@ -101,11 +113,16 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
         # And we will filter one by one to insure no intersections. If we can't find anything then so be it.
         return_spans: List[Tuple[int, int]] = []
         candidate_spans: List[Tuple[int, int]] = [
-            tuple(np.random.uniform(size=2)) for _ in range(len_sentinel_tokens ** 2)]
-        candidate_spans = [(int(start * document_length), int(end *
-                            document_length + 0.5)) for (start, end) in candidate_spans]
-        candidate_spans = [(start, end) if start <= end else (
-            end, start) for (start, end) in candidate_spans]
+            tuple(np.random.uniform(size=2)) for _ in range(len_sentinel_tokens**2)
+        ]
+        candidate_spans = [
+            (int(start * document_length), int(end * document_length + 0.5))
+            for (start, end) in candidate_spans
+        ]
+        candidate_spans = [
+            (start, end) if start <= end else (end, start)
+            for (start, end) in candidate_spans
+        ]
         while len(return_spans) < len_sentinel_tokens and len(candidate_spans) > 0:
             candidate_span = candidate_spans.pop()
             if not any(span_intersection(x, candidate_span) for x in return_spans):
@@ -126,4 +143,9 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
                 spans = self.get_ordered_spans(spans)
                 causal_source = self.sentinel_masking(item, spans)
                 causal_masked = self.sentinel_targets(item, spans)
-                yield {"ids": ids, "block": torch.cat([causal_source, causal_masked])[:self.tokens_per_sample]}
+                yield {
+                    "ids": ids,
+                    "block": torch.cat([causal_source, causal_masked])[
+                        : self.tokens_per_sample
+                    ],
+                }
