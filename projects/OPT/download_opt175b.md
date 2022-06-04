@@ -22,6 +22,9 @@ By default this will download the files into the directory that the command is r
 bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>" "<target directory>"
 ```
 
+### md5sum check
+In some cases, files may be corrupted after downloading.  To confirm this is not the case, check the [md5sum of your downloaded files](./assets/opt175b_md5sum_shards.csv).
+
 ## Reshard the shards
 To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
 ```
