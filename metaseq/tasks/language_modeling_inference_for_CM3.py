@@ -4,39 +4,17 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-import os
 from dataclasses import dataclass, field
-from typing import Optional, List
 
-import numpy as np
 import torch
-from omegaconf import II
 
-from metaseq import utils
-from metaseq.data import (
-    AppendTokenDataset,
-    Dictionary,
-    IdDataset,
-    LMContextWindowDataset,
-    MonolingualDataset,
-    NestedDictionaryDataset,
-    NumelDataset,
-    PrependTokenDataset,
-    StripTokenDataset,
-    TokenBlockDataset,
-    MultiplePadDataset,
-    data_utils,
-)
-from metaseq.data.indexed_dataset import get_available_dataset_impl
-from metaseq.data.shorten_dataset import maybe_shorten_dataset
-from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
-from metaseq.tasks import LegacyTask, register_task
+from metaseq.data import Dictionary
+from metaseq.tasks import register_task
 from metaseq.tasks.language_modeling_inference_for_models_trained_with_streaming import (
-    LanguageModelingInferenceForModelsTrainedWithStreamingConfig, LanguageModelingInferenceForModelsTrainedWithStreamingTask)
+    LanguageModelingInferenceForModelsTrainedWithStreamingConfig as LMInferenceStreamingConfig,
+    LanguageModelingInferenceForModelsTrainedWithStreamingTask as LMInferenceStreamingTask)
 from metaseq.tasks.streaming_CM3_language_modeling import IMAGE_PREFIX, SPEECH_PREFIX
 
-SAMPLE_BREAK_MODE_CHOICES = ChoiceEnum(["none", "complete", "complete_doc", "eos"])
-SHORTEN_METHOD_CHOICES = ChoiceEnum(["none", "truncate", "random_crop"])
 logger = logging.getLogger(__name__)
 
 try:
@@ -48,7 +26,7 @@ except ImportError:
 
 
 @dataclass
-class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(LanguageModelingInferenceForModelsTrainedWithStreamingConfig):
+class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(LMInferenceStreamingConfig):
     image_tokens: int = field(
         default=8192,
         metadata={"help": "total number of vision tokens used"},
@@ -71,7 +49,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(LanguageMo
     "cm3_language_modeling_inference_for_models_trained_with_streaming",
     dataclass=CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig,
 )
-class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(LanguageModelingInferenceForModelsTrainedWithStreamingTask):
+class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(LMInferenceStreamingTask):
     """
     This class is specially developed for inference of models trained
     with the new StreamingLanguageModeling but follows closely the language_modeling implementation.

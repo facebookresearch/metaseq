@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from typing import List, Optional, Tuple
-from . import BaseWrapperDataset, data_utils, StreamingTokenBlockDataset
+from . import StreamingTokenBlockDataset
 
 
 def span_intersection(left: Tuple[int, int], right: Tuple[int, int]) -> bool:
@@ -75,8 +75,12 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
         # Ok, we do not use a budget here but instead
         # our goal is to sample from ~ U[0,1] in the case of len(sentinel_tokens) = 1
         # If len(sentinel_tokens) > 1 we try to find len(sentinel_tokens) non intersecting spans
-        len_sentinel_tokens = self.sentinel_token_expectation if self.sentinel_fixed else torch.poisson(
-            torch.tensor([float(self.sentinel_token_expectation)])).clamp(0, len(self.sentinel_tokens) - 1).to(torch.int).item()
+        len_sentinel_tokens = None
+        if self.sentinel_fixed:
+            len_sentinel_tokens = self.sentinel_token_expectation
+        else:
+            len_sentinel_tokens = torch.poisson(torch.tensor([float(self.sentinel_token_expectation)])).clamp(
+                0, len(self.sentinel_tokens) - 1).to(torch.int).item()
         if len_sentinel_tokens == 0:
             return None
         if len_sentinel_tokens == 1:
@@ -113,17 +117,13 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
 
     def __iter__(self):
         for packed_item in super().__iter__():
-            try:
-                ids, item = packed_item["ids"], packed_item["block"]
-                assert len(item) > 0
-                spans = self.get_spans_to_mask(len(item))
-                if spans is None:
-                    yield packed_item
-                else:
-                    spans = self.get_ordered_spans(spans)
-                    causal_source = self.sentinel_masking(item, spans)
-                    causal_masked = self.sentinel_targets(item, spans)
-                    yield {"ids": ids, "block": torch.cat([causal_source, causal_masked])[:self.tokens_per_sample]}
-            except BaseException:
-                print("ERROR")
+            ids, item = packed_item["ids"], packed_item["block"]
+            assert len(item) > 0
+            spans = self.get_spans_to_mask(len(item))
+            if spans is None:
                 yield packed_item
+            else:
+                spans = self.get_ordered_spans(spans)
+                causal_source = self.sentinel_masking(item, spans)
+                causal_masked = self.sentinel_targets(item, spans)
+                yield {"ids": ids, "block": torch.cat([causal_source, causal_masked])[:self.tokens_per_sample]}

@@ -10,11 +10,7 @@ on-the-fly tokenization.
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
-import numpy as np
 import torch
-from omegaconf import II
 
 from metaseq.data import (
     Dictionary,
