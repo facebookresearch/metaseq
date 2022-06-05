@@ -40,11 +40,9 @@ class JsonlDataset(torch.utils.data.Dataset):
         path: str,
         tokenizer: Optional[Callable] = None,
         recache=False,
-        robust=True,
     ):
         self.path = path
         self.tokenizer = tokenizer
-        self.robust = robust
 
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
@@ -91,10 +89,14 @@ class JsonlDataset(torch.utils.data.Dataset):
             return item
         except BaseException as error:
             logger.error(f"Parse error in idx: {idx}, path: {self.path}")
-            if self.robust and idx + 1 < len(self):
-                logger.error(f"Skipping idx: {idx} with error \n\t{error}")
+            logger.error(f"Skipping idx: {idx} with error \n\t{error}")
+            if idx + 1 < len(self):
                 return self[idx + 1]
-            raise error
+            else:
+                logger.error(
+                    "Index error occurred at the last sample. DATA MOST LIKELY CORRUPTED."
+                )
+                return self[0]
 
     def __len__(self):
         return len(self.offsets)
