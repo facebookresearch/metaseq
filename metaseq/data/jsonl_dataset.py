@@ -90,6 +90,7 @@ class JsonlDataset(torch.utils.data.Dataset):
                 item = self.tokenizer(item)
             return item
         except BaseException as error:
+            logger.error(f"Parse error in idx: {idx}, path: {self.path}")
             if self.robust and idx + 1 < len(self):
                 logger.error(f"Skipping idx: {idx} with error \n\t{error}")
                 return self[idx + 1]
