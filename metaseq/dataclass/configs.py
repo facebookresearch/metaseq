@@ -368,6 +368,12 @@ class DatasetConfig(MetaseqDataclass):
     validate_after_updates: int = field(
         default=0, metadata={"help": "dont validate until reaching this many updates"}
     )
+    validate_max_num_batches: int = field(
+        default=-1,
+        metadata={
+            "help": "how many batches to use during validation. Useful when validation sets are very large."
+        },
+    )
     fixed_validation_seed: Optional[int] = field(
         default=None, metadata={"help": "specified random seed for validation"}
     )

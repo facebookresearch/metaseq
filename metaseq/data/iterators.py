@@ -738,3 +738,51 @@ class BufferedIterator(object):
         if item is _sentinel:
             raise StopIteration()
         return item
+
+
+class BatchLimitedEpochBatchIterator(EpochBatchIterating):
+    def __init__(self, batch_iterating: EpochBatchIterating, max_batches: int = -1):
+        self.batch_iterating = batch_iterating
+        self.max_batches = max_batches
+
+    def __len__(self) -> int:
+        return len(self.batch_iterating)
+
+    @property
+    def next_epoch_idx(self):
+        return self.batch_iterating.next_epoch_idx
+
+    def next_epoch_itr(
+        self, shuffle=True, fix_batches_to_gpus=False, set_dataset_epoch=True
+    ):
+        underlying_iterator = self.batch_iterating.next_epoch_itr(
+            shuffle=shuffle,
+            fix_batches_to_gpus=fix_batches_to_gpus,
+            set_dataset_epoch=set_dataset_epoch,
+        )
+        if self.max_batches < 0:
+            return underlying_iterator
+
+        return itertools.islice(underlying_iterator, self.max_batches)
+
+    def end_of_epoch(self) -> bool:
+        if self.max_batches < 0:
+            return self.batch_iterating.end_of_epoch()
+        return (
+            self.batch_iterating.end_of_epoch()
+            or self.iterations_in_epoch >= self.max_batches
+        )
+
+    @property
+    def iterations_in_epoch(self) -> int:
+        return self.batch_iterating.iterations_in_epoch
+
+    def state_dict(self):
+        return self.batch_iterating.state_dict()
+
+    def load_state_dict(self, state_dict):
+        return self.batch_iterating.load_state_dict()
+
+    @property
+    def first_batch(self):
+        return self.batch_iterating.first_batch

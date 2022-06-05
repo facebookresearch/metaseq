@@ -38,17 +38,21 @@ from .shorten_dataset import TruncateDataset
 
 from .iterators import (
     CountingIterator,
+    EpochBatchIterating,
     EpochBatchIterator,
     GroupedIterator,
     ShardedIterator,
+    BatchLimitedEpochBatchIterator,
 )
 
 __all__ = [
     "AppendTokenDataset",
     "BaseWrapperDataset",
+    "BatchLimitedEpochBatchIterator",
     "ConcatDataset",
     "CountingIterator",
     "Dictionary",
+    "EpochBatchIterating",
     "EpochBatchIterator",
     "BaseDataset",
     "GroupedIterator",

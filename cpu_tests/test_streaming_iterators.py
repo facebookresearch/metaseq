@@ -65,6 +65,59 @@ class TestStreamingIterators(unittest.TestCase):
         self._test_streaming_epoch_batch_iterator(drop_last=True, hook_fn=hook_fn)
         self._test_streaming_epoch_batch_iterator(drop_last=False, hook_fn=hook_fn)
 
+    def test_limited_streaming_epoch_batch_iterator_default(self):
+        dataset = get_simple_dataset()
+        epoch_batch_itr = iterators.StreamingEpochBatchIterator(
+            dataset,
+            batch_size=2,
+            collate_fn=torch.cat,
+            drop_last=False,
+        )
+        epoch_batch_itr = iterators.BatchLimitedEpochBatchIterator(epoch_batch_itr, -1)
+        assert epoch_batch_itr.next_epoch_idx == 1
+        itr = epoch_batch_itr.next_epoch_itr()
+        assert epoch_batch_itr.iterations_in_epoch == 0
+        assert not epoch_batch_itr.end_of_epoch()
+
+        assert next(itr).tolist() == [0, 1, 2, 3]
+        assert epoch_batch_itr.iterations_in_epoch == 1
+        assert not epoch_batch_itr.end_of_epoch()
+
+        assert next(itr).tolist() == [4, 5, 6, 7]
+        assert epoch_batch_itr.iterations_in_epoch == 2
+
+        assert next(itr).tolist() == [8, 9]
+        assert epoch_batch_itr.iterations_in_epoch == 3
+
+        assert epoch_batch_itr.end_of_epoch()
+        with self.assertRaises(StopIteration):
+            next(itr)
+
+    def test_limited_streaming_epoch_batch_iterator_limit(self):
+        dataset = get_simple_dataset()
+        epoch_batch_itr = iterators.StreamingEpochBatchIterator(
+            dataset,
+            batch_size=2,
+            collate_fn=torch.cat,
+            drop_last=False,
+        )
+        epoch_batch_itr = iterators.BatchLimitedEpochBatchIterator(epoch_batch_itr, 2)
+        assert epoch_batch_itr.next_epoch_idx == 1
+        itr = epoch_batch_itr.next_epoch_itr()
+        assert epoch_batch_itr.iterations_in_epoch == 0
+        assert not epoch_batch_itr.end_of_epoch()
+
+        assert next(itr).tolist() == [0, 1, 2, 3]
+        assert epoch_batch_itr.iterations_in_epoch == 1
+        assert not epoch_batch_itr.end_of_epoch()
+
+        assert next(itr).tolist() == [4, 5, 6, 7]
+        assert epoch_batch_itr.iterations_in_epoch == 2
+
+        assert epoch_batch_itr.end_of_epoch()
+        with self.assertRaises(StopIteration):
+            next(itr)
+
     def _test_streaming_epoch_batch_iterator(self, drop_last, hook_fn=None):
         dataset = get_simple_dataset()
         epoch_batch_itr = iterators.StreamingEpochBatchIterator(

@@ -19,6 +19,7 @@ import torch
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
+from metaseq.data.iterators import EpochBatchIterating, BatchLimitedEpochBatchIterator
 from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
@@ -605,7 +606,7 @@ class Trainer(object):
         subset,
         disable_iterator_cache=False,
     ):
-        """Return an EpochBatchIterator over given validation subset for a given epoch."""
+        """Return an EpochBatchIterating over given validation subset for a given epoch."""
         batch_iterator = self.task.get_batch_iterator(
             dataset=self.task.dataset(subset),
             max_tokens=self.cfg.dataset.max_tokens_valid,
@@ -627,7 +628,14 @@ class Trainer(object):
             disable_iterator_cache=disable_iterator_cache,
             skip_remainder_batch=False,
         )
+        assert isinstance(batch_iterator, EpochBatchIterating)
+
         self.reset_dummy_batch(batch_iterator.first_batch)
+
+        if self.cfg.dataset.validate_max_num_batches > 0:
+            batch_iterator = BatchLimitedEpochBatchIterator(
+                batch_iterator, self.cfg.dataset.validate_max_num_batches
+            )
         return batch_iterator
 
     def begin_epoch(self, epoch):
