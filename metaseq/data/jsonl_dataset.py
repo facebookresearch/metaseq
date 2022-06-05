@@ -35,9 +35,16 @@ class JsonlDataset(torch.utils.data.Dataset):
     Note that only the "text" key is used.
     """
 
-    def __init__(self, path: str, tokenizer: Optional[Callable] = None, recache=False):
+    def __init__(
+        self,
+        path: str,
+        tokenizer: Optional[Callable] = None,
+        recache=False,
+        robust=True,
+    ):
         self.path = path
         self.tokenizer = tokenizer
+        self.robust = robust
 
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
@@ -72,15 +79,21 @@ class JsonlDataset(torch.utils.data.Dataset):
         return self.threadlocal.handles[-1]
 
     def __getitem__(self, idx):
-        if idx < 0 or idx >= len(self):
-            raise IndexError
-        f = self._get_mmap()
-        f.seek(self.offsets[idx])
-        item = f.readline().decode("utf-8")
-        item = json.loads(item)
-        if self.tokenizer is not None:
-            item = self.tokenizer(item)
-        return item
+        try:
+            if idx < 0 or idx >= len(self):
+                raise IndexError
+            f = self._get_mmap()
+            f.seek(self.offsets[idx])
+            item = f.readline().decode("utf-8")
+            item = json.loads(item)
+            if self.tokenizer is not None:
+                item = self.tokenizer(item)
+            return item
+        except BaseException as error:
+            if self.robust and idx + 1 < len(self):
+                logger.error(f"Skipping idx: {idx} with error \n\t{error}")
+                return self[idx + 1]
+            raise error
 
     def __len__(self):
         return len(self.offsets)
