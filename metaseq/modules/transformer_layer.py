@@ -62,7 +62,7 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
             if isinstance(x, ShardedTensor):
                 x = ffn_ln(x)
             else:
-                m_list = x.chunk(4, dim=-1)
+                m_list = x.chunk(8, dim=-1)
                 x = []
                 for m in m_list:
                     x.append(ffn_ln(m))

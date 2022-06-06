@@ -410,10 +410,14 @@ class BaseTask(object):
         with torch.autograd.profiler.record_function("forward"):
             loss, sample_size, logging_output = criterion(model, sample)
         print("logging output inside task ", logging_output, file=sys.stderr)
+        print("ignore flag: ", ignore_grad, file=sys.stderr)
+        print("model : ", model, file=sys.stderr)
+        loss.backward()
         if ignore_grad:
             loss *= 0
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
+        print("optimzer finished ", file=sys.stderr)
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
