@@ -25,6 +25,11 @@ bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>" "<targ
 ### md5sum check
 In some cases, files may be corrupted after downloading.  To confirm this is not the case, check the [md5sum of your downloaded files](./assets/opt175b_md5sum_shards.csv).
 
+To check your files, you can run:
+```bash
+md5sum *
+```
+
 ## Reshard the shards
 To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
 ```
@@ -41,6 +46,22 @@ to eliminate use of MP with the `consolidate_fsdp_shards.py` script:
 
 ```bash
 python metaseq.scripts.consolidate_fsdp_shards ${FOLDER_PATH}/checkpoint_last --new-arch-name transformer_lm_gpt --save-prefix ${FOLDER_PATH}/consolidated
+```
+
+### md5sum check
+Once you have consolidated the shards, you should have the following checksums:
+```
+934def0c596e01dfb849fa65b73e01aa  dict.txt
+75a37753dd7a28a2c5df80c28bf06e4e  gpt2-merges.txt
+cf410ee085c5c69c957bb1f6d8456596  gpt2-vocab.json
+7e71cb65c4be784aa0b2889ac6039ee8  reshard-model_part-0.pt
+c8123da04f2c25a9026ea3224d5d5022  reshard-model_part-1.pt
+45e5d10896382e5bc4a7064fcafd2b1e  reshard-model_part-2.pt
+abb7296c4d2fc17420b84ca74fc3ce64  reshard-model_part-3.pt
+05dcc7ac6046f4d3f90b3d1068e6da15  reshard-model_part-4.pt
+d24dd334019060ce1ee7e625fcf6b4bd  reshard-model_part-5.pt
+fb1615ce0bbe89cc717f3e5079ee2655  reshard-model_part-6.pt
+2f3124432d2dbc6aebfca06be4b791c2  reshard-model_part-7.pt
 ```
 
 
