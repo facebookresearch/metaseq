@@ -58,6 +58,7 @@ class ComputeEnvs(Enum):
 
 DATA_LOCATIONS = {
     ComputeEnvs.AZURE: "/data/opt",
+    ComputeEnvs.AWS: "/datasets01/gptz_corpus_dedup_10_10_1_0.05_exp29/120321",
 }
 
 VALID_SUBSETS = [
