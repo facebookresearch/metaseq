@@ -337,10 +337,21 @@ class StreamingLanguageModelingTask(LegacyTask):
         if len([x for x in items if x is not None]) == 0:
             return {}
 
+        # Soft Assert fixed size input
+        for x in items:
+            if x is not None:
+                x_block_size = x["block"].size(0)
+                if x_block_size != self.args.tokens_per_sample + 1:
+                    logger.error(
+                        f"Length of {x_block_size} instead of {self.args.tokens_per_sample + 1}\nCheck dataset logic."
+                    )
+
         tokens = data_utils.collate_tokens(
             [x["block"] for x in items if x is not None],
             pad_idx=self.source_dictionary.pad(),
             pad_to_bsz=self.args.batch_size,
+            pad_to_length=self.args.tokens_per_sample
+            + 1,  # Force tokens to have fixed size for whole batch.
         )
         # generate inputs and targets
         input = tokens[:, :-1].contiguous()
