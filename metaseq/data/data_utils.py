@@ -90,7 +90,8 @@ def load_indexed_dataset(
     from metaseq.data.concat_dataset import ConcatDataset
 
     datasets = []
-    for k in itertools.count():
+    # for k in itertools.count():
+    for k in range(0,10):
         path_k = path + (str(k) if k > 0 else "")
         path_k = indexed_dataset.get_indexed_dataset_to_local(path_k)
 
