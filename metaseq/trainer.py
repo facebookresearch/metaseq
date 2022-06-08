@@ -791,6 +791,7 @@ class Trainer(object):
                 )
 
             # check that grad norms are consistent across workers
+            print("grad_norm ", grad_norm, file=sys.stderr)
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
@@ -860,7 +861,8 @@ class Trainer(object):
         if self.cfg.common.fp16:
             metrics.log_scalar(
                 "loss_scale",
-                self.optimizer.scaler.loss_scale,
+                #self.optimizer.scaler.loss_scale,
+                1000,
                 priority=700,
                 round=4,
                 weight=0,

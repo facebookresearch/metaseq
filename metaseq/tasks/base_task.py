@@ -412,9 +412,13 @@ class BaseTask(object):
         print("logging output inside task ", logging_output, file=sys.stderr)
         print("ignore flag: ", ignore_grad, file=sys.stderr)
         print("model : ", model, file=sys.stderr)
-        loss.backward()
+        print("flag in criterion ", model.has_full_params, file=sys.stderr)
+        #loss.backward()
         if ignore_grad:
             loss *= 0
+        loss /= 1000
+        print("loss ", loss, file=sys.stderr)
+        print("logging_output  ", logging_output, file=sys.stderr)
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
         print("optimzer finished ", file=sys.stderr)

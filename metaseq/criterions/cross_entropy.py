@@ -11,6 +11,10 @@ import torch.nn.functional as F
 
 from metaseq import metrics, utils
 from metaseq.criterions import BaseCriterion, register_criterion
+from torch.distributed._shard.sharded_optim import (
+    named_params_with_sharded_tensor,
+)
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 
 def nll_loss(lprobs, target, ignore_index=None, reduction="mean"):
@@ -52,9 +56,16 @@ class CrossEntropyCriterion(BaseCriterion):
         3) logging outputs to display while training
         """
         net_output = model(**sample["net_input"])
-        print("forward model done ", file=sys.stderr)
+        print("forward model done and output ", net_output, file=sys.stderr)
+        for name, p in named_params_with_sharded_tensor(model):
+            if isinstance(p, ShardedTensor):
+                print("model params sharded: ", name, p.local_tensor(), file=sys.stderr)
+            else:    
+                print("model params FSDP: ", name, p, file=sys.stderr)
+            
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
         print("loss calculation ", file=sys.stderr)
+        print("has_full_params ", model.has_full_params, file=sys.stderr)
         sample_size = sample["ntokens"]
         logging_output = {
             "loss": loss.data,
