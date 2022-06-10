@@ -372,8 +372,8 @@ def convert_namespace_to_omegaconf(args: Namespace) -> DictConfig:
     # omegaconf version that supports object flags, or when we migrate all existing models
     from omegaconf import _utils
 
-    old_primitive = _utils.is_primitive_type
-    _utils.is_primitive_type = lambda _: True
+    old_primitive = _utils.is_primitive_type_annotation
+    _utils.is_primitive_type_annotation = lambda _: True
 
     if cfg.task is None and getattr(args, "task", None):
         cfg.task = Namespace(**vars(args))
@@ -411,7 +411,7 @@ def convert_namespace_to_omegaconf(args: Namespace) -> DictConfig:
         _set_legacy_defaults(cfg.criterion, CRITERION_REGISTRY[args.criterion])
         cfg.criterion._name = args.criterion
 
-    _utils.is_primitive_type = old_primitive
+    _utils.is_primitive_type_annotation = old_primitive
     OmegaConf.set_struct(cfg, True)
     return cfg
 

@@ -84,6 +84,9 @@ class CommonConfig(MetaseqDataclass):
     # different jobs. Please append your params to other dataclasses if they
     # were used for a particular purpose or task, such as those dedicated for
     # `distributed training`, `optimization`, etc.
+    no_progress_bar: bool = field(
+        default=False, metadata={"help": "disable progress bar"}
+    )
     log_interval: int = field(
         default=100,
         metadata={
@@ -122,22 +125,14 @@ class CommonConfig(MetaseqDataclass):
             "help": "use a memory-efficient version of FP16 training; implies --fp16"
         },
     )
-    bf16: bool = field(
-        default=False,
-        metadata={
-            "help": "use BF16 format"
-            " Currently --bf16 is an added argument with --fp16 for mixed precision bf16 training"
-            " or with --memory-efficient-fp16 for pure bf16 training."
-        },
-    )
     fp16_no_flatten_grads: bool = field(
         default=False, metadata={"help": "don't flatten FP16 grads tensor"}
     )
     fp16_init_scale: int = field(
-        default=4, metadata={"help": "default FP16 loss scale"}
+        default=2**7, metadata={"help": "default FP16 loss scale"}
     )
     fp16_scale_window: Optional[int] = field(
-        default=256,
+        default=None,
         metadata={"help": "number of updates before increasing loss scale"},
     )
     fp16_scale_tolerance: float = field(
@@ -147,7 +142,7 @@ class CommonConfig(MetaseqDataclass):
         },
     )
     min_loss_scale: float = field(
-        default=2**-5,
+        default=1e-4,
         metadata={"help": "minimum FP16 loss scale, after which training is stopped"},
     )
     threshold_loss_scale: Optional[float] = field(
@@ -240,6 +235,9 @@ class DistributedTrainingConfig(MetaseqDataclass):
     ddp_backend: DDP_BACKEND_CHOICES = field(
         default="pytorch_ddp", metadata={"help": "DistributedDataParallel backend"}
     )
+    tp_enabled: bool = field(
+        default=False, metadata={"help": "use PTD native tensor parallel"}
+    )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}
     )
@@ -280,7 +278,6 @@ class DistributedTrainingConfig(MetaseqDataclass):
     )
     fp16: bool = II("common.fp16")
     memory_efficient_fp16: bool = II("common.memory_efficient_fp16")
-    bf16: bool = II("common.bf16")
     # configuration for --ddp-backend=fully_sharded
     no_reshard_after_forward: bool = field(
         default=False,
@@ -414,6 +411,9 @@ class OptimizationConfig(MetaseqDataclass):
     )
     clip_norm: float = field(
         default=0.0, metadata={"help": "clip threshold of gradients"}
+    )
+    tp_enabled: bool = field(
+        default=False, metadata={"help": "use PTD native tensor parallel"}
     )
     clip_norm_type: Optional[CLIP_GRAD_NORM_TYPE_CHOICES] = field(
         default="l2",

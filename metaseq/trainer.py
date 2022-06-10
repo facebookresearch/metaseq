@@ -24,6 +24,11 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
+from metaseq.optim.adam import MetaseqAdam
+    
+from torch.distributed._shard.sharded_optim import (
+    named_params_with_sharded_tensor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +253,12 @@ class Trainer(object):
             )
         )
 
-        if self.is_fsdp and self.cfg.common.fp16:
+        if self.is_fsdp and self.cfg.distributed_training.tp_enabled:
+            self._optimizer = MetaseqAdam(
+                cfg=self.cfg,
+                params=dict(named_params_with_sharded_tensor(self.model)),
+            )
+        elif self.is_fsdp and self.cfg.common.fp16:
             # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
             # mostly for the grad scaling. But if we don't have the
             # --memory-efficient-fp16 flag set, then we're effectively doing
@@ -275,7 +285,7 @@ class Trainer(object):
                 logger.info("NOTE: your device may support faster training with --fp16")
             self._optimizer = optim.build_optimizer(self.cfg.optimizer, params)
 
-        if self.is_fsdp:
+        if self.is_fsdp and not self.cfg.distributed_training.tp_enabled:
             assert self._optimizer.supports_flat_params, (
                 "--ddp-backend=fully_sharded is only compatible with pointwise "
                 "optimizers (e.g., Adam, AdamW, Adadelta, Adamax, SGD, etc.). "
@@ -295,6 +305,7 @@ class Trainer(object):
                 )
             else:
                 optim.shard_(self._optimizer, self.data_parallel_process_group)
+        
 
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
@@ -694,6 +705,7 @@ class Trainer(object):
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
                     )
+                    print("sample_size_i ", sample_size_i, file=sys.stderr)
                     del loss
 
                 logging_outputs.append(logging_output)
@@ -704,6 +716,7 @@ class Trainer(object):
                 if self.cuda and self.get_num_updates() == 0:
                     torch.cuda.empty_cache()
             except RuntimeError as e:
+                print("Run time error ", str(e), file=sys.stderr)
                 if "out of memory" in str(e):
                     self._log_oom(e)
                     if raise_oom:
@@ -778,6 +791,7 @@ class Trainer(object):
                 )
 
             # check that grad norms are consistent across workers
+            print("grad_norm ", grad_norm, file=sys.stderr)
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
@@ -844,17 +858,11 @@ class Trainer(object):
             ):
                 torch.cuda.empty_cache()
 
-        if self.cfg.common.fp16 and not self.cfg.common.bf16:
+        if self.cfg.common.fp16:
             metrics.log_scalar(
                 "loss_scale",
-                self.optimizer.scaler.loss_scale,
-                priority=700,
-                round=4,
-                weight=0,
-            )
-            metrics.log_scalar(
-                "scale_window",
-                self.optimizer.scaler.scale_window,
+                #self.optimizer.scaler.loss_scale,
+                1000,
                 priority=700,
                 round=4,
                 weight=0,
@@ -1008,7 +1016,7 @@ class Trainer(object):
             clip_norm,
             clip_norm_type,
             aggregate_norm_fn=None,
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            #skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def cumulative_training_time(self):
@@ -1040,16 +1048,13 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
-        def lower_precision(t):
-            """Converts a tensor to the desired dtype based on our cfg."""
+        def apply_half(t):
             if t.dtype is torch.float32:
-                if self.cfg.bf16:
-                    return t.bfloat16()
                 return t.half()
             return t
 
         if self.cfg.common.fp16:
-            sample = utils.apply_to_sample(lower_precision, sample)
+            sample = utils.apply_to_sample(apply_half, sample)
 
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample
@@ -1246,6 +1251,7 @@ class Trainer(object):
 
         with metrics.aggregate() as agg:
             if logging_outputs is not None:
+                print("logging output ", logging_outputs, file=sys.stderr)
                 self.task.reduce_metrics(logging_outputs, self.get_criterion())
                 del logging_outputs
 
