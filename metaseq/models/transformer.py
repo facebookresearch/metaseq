@@ -5,11 +5,13 @@
 
 import logging
 import math
+import sys
 from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.profiler import profile, record_function, ProfilerActivity
 
 from metaseq import utils
 from metaseq.distributed import utils as dist_utils, fsdp_wrap
@@ -383,7 +385,6 @@ class TransformerDecoder(IncrementalDecoder):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
-
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_target_positions,
@@ -398,12 +399,7 @@ class TransformerDecoder(IncrementalDecoder):
             else None
         )
         if initialize_params_on_gpu and self.embed_positions is not None:
-            self.embed_positions = utils.floating_point_precision_convertor(
-                self.embed_positions.cuda(),
-                fp16=getattr(args, "fp16", False),
-                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                bf16=getattr(args, "bf16", False),
-            )
+            self.embed_positions = self.embed_positions.cuda().half()
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
@@ -461,13 +457,7 @@ class TransformerDecoder(IncrementalDecoder):
         if args.decoder_normalize_before:
             self.layer_norm = LayerNorm(embed_dim)
             if initialize_params_on_gpu:
-                self.layer_norm = utils.floating_point_precision_convertor(
-                    self.layer_norm.cuda(),
-                    fp16=getattr(args, "fp16", False),
-                    memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                    bf16=getattr(args, "bf16", False),
-                )
-
+                self.layer_norm = self.layer_norm.cuda().half()
         else:
             self.layer_norm = None
 
@@ -737,25 +727,30 @@ class TransformerDecoder(IncrementalDecoder):
         else:
             l_aux = encoder_out["l_aux"] if "l_aux" in encoder_out else []
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _, l_aux_i = layer(
-                x,
-                encoder_out=encoder_out["encoder_out"][0]
-                if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
-                else None,
-                encoder_padding_mask=encoder_out["encoder_padding_mask"][0]
-                if (
-                    encoder_out is not None
-                    and len(encoder_out["encoder_padding_mask"]) > 0
-                )
-                else None,
-                incremental_state=incremental_state,
-                self_attn_mask=self_attn_mask,
-                self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == alignment_layer)),
-                need_head_weights=bool((idx == alignment_layer)),
-            )
-            l_aux.append(l_aux_i)
-            if layer_attn is not None and idx == alignment_layer:
+            print("start running layer: ", idx, file=sys.stderr) 
+            with profile(activities=[ProfilerActivity.CUDA], profile_memory=True, record_shapes=True) as prof:
+                with record_function("decoder_layer_forward"): 
+                    x, layer_attn, _, l_aux_i = layer(
+                        x,
+                        encoder_out=encoder_out["encoder_out"][0]
+                        if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
+                        else None,
+                        encoder_padding_mask=encoder_out["encoder_padding_mask"][0]
+                        if (
+                            encoder_out is not None
+                            and len(encoder_out["encoder_padding_mask"]) > 0
+                        )
+                        else None,
+                        incremental_state=incremental_state,
+                        self_attn_mask=self_attn_mask,
+                        self_attn_padding_mask=self_attn_padding_mask,
+                        need_attn=bool((idx == alignment_layer)),
+                        need_head_weights=bool((idx == alignment_layer)),
+                    )
+                    l_aux.append(l_aux_i)
+            print("finished running layer: ", idx, file=sys.stderr) 
+            print(prof.key_averages(group_by_stack_n=50).table(sort_by="self_cpu_time_total", row_limit=50), file=sys.stderr) 
+        if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
 
         inner_states.append(x)
