@@ -624,7 +624,7 @@ class GeneratorInterface:
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
-                    prompt_len = src_lengths[i]
+                    prompt_len = lengths[i]
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i] - 1]
@@ -635,12 +635,10 @@ class GeneratorInterface:
                             ]
                     else:
                         # cut off prompt
-                        tokens = tokens[prompt_len - 1 :][: max_tokens[i]]
-                        scores = scores[prompt_len - 1 :][: max_tokens[i]]
+                        tokens = tokens[prompt_len:][: max_tokens[i]]
+                        scores = scores[prompt_len:][: max_tokens[i]]
                         if logprobs > 0:
-                            distributions = distributions[prompt_len - 1 :][
-                                : max_tokens[i]
-                            ]
+                            distributions = distributions[prompt_len:][: max_tokens[i]]
                     # turn it into a string
                     text = self.bpe.bpe.decode(tokens)
                     # re-encode it so we get offsets
