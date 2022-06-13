@@ -1065,13 +1065,16 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
-        def apply_half(t):
+        def lower_precision(t):
+            """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
+                if self.cfg.bf16:
+                    return t.bfloat16()
                 return t.half()
             return t
 
         if self.cfg.common.fp16:
-            sample = utils.apply_to_sample(apply_half, sample)
+            sample = utils.apply_to_sample(lower_precision, sample)
 
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample
@@ -1196,7 +1199,7 @@ class Trainer(object):
                     and (max_abs_diff / (tensor[0] + 1e-6) < 1e-6).all()
                 )
 
-            if not is_consistent(self._grad_norm_buf) and False:
+            if not is_consistent(self._grad_norm_buf):
                 pretty_detail = "\n".join(
                     "rank {:3d} = {:.8f}".format(r, n)
                     for r, n in enumerate(self._grad_norm_buf.tolist())

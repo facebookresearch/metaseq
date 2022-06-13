@@ -425,14 +425,12 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
         # omegaconf version that supports object flags, or when we migrate all existing models
         from omegaconf import _utils
 
-        # API have been changed in omegaconf 2.1. If you cannot downgrade version to V1.0
-        # You need to change the API name to the new one.
-        old_primitive = _utils.is_primitive_type_annotation
-        _utils.is_primitive_type_annotation = lambda _: True
+        old_primitive = _utils.is_primitive_type
+        _utils.is_primitive_type = lambda _: True
 
         state["cfg"] = OmegaConf.create(state["cfg"])
 
-        _utils.is_primitive_type_annotation = old_primitive
+        _utils.is_primitive_type = old_primitive
 
         OmegaConf.set_struct(state["cfg"], True)
 
