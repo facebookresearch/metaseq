@@ -30,6 +30,9 @@ except ImportError:
     has_fused_layernorm = False
 
 
+# Metaseq does the layer norm only on the local shard with no comms. We have enabled the LayerNorm with comms for
+# ShardedTensor. To keep the original logic, we have to covert the original func to a nn module so 
+# it works for ShardedTensor, too.
 class LayerNorm(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -115,6 +118,8 @@ class SyncedModelParallelFusedLayerNorm(nn.Module):
         return buffer
 
     def forward(self, hidden_states):
+        # Since this is a synced version of LayerNorm, we can just use ShardedTensor's 
+        # LayerNorm which comes with comms across shards on all ranks.
         if isinstance(hidden_states, ShardedTensor):
             return torch.nn.functional.layer_norm(
                 hidden_states,
@@ -157,4 +162,3 @@ def variance_formula(means, vs, g, k) -> Tuple[torch.Tensor]:
     outer_coeff: float = (k - 1) / (d - 1)
     out: torch.Tensor = outer_coeff * (summation + (inner_coeff * var_ej))
     return out, means.mean(0)
-

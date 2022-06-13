@@ -727,6 +727,8 @@ class TransformerDecoder(IncrementalDecoder):
         else:
             l_aux = encoder_out["l_aux"] if "l_aux" in encoder_out else []
         for idx, layer in enumerate(self.layers):
+            # To debug OOM and perf analysis, this is the entry-point for the profiling about the fwd for each layer.
+            # TODO: Remove all print and profiling code after debugging/analysis.
             print("start running layer: ", idx, file=sys.stderr) 
             with profile(activities=[ProfilerActivity.CUDA], profile_memory=True, record_shapes=True) as prof:
                 with record_function("decoder_layer_forward"): 

@@ -41,6 +41,7 @@ import torch.distributed as dist
 from torch.distributed._shard import shard_module
 from torch.distributed._shard.sharding_plan import ShardingPlan
 from torch.distributed._shard.sharding_spec import ChunkShardingSpec
+import torch.distributed.distributed_c10d as distributed_c10d
 
 
 logging.basicConfig(
@@ -53,14 +54,9 @@ logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
 logger = logging.getLogger("metaseq_cli.train")
 
 
-def _generate_chunk_sharding_spec(world_size, tp_size, rank):
-    assert tp_size <= 8, "Can only shard up to 8 GPUs for now."
-    assert world_size % tp_size == 0, "tp size must be divisible by the world size."
-    start_idx = (rank // tp_size) * tp_size
-    ranks = [idx for idx in range(start_idx, start_idx + tp_size)]
-    #print("generate local group ", rank, ranks, file=sys.stderr)
-    #group = torch.distributed.new_group(ranks)
-    placements = [f"rank:{idx % tp_size}/cuda:{idx % 8}" for idx in ranks]
+def _generate_chunk_sharding_spec(world_size):
+    mp_group = distributed_utils.get_model_parallel_group()
+    placements = [f"rank:{idx}/cuda:{distributed_c10d._get_global_rank(mp_group, idx) % torch.cuda.device_count()}" for idx in range(world_size)]
     colwise_spec = ChunkShardingSpec(
         dim=0,
         placements=placements,
@@ -152,20 +148,9 @@ def main(cfg: DictConfig) -> None:
     built_model = task.build_model(cfg.model)
     if cfg.distributed_training.tp_enabled:
         sharding_specs = _generate_chunk_sharding_spec(
-            cfg.model.world_size,
             cfg.common.model_parallel_size,
-            cfg.distributed_training.distributed_rank
         )
-        """
-        tp_pg = sharding_specs[2]
-        print("sharding spec", torch.distributed.get_rank(tp_pg), torch.distributed.get_rank(distributed_utils.get_data_parallel_group()), torch.distributed.get_rank(), cfg.distributed_training.distributed_rank, sharding_specs, file=sys.stderr)
-        print("pg ", dist.distributed_c10d._get_global_rank(tp_pg, torch.distributed.get_rank(tp_pg)), torch.distributed.get_rank(tp_pg), file=sys.stderr)
-        print("pg validate", dist.distributed_c10d._get_global_rank(tp_pg, 0), dist.distributed_c10d._get_global_rank(tp_pg, 1), dist.distributed_c10d._get_group_size(tp_pg), file=sys.stderr)
-        tp_pg_m = distributed_utils.get_model_parallel_group()
-        dp_pg = distributed_utils.get_data_parallel_group()
-        print("tp pg validate", dist.distributed_c10d._get_global_rank(tp_pg_m, 0), dist.distributed_c10d._get_global_rank(tp_pg_m, 1), dist.distributed_c10d._get_group_size(tp_pg_m), torch.distributed.get_rank(), file=sys.stderr)
-        print("data pg validate", dist.distributed_c10d._get_global_rank(dp_pg, 0), dist.distributed_c10d._get_global_rank(dp_pg, 1), dist.distributed_c10d._get_group_size(dp_pg), file=sys.stderr)
-        """
+        print(f'[RANK {distributed_utils.get_global_rank()}] sharding_specs: {sharding_specs} {torch.cuda.current_device()}', file=sys.stderr)
         tp_pg = distributed_utils.get_model_parallel_group()
         decoder_sharding_plan = _decoder_sharding_plan(sharding_specs, cfg.model.decoder_layers)
         shard_module(built_model, decoder_sharding_plan, process_group=tp_pg)        

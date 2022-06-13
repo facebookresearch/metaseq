@@ -129,10 +129,10 @@ class CommonConfig(MetaseqDataclass):
         default=False, metadata={"help": "don't flatten FP16 grads tensor"}
     )
     fp16_init_scale: int = field(
-        default=2**7, metadata={"help": "default FP16 loss scale"}
+        default=4, metadata={"help": "default FP16 loss scale"}
     )
     fp16_scale_window: Optional[int] = field(
-        default=None,
+            default=256,
         metadata={"help": "number of updates before increasing loss scale"},
     )
     fp16_scale_tolerance: float = field(
@@ -142,7 +142,7 @@ class CommonConfig(MetaseqDataclass):
         },
     )
     min_loss_scale: float = field(
-        default=1e-4,
+        default=2**-5,
         metadata={"help": "minimum FP16 loss scale, after which training is stopped"},
     )
     threshold_loss_scale: Optional[float] = field(
@@ -412,6 +412,7 @@ class OptimizationConfig(MetaseqDataclass):
     clip_norm: float = field(
         default=0.0, metadata={"help": "clip threshold of gradients"}
     )
+    # We need to access this field for optimizer too. So we need to specify the field one more time.
     tp_enabled: bool = field(
         default=False, metadata={"help": "use PTD native tensor parallel"}
     )
