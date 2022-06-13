@@ -865,7 +865,7 @@ class Trainer(object):
             ):
                 torch.cuda.empty_cache()
 
-        if self.cfg.common.fp16:
+        if self.cfg.common.fp16 and not self.cfg.common.bf16:
             metrics.log_scalar(
                 "loss_scale",
                 #TODO: Recover this input param once we change back from the vanilla optimizer.

@@ -352,7 +352,6 @@ class MultiheadAttention(nn.Module):
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
-
         assert k is not None
         assert k.size(1) == src_len
 

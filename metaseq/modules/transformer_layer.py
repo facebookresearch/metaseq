@@ -276,7 +276,7 @@ class TransformerDecoderLayer(nn.Module):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
-            )            
+            )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
         scale_heads = getattr(args, "scale_heads", False)
@@ -298,7 +298,7 @@ class TransformerDecoderLayer(nn.Module):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
-            )        
+            )
 
         if no_encoder_attn:
             self.encoder_attn = None
@@ -312,7 +312,7 @@ class TransformerDecoderLayer(nn.Module):
                     fp16=getattr(args, "fp16", False),
                     memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                     bf16=getattr(args, "bf16", False),
-                )                
+                )
 
         ffn_dim = args.decoder_ffn_embed_dim
 
