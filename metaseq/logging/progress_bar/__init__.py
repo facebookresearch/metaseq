@@ -34,15 +34,9 @@ def get_progress_bar(
     else:
         raise ValueError("Unknown log format: {}".format(log_format))
 
-    if tensorboard_logdir:
-        bar = TensorboardProgressBarWrapper(bar, tensorboard_logdir)
-
     if wandb_project:
-        if tensorboard_logdir:
-            bar = WandBProgressBarWrapper(
-                bar.wrapped_bar, wandb_project, run_name=wandb_run_name
-            )
-        else:
-            bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
+        bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
+    elif tensorboard_logdir:
+        bar = TensorboardProgressBarWrapper(bar, tensorboard_logdir)
 
     return bar
