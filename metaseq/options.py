@@ -161,6 +161,7 @@ def parse_args_and_arch(
     # Modify the parser a second time, since defaults may have been reset
     if modify_parser is not None:
         modify_parser(parser)
+    
     # Parse a second time.
     if parse_known:
         args, extra = parser.parse_known_args(input_args)
@@ -176,7 +177,7 @@ def parse_args_and_arch(
         args.max_tokens_valid = args.max_tokens
     if getattr(args, "memory_efficient_fp16", False):
         args.fp16 = True
-    
+
     if getattr(args, "seed", None) is None:
         args.seed = 1  # default seed for training
         args.no_seed_provided = True

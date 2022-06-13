@@ -144,7 +144,8 @@ def main(cfg: DictConfig) -> None:
 
     assert cfg.criterion, "Please specify criterion to train a model"
 
-    # Build model and criterion
+    # Build model and criterioni
+    # For 175B large model, we need to use meta tensor to initialize the model same as FSDP.
     built_model = task.build_model(cfg.model)
     if cfg.distributed_training.tp_enabled:
         sharding_specs = _generate_chunk_sharding_spec(
@@ -303,7 +304,7 @@ def train(
             ),
         )
 
-    progress = progress_bar.progress_bar(
+    progress = progress_bar.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
         log_file=cfg.common.log_file,
@@ -314,7 +315,6 @@ def train(
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
-        default_log_format="json",
         wandb_project=(
             cfg.common.wandb_project
             if distributed_utils.is_master(cfg.distributed_training)
@@ -565,7 +565,7 @@ def validate(
                 )
             )
 
-            progress = progress_bar.progress_bar(
+            progress = progress_bar.get_progress_bar(
                 itr,
                 log_format=cfg.common.log_format,
                 log_interval=cfg.common.log_interval,
@@ -576,7 +576,6 @@ def validate(
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
-                default_log_format="json",
                 wandb_project=(
                     cfg.common.wandb_project
                     if distributed_utils.is_master(cfg.distributed_training)
