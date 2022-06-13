@@ -38,6 +38,11 @@ def get_progress_bar(
         bar = TensorboardProgressBarWrapper(bar, tensorboard_logdir)
 
     if wandb_project:
-        bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
+        if tensorboard_logdir:
+            bar = WandBProgressBarWrapper(
+                bar.wrapped_bar, wandb_project, run_name=wandb_run_name
+            )
+        else:
+            bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
 
     return bar
