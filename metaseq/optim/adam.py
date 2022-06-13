@@ -67,6 +67,7 @@ class MetaseqAdam(BaseOptimizer):
         )
         tp_enabled = getattr(cfg.optimization, "tp_enabled", False)
         config = cfg.optimizer
+        #TODO: Need to use the original Adam optimizer.
         if tp_enabled:
             logger.info("using PTD sharding Adam")
             self._optimizer = ShardedOptimizer(

@@ -254,6 +254,8 @@ class Trainer(object):
         )
 
         if self.is_fsdp and self.cfg.distributed_training.tp_enabled:
+            # TODO: We need to figure out whehter MemoryEfficientFP16Optimizer
+            # or FP16Optimizer can work with TP.
             self._optimizer = MetaseqAdam(
                 cfg=self.cfg,
                 params=dict(named_params_with_sharded_tensor(self.model)),
@@ -598,8 +600,11 @@ class Trainer(object):
             ignore_invalid_inputs=True,
             required_batch_size_multiple=self.cfg.dataset.required_batch_size_multiple,
             seed=self.cfg.common.seed,
-            num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
-            shard_id=self.data_parallel_rank if shard_batch_itr else 0,
+            # Make each rank use different data so we are running TP is a SPMD style.
+            num_shards=distributed_utils.get_global_world_size(),
+            shard_id=distributed_utils.get_global_rank(),            
+            #num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
+            #shard_id=self.data_parallel_rank if shard_batch_itr else 0,
             num_workers=self.cfg.dataset.num_workers,
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
@@ -717,6 +722,8 @@ class Trainer(object):
                     torch.cuda.empty_cache()
             except RuntimeError as e:
                 print("Run time error ", str(e), file=sys.stderr)
+                import traceback
+                traceback.print_exception(*sys.exc_info(), file=sys.stderr)
                 if "out of memory" in str(e):
                     self._log_oom(e)
                     if raise_oom:
@@ -861,8 +868,18 @@ class Trainer(object):
         if self.cfg.common.fp16:
             metrics.log_scalar(
                 "loss_scale",
+                #TODO: Recover this input param once we change back from the vanilla optimizer.
                 #self.optimizer.scaler.loss_scale,
                 1000,
+                priority=700,
+                round=4,
+                weight=0,
+            )
+            metrics.log_scalar(
+                "scale_window",
+                #TODO: Recover this input param once we change back from the vanilla optimizer.
+                #self.optimizer.scaler.scale_window,
+                20,
                 priority=700,
                 round=4,
                 weight=0,
@@ -1179,7 +1196,7 @@ class Trainer(object):
                     and (max_abs_diff / (tensor[0] + 1e-6) < 1e-6).all()
                 )
 
-            if not is_consistent(self._grad_norm_buf):
+            if not is_consistent(self._grad_norm_buf) and False:
                 pretty_detail = "\n".join(
                     "rank {:3d} = {:.8f}".format(r, n)
                     for r, n in enumerate(self._grad_norm_buf.tolist())
@@ -1251,7 +1268,6 @@ class Trainer(object):
 
         with metrics.aggregate() as agg:
             if logging_outputs is not None:
-                print("logging output ", logging_outputs, file=sys.stderr)
                 self.task.reduce_metrics(logging_outputs, self.get_criterion())
                 del logging_outputs
 

@@ -96,8 +96,7 @@ def get_grid(args):
 
     total_gpus = (args.num_gpus * args.num_nodes) // size.model_parallel
     ddp_bsz = (size.batch_size // total_gpus) // SEQ_LEN
-    if args.tp_enabled:
-        ddp_bsz //= 32
+    # TODO: After figuring out the root cause of OOM, we need to remove this.
     total_updates = args.max_update
     if total_updates is None:
         total_updates = int(TOTAL_TRAIN_TOKENS) // size.batch_size
@@ -174,7 +173,7 @@ def get_grid(args):
         hyperparam("--use-sharded-state"),
         hyperparam("--checkpoint-activations"),
         hyperparam("--model-parallel-size", size.model_parallel),
-        hyperparam("--criterion", "cross_entropy"),
+        hyperparam("--criterion", "vocab_parallel_cross_entropy"),
         hyperparam("--distribute-checkpointed-activations"),
         hyperparam("--tensor-parallel-init-model-on-gpu"),
         # Flags to match exact same initialization of Megatron code for exp 12.00

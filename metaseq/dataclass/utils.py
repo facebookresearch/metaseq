@@ -372,6 +372,8 @@ def convert_namespace_to_omegaconf(args: Namespace) -> DictConfig:
     # omegaconf version that supports object flags, or when we migrate all existing models
     from omegaconf import _utils
 
+    # API have been changed in omegaconf 2.1. If you cannot downgrade version to V1.0
+    # You need to change the API name to the new one.
     old_primitive = _utils.is_primitive_type_annotation
     _utils.is_primitive_type_annotation = lambda _: True
 
