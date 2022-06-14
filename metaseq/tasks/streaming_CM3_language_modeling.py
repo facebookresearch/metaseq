@@ -10,24 +10,34 @@ on-the-fly tokenization.
 import logging
 import os
 from dataclasses import dataclass, field
-import torch
+from typing import Optional
 
+import torch
 from metaseq.data import (
-    Dictionary,
     CausalMaskedDataset,
+    Dictionary,
+    JsonlDataset,
     PartitionedStreamingDataset,
     StreamingShuffleDataset,
-    JsonlDataset,
     iterators,
 )
+from metaseq.tasks import register_task
 from metaseq.tasks.streaming_language_modeling import (
     StreamingLanguageModelingConfig,
     StreamingLanguageModelingTask,
 )
-from metaseq.tasks import register_task
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import (
+        ByteLevelBPETokenizer,
+        Tokenizer,
+        decoders,
+        models,
+        normalizers,
+        pre_tokenizers,
+    )
+    from tokenizers.normalizers import NFKC
+    from tokenizers.pre_tokenizers import ByteLevel, Digits
 
     has_hf_tokenizers = True
 except ImportError:
@@ -58,29 +68,19 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
         default=1,
         metadata={"help": "poisson lambda for the cm3 objective"},
     )
+    spm_path: Optional[str] = field(
+        default=None, metadata={"help": "path to data directory with JSONL files"}
+    )
 
 
 @register_task(
     "streaming_CM3_language_modeling", dataclass=StreamingCM3LanguageModelingConfig
 )
 class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
-    def __init__(self, args):
-        self.args = args
-        self.datasets = {}
-        self.dataset_to_epoch_iter = {}
-
-        if not has_hf_tokenizers:
-            raise ImportError("Please install tokenizers with: pip install tokenizers")
-        print(args.vocab_filename)
-        print(args.merges_filename)
+    def _initialize_gpt2_tokenizer(self, args):
         tokenizer = ByteLevelBPETokenizer.from_file(
             args.vocab_filename, args.merges_filename
         )
-        self.sentinel_tokens = [
-            f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
-        ]
-        self.sentinel_end = "<eoss>"
-
         tokenizer.add_special_tokens(
             [f"{IMAGE_PREFIX}{x} " for x in range(args.image_tokens)]
         )
@@ -90,31 +90,23 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         tokenizer.add_special_tokens(self.sentinel_tokens)
         tokenizer.add_special_tokens([self.sentinel_end])
 
-        self.tokenizer = tokenizer
+        return tokenizer
 
-        if max(args.update_freq) > 1:
-            raise NotImplementedError(
-                "--update-freq is not compatible with StreamingLanguageModelingTask"
-            )
-
-        self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
-        if self.eod is None:
-            # This will be executed for old models that do not have the args.end_of_document_symbol explicitly set
-            # and do not use <s/> (the default) but <EOS>
-            self.eod = self.tokenizer.token_to_id("<EOS>")
-
-        assert (
-            self.eod is not None
-        ), "Cannot find end-of-document symbol ({}) in tokenizer".format(
-            args.end_of_document_symbol
+    def _initialize_unigram_tokenizer(self, args):
+        tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
+        tokenizer.normalizer = normalizers.NFKC()
+        tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+            [ByteLevel(), Digits(individual_digits=True)]
         )
+        tokenizer.decoder = decoders.ByteLevel()
+        return tokenizer
 
-        # construct a dummy metaseq Dictionary corresponding to the given tokenizer
-        self.dictionary = Dictionary()
+    def _initialize_metaseq_dictionary(self, args):
+        dictionary = Dictionary()
         tok_vocab_size = self.tokenizer.get_vocab_size()
 
-        for id in range(self.dictionary.nspecial, tok_vocab_size):
-            self.dictionary.add_symbol(self.tokenizer.id_to_token(id))
+        for id in range(dictionary.nspecial, tok_vocab_size):
+            dictionary.add_symbol(self.tokenizer.id_to_token(id))
         final_vocab_size = args.final_vocab_size
         # final_vocab_size = 51200 for roberta dictionary
         if final_vocab_size is not None:
@@ -122,11 +114,26 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 raise ValueError(
                     f"incompatible: {final_vocab_size}, tok_vocab_size: {tok_vocab_size}"
                 )
-            self.dictionary.pad_to_multiple_(final_vocab_size)
+            dictionary.pad_to_multiple_(final_vocab_size)
         else:
-            self.dictionary.pad_to_multiple_(8)
+            dictionary.pad_to_multiple_(8)
 
-        # confirm that metaseq dictionary and BPE have matching special symbols
+        self.dictionary = dictionary
+
+    def _initialize_eod(self, args):
+        self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
+        if self.eod is None:
+            # This will be executed for old models that do not have the args.end_of_document_symbol explicitly set
+            # and do not use <s/> (the default) but <EOS>
+            self.eod = self.tokenizer.token_to_id("<EOS>")
+
+    def _check_tokenizer_dictionary_invariants(self, args):
+        assert (
+            self.eod is not None
+        ), "Cannot find end-of-document symbol ({}) in tokenizer".format(
+            args.end_of_document_symbol
+        )
+
         assert self.dictionary.bos_index == 0
         assert self.tokenizer.id_to_token(0) in {"<BOS>", "<s>"}
         assert self.dictionary.pad_index == 1
@@ -135,6 +142,66 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         assert self.tokenizer.id_to_token(2) in {"<EOS>", "</s>"}
         assert self.dictionary.unk_index == 3
         assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
+
+        assert len(self.dictionary) == self.tokenizer.get_vocab_size()
+        for token in self.sentinel_tokens + [self.sentinel_end]:
+            assert self.tokenizer.token_to_id(token) != 3
+            assert self.dictionary.index(token) != 3
+
+        for i in range(args.image_tokens):
+            token = f"{IMAGE_PREFIX}{i} "
+            assert self.tokenizer.token_to_id(token) != 3
+            assert self.dictionary.index(token) != 3
+
+        for i in range(args.speech_tokens):
+            token = f"{SPEECH_PREFIX}{i} "
+            assert self.tokenizer.token_to_id(token) != 3
+            assert self.dictionary.index(token) != 3
+
+        assert len(self.tokenizer.encode("I1234 I1 I56 ").ids) == 3
+        if args.spm_path:
+            samp_tokens = self.tokenizer.encode("1234").ids
+            assert (
+                len(samp_tokens) == 5
+            ), f"expect digit splitting for unigram tokenizer got {samp_tokens}"
+
+        if args.spm_path:
+            n = len(self.dictionary)
+            assert (
+                n & (n - 1) == 0
+            ), "expect dictionary size for unigram tokenizer to be an exact power of two"
+
+    def __init__(self, args):
+        self.args = args
+        self.datasets = {}
+        self.dataset_to_epoch_iter = {}
+
+        if not has_hf_tokenizers:
+            raise ImportError("Please install tokenizers with: pip install tokenizers")
+
+        if max(args.update_freq) > 1:
+            raise NotImplementedError(
+                "--update-freq is not compatible with StreamingLanguageModelingTask"
+            )
+
+        self.sentinel_end = "<eoss>"
+        self.sentinel_tokens = [
+            f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
+        ]
+
+        if args.spm_path is None or args.spm_path == "":
+            logger.warn(
+                "By default, CM3 should be using unigram tokenization. Please double check tokenization unless you really are sure of what you are doing."
+            )
+            self.tokenizer = self._initialize_gpt2_tokenizer(args)
+        else:
+            self.tokenizer = self._initialize_unigram_tokenizer(args)
+
+        self._initialize_metaseq_dictionary(args)
+        self._initialize_eod(args)
+        self._check_tokenizer_dictionary_invariants(args)
+        logger.info(f"Dictionary Size: {len(self.dictionary)}")
+        # confirm that metaseq dictionary and BPE have matching special symbols
 
         self.criterion_weights = torch.ones(len(self.dictionary))
         self.sentinel_tokens_ind = []
@@ -145,7 +212,6 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             self.criterion_weights[token_index] = 0.0
 
         self.sentinel_end_ind = self.dictionary.index(self.sentinel_end)
-        assert token_index != self.sentinel_end_ind
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         # This function reads a bunch of jsonl files, concats them together,
