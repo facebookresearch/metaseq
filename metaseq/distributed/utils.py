@@ -157,7 +157,7 @@ def distributed_init(cfg: MetaseqConfig):
     else:
         logging.getLogger().setLevel(logging.WARNING)
 
-    if cfg.common.model_parallel_size > 1:
+    if cfg.common.model_parallel_size >= 1:
         try:
             from megatron.mpu import (
                 initialize_model_parallel,
