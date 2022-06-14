@@ -15,6 +15,7 @@ if os.environ.get("USE_PTD_FSDP", "False") == "True":
         fsdp_enable_wrap,
         fsdp_wrap,
         FullyShardedDataParallel,
+        FSDP
     )
 else:
     logger.info("Use FairScale FSDP")
@@ -22,6 +23,7 @@ else:
         fsdp_enable_wrap,
         fsdp_wrap,
         FullyShardedDataParallel,
+        FSDP
     )
 
 
@@ -32,4 +34,5 @@ __all__ = [
     "fsdp_wrap",
     "FullyShardedDataParallel",
     "ModuleProxyWrapper",
+    "FSDP"
 ]

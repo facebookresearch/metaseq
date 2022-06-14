@@ -15,9 +15,6 @@ from metaseq.distributed import utils as dist_utils
 
 logger = logging.getLogger(__name__)
 
-# TODO (mingzhe):
-# update state_dict interface.
-
 try:
     from torch.distributed.fsdp.fully_sharded_data_parallel import (
         FullyShardedDataParallel as FSDP,
@@ -64,18 +61,14 @@ class FullyShardedDataParallel(FSDP):
         return self.module.module
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
-        # TODO (mingzhe)
-        # this needs to be updated.
         if self.use_sharded_state:
             with FSDP.state_dict_type(self, StateDictType.LOCAL_STATE_DICT):
                 return super().state_dict(
                     destination=destination, prefix=prefix, keep_vars=keep_vars
                 )
         else:
-            # TODO (mingzhe)
-            # this needs to be updated.
             full_state_dict_config = FullStateDictConfig(
-                offload_to_cpu=True, rank0_only=True
+                offload_to_cpu=False, rank0_only=True
             )
             with FSDP.state_dict_type(
                 self, StateDictType.FULL_STATE_DICT, full_state_dict_config
@@ -84,15 +77,16 @@ class FullyShardedDataParallel(FSDP):
                     destination=destination, prefix=prefix, keep_vars=keep_vars
                 )
 
-    def load_state_dict(self, state_dict, strict=True, model_cfg=None):
-        # TODO (mingzhe)
-        # update
+    def load_state_dict(self, state_dict, strict=None, model_cfg=None):
         if self.use_sharded_state:
             with FSDP.state_dict_type(self, StateDictType.LOCAL_STATE_DICT):
-                return super().load_local_state_dict(state_dict, strict=strict)
+                return super().load_state_dict(state_dict)
         else:
-            with FSDP.state_dict_type(self, StateDictType.FULL_STATE_DICT):
-                return super().load_state_dict(state_dict, strict=strict)
+            if not isinstance(self.process_group, DummyProcessGroup):
+                state_dict = dist_utils.broadcast_object(
+                    state_dict, src_rank=0, group=self.process_group
+                )
+            return super().load_state_dict(state_dict)
 
 
 @contextlib.contextmanager
