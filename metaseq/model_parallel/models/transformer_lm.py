@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 import torch.nn as nn
 from metaseq.model_parallel.models.transformer import ModelParallelTransformerDecoder
 from metaseq.models import register_model, register_model_architecture
@@ -50,10 +51,6 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
         assert getattr(
             args, "use_sharded_state", False
         ), "Use sharded state must be True for tensor parallel, otherwise model saving and loaded might be broken"
-        if getattr(args, "tensor_parallel_init_model_on_gpu", False):
-            assert getattr(
-                args, "memory_efficient_fp16", False
-            ), "GPU initialization is only supported for full fp16 mode for now."
 
         decoder = ModelParallelTransformerDecoder(
             args,
@@ -79,6 +76,11 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             )
             nn.init.constant_(tensor[1], 0)
 
+        if getattr(args, "memory_efficient_fp16", False):
+            dtype = torch.bfloat16 if getattr(args, "bf16", False) else torch.half
+        else:
+            dtype = torch.float32
+
         embed_tokens = VocabParallelEmbedding(
             len(dictionary),
             embed_dim,
@@ -89,6 +91,7 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             use_cpu_initialization=not getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=dtype,
         )
         return embed_tokens
 

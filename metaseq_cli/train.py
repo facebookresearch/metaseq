@@ -241,7 +241,7 @@ def train(
             ),
         )
 
-    progress = progress_bar.progress_bar(
+    progress = progress_bar.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
         log_file=cfg.common.log_file,
@@ -263,7 +263,6 @@ def train(
             else None
         ),
         aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
-        default_log_format="json",
         wandb_project=(
             cfg.common.wandb_project
             if distributed_utils.is_master(cfg.distributed_training)
@@ -514,7 +513,7 @@ def validate(
                 )
             )
 
-            progress = progress_bar.progress_bar(
+            progress = progress_bar.get_progress_bar(
                 itr,
                 log_format=cfg.common.log_format,
                 log_interval=cfg.common.log_interval,
@@ -536,7 +535,6 @@ def validate(
                     else None
                 ),
                 aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
-                default_log_format="json",
                 wandb_project=(
                     cfg.common.wandb_project
                     if distributed_utils.is_master(cfg.distributed_training)

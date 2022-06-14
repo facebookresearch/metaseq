@@ -63,7 +63,10 @@ def DistributedModel(args, model, process_group, device):
         assert isinstance(model, FSDP), "expected model to already be wrapped in FSDP"
         wrapped_model = model
         if args.memory_efficient_fp16:
-            wrapped_model = wrapped_model.half()
+            if args.bf16:
+                wrapped_model = wrapped_model.bfloat16()
+            else:
+                wrapped_model = wrapped_model.half()
         if not args.cpu_offload:
             wrapped_model = wrapped_model.to(device=device)
     else:

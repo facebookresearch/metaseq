@@ -133,6 +133,9 @@ def do_setup(package_data):
             "setuptools>=18.0",
         ],
         install_requires=[
+            # protobuf version pinned due to tensorboard not pinning a version.
+            #  https://github.com/protocolbuffers/protobuf/issues/10076
+            "protobuf==3.20.1",
             "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
@@ -143,22 +146,23 @@ def do_setup(package_data):
             "editdistance",
             "fire",
             "flask==2.1.1",  # for api
-            "hydra-core>=1.1.0",
+            "hydra-core>=1.1.0,<1.2",
             "iopath",
             "ipdb",
             "ipython",
             "Jinja2==3.1.1",  # for evals
             "markupsafe",  # for evals
             "more_itertools",
+            "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
-            "omegaconf",
+            "omegaconf<=2.1.1",
             "pre-commit",
             "pytest",
             "regex",
             "sklearn",  # for evals
             "sacrebleu",  # for evals
-            "tensorboard",
+            "tensorboard==2.8.0",
             "timeout-decorator",
             "tokenizers",
             "torch",
