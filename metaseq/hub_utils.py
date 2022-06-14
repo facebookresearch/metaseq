@@ -627,12 +627,10 @@ class GeneratorInterface:
                     prompt_len = lengths[i]
                     if echo:
                         # don't cut off prompt
-                        tokens = tokens[: prompt_len + max_tokens[i] - 1]
-                        scores = scores[: prompt_len + max_tokens[i] - 1]
+                        tokens = tokens[: prompt_len + max_tokens[i]]
+                        scores = scores[: prompt_len + max_tokens[i]]
                         if logprobs > 0:
-                            distributions = distributions[
-                                : prompt_len + max_tokens[i] - 1
-                            ]
+                            distributions = distributions[: prompt_len + max_tokens[i]]
                     else:
                         # cut off prompt
                         tokens = tokens[prompt_len:][: max_tokens[i]]
