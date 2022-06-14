@@ -1,3 +1,9 @@
+from metaseq.logging.progress_bar.base_progress_bar import (
+    BaseProgressBar,
+    logger,
+)
+
+
 try:
     import functools
 
