@@ -32,6 +32,13 @@ except KeyError:
 except Exception:
     logging.exception("Failed to register S3 Path Handler. Try pip install boto3")
 
+from torch.distributed._shard.checkpoint import (
+    save_state_dict,
+    load_state_dict,
+    FileSystemReader,
+    FileSystemWriter,
+)
+
 
 class PathManager:
     """
@@ -210,6 +217,12 @@ def recursively_cast_dictconfigs(cfg):
 
 def torch_load_cpu(path):
     state = torch.load(path, map_location=torch.device("cpu"))
+    # TODO (mingzhe): change to new API once ready.
+    #state = {}
+    #load_state_dict(
+    #    state_dict=state,
+    #    storage_reader=FileSystemReader(path)
+    #)
     # If model was trained with fp16, model from loaded state_dict can be moved to fp16
     if not isinstance(state, dict):
         return state
@@ -219,7 +232,11 @@ def torch_load_cpu(path):
             state["cfg"]["common"]["fp16"]
             or state["cfg"]["common"]["memory_efficient_fp16"]
         ):
-            state["model"] = {k: v.half() for k, v in state["model"].items()}
+            if os.environ.get("USE_PTD_FSDP", "False") == "True":
+                tmp = torch.randn(1, dtype=torch.float16)
+                state["model"] = {k: v.type_as(tmp) for k, v in state["model"].items()}
+            else:
+                state["model"] = {k: v.half() for k, v in state["model"].items()}
 
     return state
 
