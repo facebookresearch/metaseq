@@ -313,7 +313,7 @@ class MultiheadAttention(nn.Module):
                     v.local_tensor(), sharding_spec, st_size, process_group=distributed_utils.get_model_parallel_group()
                 )
 
-        if saved_state is not None and not isinstance(q, ShardedTensor):
+        if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
             if "prev_key" in saved_state:
                 _prev_key = saved_state["prev_key"]
