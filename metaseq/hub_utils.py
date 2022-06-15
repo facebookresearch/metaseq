@@ -592,7 +592,9 @@ class GeneratorInterface:
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             generator = self.task.build_generator(
-                self.models, self.cfg.generation, extra_gen_cls_kwargs={"stop": stop}
+                self.models,
+                self.cfg.generation,
+                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": True},
             )
 
             # okay actually generate
