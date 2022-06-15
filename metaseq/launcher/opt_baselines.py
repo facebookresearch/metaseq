@@ -23,6 +23,7 @@ from metaseq.launcher.sweep import (
     get_env_from_args,
     main as sweep_main,
 )
+import metaseq.distributed.utils as distributed_utils
 
 # have to do this at the module level, unfortunately; unable to use args.<env>
 for _cluster, _folder in DATA_LOCATIONS.items():
@@ -96,6 +97,12 @@ def get_grid(args):
 
     total_gpus = (args.num_gpus * args.num_nodes) // size.model_parallel
     ddp_bsz = (size.batch_size // total_gpus) // SEQ_LEN
+
+    # Divide batch size by model parallel world_size for ShardedTensor based
+    # TP implementation since unlike Megatron-LM it receives unique data on
+    # each rank.
+    ddp_bsz //= size.model_parallel
+
     # TODO: After figuring out the root cause of OOM, we need to remove this.
     total_updates = args.max_update
     if total_updates is None:

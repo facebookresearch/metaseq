@@ -18,6 +18,55 @@ from torch.nn import Parameter
 from torch.distributed._shard.sharded_tensor import ShardedTensor
 import metaseq.distributed.utils as distributed_utils
 
+from torch.overrides import handle_torch_function
+from torch.distributed._shard.sharded_tensor import (
+    custom_sharded_op_impl,
+)
+import torch.distributed as dist
+
+def _view_with_dim_change(sharding_dim, input, shape):
+    if isinstance(input, ShardedTensor):
+        return handle_torch_function(_view_with_dim_change, (input, sharding_dim, shape), input, sharding_dim, shape)
+    else:
+        return input.view(shape)
+
+@custom_sharded_op_impl(_view_with_dim_change)
+def _sharded_tensor_view_with_dim_change(types, args, kwargs, pg):
+    input, sharding_dim, shape = args
+    if sharding_dim < 0:
+        sharding_dim += input.dim()
+
+
+    world_size = dist.get_world_size(pg)
+    sharding_spec = input.sharding_spec()
+    sharding_spec.dim = sharding_dim
+
+    # Fix shape
+    try:
+        infer_idx = shape.index(-1)
+    except ValueError:
+        infer_idx = None
+
+    # Infer the dim which is specified with -1.
+    if infer_idx is not None:
+        st_size = math.prod(input.size())  # type: ignore[attr-defined]
+        shape_size = -1 * math.prod(shape)  # type: ignore[attr-defined]
+        shape = (*shape[:infer_idx], st_size // shape_size, *shape[infer_idx + 1 :])
+
+    new_local_tensor_size = (
+        *shape[:sharding_dim],
+        shape[sharding_dim] // world_size,
+        *shape[sharding_dim + 1 :],
+    )
+    new_local_tensor = input.local_tensor().view(*new_local_tensor_size)
+
+    return ShardedTensor._init_from_local_tensor(
+        new_local_tensor,
+        sharding_spec,
+        shape,  # type: ignore[arg-type]
+        process_group=pg,
+    )
+
 
 @with_incremental_state
 class MultiheadAttention(nn.Module):
@@ -259,29 +308,10 @@ class MultiheadAttention(nn.Module):
                     dim=1,
                 )
         
-        # TP is implemented in a SPMD style, which means that we first gather all local
-        # input from across ranks and the output size will be world_size times bigger.
-        # For example, if input is [5, 10], proj weight size [10, 16] and world_size 4.
-        # Then the output of proj will be [4 * 5, 16] sharded by dim -1 (aka, 1).
-        # That's why we need to times the value by world_size to ensure assert is checking
-        # on the correct value.
         head_dim = self.head_dim
         bsz_heads_dim = bsz * self.num_heads
-        if isinstance(self.q_proj.weight, ShardedTensor):
-            sharding_spec = self.q_proj.weight.sharding_spec()
-            world_size = len(sharding_spec.placements)
-            tgt_len *= world_size
-            src_len *= world_size
-            head_dim *= world_size
-            bsz_heads_dim //= world_size
-            # Now key_padding_mask needs to be duplicated world_size time.
-            if key_padding_mask is not None:
-                key_padding_mask = key_padding_mask.repeat(1, world_size)
-        q = q.contiguous().view(tgt_len, bsz_heads_dim, head_dim).transpose(0, 1)
-        if k is not None:
-            k = k.contiguous().view(-1, bsz_heads_dim, head_dim).transpose(0, 1)
-        if v is not None:
-            v = v.contiguous().view(-1, bsz_heads_dim, head_dim).transpose(0, 1)
+        tp_world_size = distributed_utils.get_model_parallel_world_size()
+
         # Megatron is switching sharding dim implicitly, so we have do this manually
         # for ShardedTensor. Let's use an example to explain more here:
         # Let's say tgt_len, bsz, embed_dim = q.size()
@@ -295,23 +325,11 @@ class MultiheadAttention(nn.Module):
         # makes sense here because each head is independent from each other.
         # Currently, view op of sharded tensor does not support sharding dim change automatically,
         # we need to manually re-create the ShardedTensor after sharding dim change.
-        if isinstance(q, ShardedTensor):
-            sharding_spec = q.sharding_spec()
-            sharding_spec.dim = 0
-            st_size = (bsz * self.num_heads, q.size(1), self.head_dim)
-            q = ShardedTensor._init_from_local_tensor(
-                q.local_tensor(), sharding_spec, st_size, process_group=distributed_utils.get_model_parallel_group()
-            )
-            if k is not None:
-                st_size = (bsz * self.num_heads, k.size(1), self.head_dim)
-                k = ShardedTensor._init_from_local_tensor(
-                    k.local_tensor(), sharding_spec, st_size, process_group=distributed_utils.get_model_parallel_group()
-                )
-            if v is not None:
-                st_size = (bsz * self.num_heads, v.size(1), self.head_dim)
-                v = ShardedTensor._init_from_local_tensor(
-                    v.local_tensor(), sharding_spec, st_size, process_group=distributed_utils.get_model_parallel_group()
-                )
+        q = _view_with_dim_change(1, q, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+        if k is not None:
+            k = _view_with_dim_change(1, k, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+        if v is not None:
+            v = _view_with_dim_change(1, v, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
@@ -353,7 +371,7 @@ class MultiheadAttention(nn.Module):
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
         assert k is not None
-        assert k.size(1) == src_len
+        assert k.size(1) == src_len * tp_world_size
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -385,26 +403,9 @@ class MultiheadAttention(nn.Module):
                 )
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
-        # Since we are now performing a SPMD style calculation, the cross interaction 
-        # between weights from different ranks does not have actual meanings here. 
-        # We need to set them to zero or -inf(softmax). Think it of this way, the weights
-        # are interaction results between two related sequences or itself. The interaction
-        # between two random sequences here does not bring value to model training.
-        #TODO: Need to fix OOM for the big matrix.
-        if isinstance(attn_weights, ShardedTensor):
-            zero_mask = torch.ones(
-                *attn_weights.size(), device=attn_weights.local_tensor().device
-            )
-            row, col = attn_weights.size(1), attn_weights.size(2)
-            row //= world_size
-            col //= world_size
-            for i in range(world_size):
-                zero_mask[:, row * i : row * (i + 1), col * i : col * (i + 1)] = 0
-            zero_mask = zero_mask.type(torch.BoolTensor).cuda()
-            attn_weights = attn_weights.masked_fill(zero_mask, 0.0)
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
-        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
+        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len * tp_world_size, src_len * tp_world_size]
 
         if attn_mask is not None:
             # Replace any non-finite values with finite equivalents, since otherwise
@@ -417,7 +418,7 @@ class MultiheadAttention(nn.Module):
             # Currently, ShardedTensor does not support addition assignment with broadcasting.
             # Below is a walk-around to perform the op on the local tensor and recreate the ShardedTensor again.
             if isinstance(attn_weights, ShardedTensor):
-                attn_mask = attn_mask.repeat(1, world_size, world_size)
+                attn_mask = attn_mask.repeat(1, tp_world_size, tp_world_size)
                 attn_local = attn_weights.local_tensor()
                 attn_local += attn_mask
                 attn_weights = ShardedTensor._init_from_local_tensor(
@@ -439,9 +440,6 @@ class MultiheadAttention(nn.Module):
         if before_softmax:
             return attn_weights, v
         
-        # Mentioned in L389, we need to remove the interactions between non-related sequences.
-        if isinstance(attn_weights, ShardedTensor):
-            attn_weights = attn_weights.masked_fill(zero_mask, float("-inf"))
         attn_weights_float = utils.softmax(
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )
@@ -450,27 +448,14 @@ class MultiheadAttention(nn.Module):
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
-        assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
+        assert list(attn.size()) == [bsz * self.num_heads, tgt_len * tp_world_size, self.head_dim]
         if self.onnx_trace and attn.size(1) == 1:
             # when ONNX tracing a single decoder step (sequence length == 1)
             # the transpose is a no-op copy before view, thus unnecessary
             attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
         else:
             attn = attn.transpose(0, 1).contiguous()
-            # As mentioned ealier, view op itself does not change the sharding dim.
-            # We need to manually change the sharding dim of attn from 1 to -1(2).
-            if isinstance(attn, ShardedTensor):
-                sharding_spec = attn.sharding_spec()
-                sharding_spec.dim = -1
-                st_size = (
-                    attn.size(0),
-                    attn.size(1) // world_size,
-                    attn.size(2) * world_size,
-                )
-                attn = ShardedTensor._init_from_local_tensor(
-                    attn.local_tensor(), sharding_spec, st_size, process_group=distributed_utils.get_model_parallel_group()
-                )
-            attn = attn.view(tgt_len, bsz, embed_dim)
+            attn = _view_with_dim_change(-1, attn, (-1, bsz, embed_dim))
 
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
