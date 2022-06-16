@@ -15,9 +15,8 @@ Currently, the API supports two endpoints:
 Complete all of the setup as mentioned in [the Setup doc](setup.md).
 
 **Prepare checkpoints**
-1) Remove optimizer states with ```metaseq/scripts/reshard_mp.py```
-2) Reshard accordingly with ```metaseq/scripts/remove_opt_state.py```
-3) Modify ```metaseq/services/constants.py``` to update the model path and bpe file path
+1) Reshard accordingly with ```metaseq/scripts/remove_mp.py``` and set `drop_optimizer_state=True`. 
+2) Modify ```metaseq/service/constants.py``` to update the model path, bpe file path, and MODEL_PARALLEL. 
 
 **Run locally on a worker**
 
