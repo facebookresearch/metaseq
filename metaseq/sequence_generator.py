@@ -126,7 +126,6 @@ class SequenceGenerator(nn.Module):
             )
         else:
             raise Exception("expected src_tokens or source in net input")
-
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]
@@ -215,7 +214,7 @@ class SequenceGenerator(nn.Module):
         # decoding
         start_step = src_tokens.shape[1]
         # set all the forced tokens
-        tokens[:, :start_step] = src_tokens
+        tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
         model_out = self.model.decoder(
             tokens[:, :start_step],
