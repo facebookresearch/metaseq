@@ -427,20 +427,8 @@ class TransformerDecoder(IncrementalDecoder):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
-        # self.embed_positions = (
-        #     PositionalEmbedding(
-        #         self.max_target_positions,
-        #         embed_dim,
-        #         self.padding_idx,
-        #         learned=args.decoder_learned_pos,
-        #         learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
-        #         full_megatron_init=getattr(args, "full_megatron_init", False),
-        #         megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-        #     )
-        #     if args.decoder_learned_pos and not self.use_alibi
-        #     else None
-        # )
-        self.embed_positions = PositionalEmbedding(
+        self.embed_positions = (
+            PositionalEmbedding(
                 self.max_target_positions,
                 embed_dim,
                 self.padding_idx,
@@ -449,7 +437,9 @@ class TransformerDecoder(IncrementalDecoder):
                 full_megatron_init=getattr(args, "full_megatron_init", False),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             )
-        # print("self.embed_positions: ",self.embed_positions)
+            if not args.no_token_positional_embeddings and not self.use_alibi
+            else None
+        )
 
         if initialize_params_on_gpu and self.embed_positions is not None:
             self.embed_positions = self.embed_positions.cuda().half()
@@ -621,7 +611,9 @@ class TransformerDecoder(IncrementalDecoder):
         # embed tokens and positions
         positions = None
         if self.embed_positions is not None:
-            positions = self.embed_positions(tokens, incremental_state=incremental_state, positions=indices)
+            positions = self.embed_positions(
+                tokens, incremental_state=incremental_state, positions=indices
+            )
 
             # Rotate position embeddings
             # TODO Hacky and inefficient implementation
@@ -654,7 +646,6 @@ class TransformerDecoder(IncrementalDecoder):
 
         if positions is not None:
             x += positions
-       
         if self.dropout_module is not None:
             x = self.dropout_module(x)
 
@@ -805,7 +796,7 @@ class TransformerDecoder(IncrementalDecoder):
             indices=positions,
             lengths=src_lengths,
             start_pos_idx=src_start_pos_idx,
-        )        
+        )
         if bidir_attn_prefix is not None and (bidir_attn_prefix >= src_lengths).all():
             # No need for mask, just use full bidirectional attention
             full_context_alignment = True

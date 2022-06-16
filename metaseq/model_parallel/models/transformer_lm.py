@@ -111,6 +111,9 @@ def base_lm_architecture(args):
         args, "share_decoder_input_output_embed", False
     )
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
+    args.no_token_positional_embeddings = getattr(
+        args, "no_token_positional_embeddings", False
+    )
     args.decoder_learned_sinusoidal = getattr(args, "decoder_learned_sinusoidal", False)
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.add_bos_token = getattr(args, "add_bos_token", False)
