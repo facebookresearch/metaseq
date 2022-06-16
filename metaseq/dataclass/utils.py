@@ -13,8 +13,8 @@ from dataclasses import _MISSING_TYPE, MISSING
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-from hydra import compose, initialize
-# from hydra.experimental import compose, initialize
+# from hydra import compose, initialize
+from hydra.experimental import compose, initialize
 
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, OmegaConf, open_dict
