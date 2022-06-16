@@ -261,9 +261,12 @@ class GeneratorHubInterface(nn.Module):
             translations = self.task.inference_step(
                 generator, self.models, batch, **inference_step_args
             )
+
             if is_dummy_batch:  # Don't score it or add it to hypotheses
                 continue
             for id, hypos in zip(batch["id"].tolist(), translations):
+                for hypo in hypos:
+                    hypo['id'] = id
                 results.append((id, hypos))
 
         # sort output to match input order
