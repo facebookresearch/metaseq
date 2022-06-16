@@ -24,14 +24,14 @@ from torch.distributed._shard.sharded_tensor import (
 )
 import torch.distributed as dist
 
-def _view_with_dim_change(sharding_dim, input, shape):
+def _view_with_sharding_dim_change(sharding_dim, input, shape):
     if isinstance(input, ShardedTensor):
-        return handle_torch_function(_view_with_dim_change, (input, sharding_dim, shape), input, sharding_dim, shape)
+        return handle_torch_function(_view_with_sharding_dim_change, (input, sharding_dim, shape), input, sharding_dim, shape)
     else:
         return input.view(shape)
 
-@custom_sharded_op_impl(_view_with_dim_change)
-def _sharded_tensor_view_with_dim_change(types, args, kwargs, pg):
+@custom_sharded_op_impl(_view_with_sharding_dim_change)
+def _sharded_tensor_view_with_sharding_dim_change(types, args, kwargs, pg):
     input, sharding_dim, shape = args
     if sharding_dim < 0:
         sharding_dim += input.dim()
@@ -270,7 +270,13 @@ class MultiheadAttention(nn.Module):
         else:
             saved_state = None
 
+        tp_world_size = distributed_utils.get_model_parallel_world_size()
         if self.self_attention:
+            # For TP, batch size needs to be dimension 0 and gets expanded 
+            # due to all_gather of inputs.
+            query = query.transpose(0, 1)
+            bsz *= tp_world_size
+
             q = self.q_proj(query)
             k = self.k_proj(query)
             v = self.v_proj(query)
@@ -310,7 +316,6 @@ class MultiheadAttention(nn.Module):
         
         head_dim = self.head_dim
         bsz_heads_dim = bsz * self.num_heads
-        tp_world_size = distributed_utils.get_model_parallel_world_size()
 
         # Megatron is switching sharding dim implicitly, so we have do this manually
         # for ShardedTensor. Let's use an example to explain more here:
@@ -325,11 +330,11 @@ class MultiheadAttention(nn.Module):
         # makes sense here because each head is independent from each other.
         # Currently, view op of sharded tensor does not support sharding dim change automatically,
         # we need to manually re-create the ShardedTensor after sharding dim change.
-        q = _view_with_dim_change(1, q, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+        q = _view_with_sharding_dim_change(1, q, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
         if k is not None:
-            k = _view_with_dim_change(1, k, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+            k = _view_with_sharding_dim_change(1, k, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
         if v is not None:
-            v = _view_with_dim_change(1, v, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+            v = _view_with_sharding_dim_change(1, v, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
@@ -371,7 +376,7 @@ class MultiheadAttention(nn.Module):
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
         assert k is not None
-        assert k.size(1) == src_len * tp_world_size
+        assert k.size(1) == src_len
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -405,7 +410,7 @@ class MultiheadAttention(nn.Module):
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
-        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len * tp_world_size, src_len * tp_world_size]
+        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
         if attn_mask is not None:
             # Replace any non-finite values with finite equivalents, since otherwise
@@ -418,7 +423,6 @@ class MultiheadAttention(nn.Module):
             # Currently, ShardedTensor does not support addition assignment with broadcasting.
             # Below is a walk-around to perform the op on the local tensor and recreate the ShardedTensor again.
             if isinstance(attn_weights, ShardedTensor):
-                attn_mask = attn_mask.repeat(1, tp_world_size, tp_world_size)
                 attn_local = attn_weights.local_tensor()
                 attn_local += attn_mask
                 attn_weights = ShardedTensor._init_from_local_tensor(
@@ -448,16 +452,17 @@ class MultiheadAttention(nn.Module):
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
-        assert list(attn.size()) == [bsz * self.num_heads, tgt_len * tp_world_size, self.head_dim]
+        assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if self.onnx_trace and attn.size(1) == 1:
             # when ONNX tracing a single decoder step (sequence length == 1)
             # the transpose is a no-op copy before view, thus unnecessary
             attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
         else:
-            attn = attn.transpose(0, 1).contiguous()
-            attn = _view_with_dim_change(-1, attn, (-1, bsz, embed_dim))
+            # As mentioned ealier, view op itself does not change the sharding dim.
+            # We need to manually change the sharding dim of attn from 1 to -1(2).
+            attn = _view_with_sharding_dim_change(-1, attn, (bsz, -1, embed_dim))
 
-        attn = self.out_proj(attn)
+        attn = self.out_proj(attn).transpose(0, 1)
         attn_weights: Optional[Tensor] = None
         if need_weights:
             attn_weights = attn_weights_float.view(
