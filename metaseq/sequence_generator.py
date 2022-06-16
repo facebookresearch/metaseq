@@ -126,6 +126,7 @@ class SequenceGenerator(nn.Module):
             )
         else:
             raise Exception("expected src_tokens or source in net input")
+
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]
