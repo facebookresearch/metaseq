@@ -330,11 +330,11 @@ class MultiheadAttention(nn.Module):
         # makes sense here because each head is independent from each other.
         # Currently, view op of sharded tensor does not support sharding dim change automatically,
         # we need to manually re-create the ShardedTensor after sharding dim change.
-        q = _view_with_sharding_dim_change(1, q, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+        q = _view_with_sharding_dim_change(0, q, (bsz_heads_dim, -1, head_dim))
         if k is not None:
-            k = _view_with_sharding_dim_change(1, k, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+            k = _view_with_sharding_dim_change(0, k, (bsz_heads_dim, -1, head_dim))
         if v is not None:
-            v = _view_with_sharding_dim_change(1, v, (-1, bsz_heads_dim, head_dim)).transpose(0, 1)
+            v = _view_with_sharding_dim_change(0, v, (bsz_heads_dim, -1, head_dim))
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
@@ -462,6 +462,7 @@ class MultiheadAttention(nn.Module):
             # We need to manually change the sharding dim of attn from 1 to -1(2).
             attn = _view_with_sharding_dim_change(-1, attn, (bsz, -1, embed_dim))
 
+        # TODO: validate if we need this for megatron-lm baseline.
         attn = self.out_proj(attn).transpose(0, 1)
         attn_weights: Optional[Tensor] = None
         if need_weights:
