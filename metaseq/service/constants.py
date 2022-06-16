@@ -39,17 +39,15 @@ except ModuleNotFoundError:
         raise RuntimeError(
             "You must set the variables in metaseq.service.constants to launch the API."
         )
-MODEL_SHARED_FOLDER = "/data/gpt-z/models/gptz/"
-LOCAL_SSD = MODEL_SHARED_FOLDER
 
 # tokenizer files
 BPE_MERGES = os.path.join(MODEL_SHARED_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(MODEL_SHARED_FOLDER, "gpt2-vocab.json")
 
 # where to find the raw files on nfs
-CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "66B", "reshard_no_os")
+CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "175B", "reshard_no_os")
 # where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "66B", "reshard_no_os", "reshard.pt")
+CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "175B", "reshard_no_os", "reshard.pt")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
