@@ -435,6 +435,5 @@ class TestSequenceGeneratorBeamSearch(TestSequenceGeneratorBase):
         generator.generate([self.model], self.sample)
 
 
-
 if __name__ == "__main__":
     unittest.main()
