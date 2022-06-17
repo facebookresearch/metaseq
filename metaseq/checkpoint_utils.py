@@ -304,6 +304,11 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             checkpoint_path_to_load = save_dir_last
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
+    import torch.distributed
+    import metaseq.distributed.utils as dist_utils
+
+    torch.distributed.barrier(dist_utils.get_global_group())
+
     extra_state = trainer.load_checkpoint(
         checkpoint_path_to_load,
         reset_optimizer,

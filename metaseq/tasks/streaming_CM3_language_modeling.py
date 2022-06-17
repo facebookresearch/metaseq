@@ -36,7 +36,6 @@ try:
         normalizers,
         pre_tokenizers,
     )
-    from tokenizers.normalizers import NFKC
     from tokenizers.pre_tokenizers import ByteLevel, Digits
 
     has_hf_tokenizers = True
@@ -191,7 +190,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
 
         if args.spm_path is None or args.spm_path == "":
             logger.warn(
-                "By default, CM3 should be using unigram tokenization. Please double check tokenization unless you really are sure of what you are doing."
+                "By default, CM3 should be using unigram tokenization. "
+                "Please double check tokenization unless you really are sure of what you are doing."
             )
             self.tokenizer = self._initialize_gpt2_tokenizer(args)
         else:
