@@ -9,6 +9,7 @@ import functools
 import logging
 import os
 import re
+from tabnanny import check
 import traceback
 from glob import glob
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,7 @@ from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as dist_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 
 logger = logging.getLogger(__name__)
 
@@ -236,29 +238,19 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
         )
         first_launch = not PathManager.exists(checkpoint_path_to_load)
-        if not first_launch and not verify_shards(
-            cfg, dir=cfg.save_dir, checkpoint_name=cfg.restore_file
-        ):
-            # checkpoint_last is corrupted
+        if not first_launch and not verify_shards(cfg, dir = cfg.save_dir, checkpoint_name=cfg.restore_file):
+            #checkpoint_last is corrupted
             best_checkpoint = get_last_good_checkpoint(cfg)
             if best_checkpoint is not None:
-                cfg.restore_file = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + ".pt"
-                )
-                checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + ".pt"
-                )
+                cfg.restore_file = os.path.join(cfg.save_dir, get_last_good_checkpoint(cfg)+'.pt')
+                checkpoint_path_to_load = os.path.join(cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + '.pt')
             else:
                 first_launch = True
 
         elif first_launch and get_last_good_checkpoint(cfg) is not None:
             # possible past checkpoint to load from
-            cfg.restore_file = os.path.join(
-                cfg.save_dir, get_last_good_checkpoint(cfg) + ".pt"
-            )
-            checkpoint_path_to_load = os.path.join(
-                cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + ".pt"
-            )
+            cfg.restore_file = os.path.join(cfg.save_dir, get_last_good_checkpoint(cfg)+'.pt')
+            checkpoint_path_to_load = os.path.join(cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + '.pt')
             first_launch = False
 
         if cfg.finetune_from_model is not None and first_launch:
