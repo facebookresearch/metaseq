@@ -14,11 +14,12 @@ TOTAL_WORLD_SIZE = 8
 
 
 try:
-    from metaseq_internal.constants import LOCAL_SSD, MODEL_SHARED_FOLDER
-except ModuleNotFoundError:
-    # MODEL_SHARED_FOLDER should point to a shared drive (e.g. NFS) where the
+    # internal logic denoting where checkpoints are in meta infrastructure
+    from metaseq_internal.constants import CHECKPOINT_FOLDER
+except ImportError:
+    # CHECKPOINT_FOLDER should point to a shared drive (e.g. NFS) where the
     # checkpoints from S3 are stored. As an example:
-    # MODEL_SHARED_FOLDER = "/example/175B/reshard_no_os"
+    # CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
     # $ ls /example/175B/reshard_no_os
     # reshard-model_part-0.pt
     # reshard-model_part-1.pt
@@ -28,26 +29,13 @@ except ModuleNotFoundError:
     # reshard-model_part-5.pt
     # reshard-model_part-6.pt
     # reshard-model_part-7.pt
-    MODEL_SHARED_FOLDER = ""
-    # LOCAL_SSD is optional, but it's assuming you have some sort of local
-    # hard disk where we can cache a copy of the weights for faster loading.
-    LOCAL_SSD = ""
-    if not LOCAL_SSD:
-        # don't use local cache
-        LOCAL_SSD = MODEL_SHARED_FOLDER
-    if not MODEL_SHARED_FOLDER:
-        raise RuntimeError(
-            "You must set the variables in metaseq.service.constants to launch the API."
-        )
+    CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
 
 # tokenizer files
-BPE_MERGES = os.path.join(MODEL_SHARED_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(MODEL_SHARED_FOLDER, "gpt2-vocab.json")
+BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
+BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
-# where to find the raw files on nfs
-CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "175B", "reshard_no_os")
-# where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "175B", "reshard_no_os", "reshard.pt")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
@@ -58,7 +46,7 @@ LAUNCH_ARGS = [
     "--bpe hf_byte_bpe",
     f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--path {CHECKPOINT_LOCAL}",
+    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
     "--beam 1 --nbest 1",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",

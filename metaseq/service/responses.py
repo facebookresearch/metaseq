@@ -5,7 +5,7 @@
 
 import uuid
 import time
-from metaseq.service.constants import CHECKPOINT_LOCAL
+from metaseq.service.constants import CHECKPOINT_FOLDER
 
 
 class OAIResponse:
@@ -19,7 +19,7 @@ class OAIResponse:
             "id": self.response_id,
             "object": "text_completion",
             "created": self.created,
-            "model": CHECKPOINT_LOCAL,
+            "model": CHECKPOINT_FOLDER,
             "choices": [
                 {
                     "text": result["text"],
