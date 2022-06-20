@@ -247,6 +247,9 @@ class SequenceGenerator(nn.Module):
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
         # decisions are only over the most recent token.
+        import metaseq.pdb
+
+        # metaseq.pdb.set_trace_rank0()  # FIXME
         lprobs_cut = []
         for i in range(src_tokens.shape[0]):
             prompt_len = src_lengths[i]
@@ -256,6 +259,15 @@ class SequenceGenerator(nn.Module):
         # finally, scores is actually stored as the cumulative NLL, but we have
         # individual NLL scores right now
         scores = scores.cumsum(dim=1)
+        # the first step of beam search also needs lprobs to be cumulative
+        # in order to keep the running sum correct
+        lprobs = lprobs + scores[:, -1]
+
+        from metaseq.utils import print_r0
+
+        print_r0("Starting scores")
+        print_r0(scores[:, 1:] - scores[:, :-1])
+        print_r0("")
 
         # start from previous timestep because we still have to do beam search
         # bookkeeping (i.e. finalize the hypothesis if it's the final token)
@@ -369,6 +381,8 @@ class SequenceGenerator(nn.Module):
                 break
             assert step < max_len, f"{step} < {max_len}"
 
+            print_r0(scores[:, 1:] - scores[:, :-1])
+
             # Remove finalized sentences (ones for which {beam_size}
             # finished hypotheses have been generated) from the batch.
             if len(finalized_sents) > 0:
@@ -445,14 +459,14 @@ class SequenceGenerator(nn.Module):
             # the prompt tokens here for ease of bookkeeping.
 
             # Set the tokens for each beam (can select the same row more than once)
-            tokens[:, start_step : step + 1] = torch.index_select(
-                tokens[:, start_step : step + 1], dim=0, index=active_bbsz_idx
+            tokens[:, start_step:step] = torch.index_select(
+                tokens[:, start_step:step], dim=0, index=active_bbsz_idx
             )
             # Select the next token for each of them
             tokens.view(bsz, beam_size, -1)[:, :, step + 1] = torch.gather(
                 cand_indices, dim=1, index=active_hypos
             )
-            if step > start_step:
+            if step >= start_step:
                 scores[:, start_step:step] = torch.index_select(
                     scores[:, start_step:step], dim=0, index=active_bbsz_idx
                 )

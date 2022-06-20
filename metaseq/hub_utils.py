@@ -624,10 +624,11 @@ class GeneratorInterface:
                     else:
                         distributions = None
 
-                    tokens, scores, distributions = GeneratorInterface._filter_special(
-                        tokens, scores, distributions
-                    )
+                    # tokens, scores, distributions = GeneratorInterface._filter_special(
+                    #     tokens, scores, distributions
+                    # )
                     prompt_len = lengths[i]
+
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i]]
