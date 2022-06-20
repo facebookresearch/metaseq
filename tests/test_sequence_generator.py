@@ -411,5 +411,29 @@ class TestTopPSamplingSearch(TestSequenceGeneratorBase):
         return t1.size() == t2.size() and t1.ne(t2).long().sum() == 0
 
 
+class TestSequenceGeneratorBeamSearch(TestSequenceGeneratorBase):
+    def setUp(self):
+        (
+            self.tgt_dict,
+            self.w1,
+            self.w2,
+            src_tokens,
+            src_lengths,
+            self.model,
+        ) = test_utils.sequence_generator_setup()
+        self.sample = {
+            "net_input": {"src_tokens": src_tokens, "src_lengths": src_lengths}
+        }
+
+    def test_beam_search(self):
+        return
+        # IF the test model functioned with sequence generator, this would work.
+        # It currently does not work because src_len cannot be computed
+        # from `encoder_out`, given the encoder is not called during
+        # generation
+        generator = SequenceGenerator([self.model], self.tgt_dict, beam_size=2)
+        generator.generate([self.model], self.sample)
+
+
 if __name__ == "__main__":
     unittest.main()

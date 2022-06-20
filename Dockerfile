@@ -5,9 +5,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p /build
 WORKDIR /build
 
-# Fix for https://github.com/NVIDIA/nvidia-docker/issues/1631
-RUN rm /etc/apt/sources.list.d/cuda.list
-RUN rm /etc/apt/sources.list.d/nvidia-ml.list
 RUN apt-key del 7fa2af80 && \
     apt-get -qq update && \
     apt-get -qq install -y --no-install-recommends curl && \
@@ -32,7 +29,7 @@ RUN pip3 install -v --no-cache-dir --global-option="--cpp_ext" --global-option="
 # Install Megatron-LM branch
 WORKDIR /build
 
-RUN git clone --branch fairseq_v2 https://github.git adcom/ngoyal2707/Megatron-LM.git
+RUN git clone --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
 WORKDIR /build/Megatron-LM
 RUN pip3 install six regex
 RUN pip3 install -e .
@@ -40,9 +37,8 @@ RUN pip3 install -e .
 # Install Fairscale
 WORKDIR /build
 
-RUN git clone https://github.com/facebookresearch/fairscale.git
+RUN git clone --branch prefetch_fsdp_params_simple https://github.com/facebookresearch/fairscale.git
 WORKDIR /build/fairscale
-RUN git checkout prefetch_fsdp_params_simple
 RUN pip3 install -e .
 
 # Install metaseq
