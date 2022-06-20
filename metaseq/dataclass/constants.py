@@ -45,3 +45,6 @@ DDP_BACKEND_CHOICES = ChoiceEnum(
 DATASET_IMPL_CHOICES = ChoiceEnum(["raw", "lazy", "cached", "mmap", "fasta"])
 ZERO_SHARDING_CHOICES = ChoiceEnum(["none", "os"])
 CLIP_GRAD_NORM_TYPE_CHOICES = ChoiceEnum(["l2", "inf"])
+
+# Default document attention separator
+UNSPECIFIED_DOC_SEP = -1

@@ -11,6 +11,8 @@ from typing import Optional
 
 from omegaconf import II
 
+from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.models import (
@@ -121,6 +123,13 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={
             "help": "use the ALiBi position method instead of regular position embeddings"
+        },
+    )
+    # Dynamic Attention
+    self_attn_doc_sep: int = field(
+        default=UNSPECIFIED_DOC_SEP,
+        metadata={
+            "help": "use dynamic self attention masking when document separator ID is specified"
         },
     )
     fsdp_checkpoint_wrap_layer_frequency: int = field(
