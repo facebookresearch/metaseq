@@ -21,7 +21,6 @@ from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as dist_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 
 logger = logging.getLogger(__name__)
 
