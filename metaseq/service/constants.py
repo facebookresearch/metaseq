@@ -5,13 +5,13 @@
 
 import os
 
-MAX_SEQ_LEN = os.getenv("METASEQ_OPT_MAX_SEQ_LEN", 2048)
-BATCH_SIZE = os.getenv("METASEQ_OPT_BATCH_SIZE", 2048)  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
-MAX_BATCH_TOKENS = os.getenv("METASEQ_OPT_MAX_BATCH_TOKENS", 3072)
-DEFAULT_PORT = os.getenv("METASEQ_OPT_DEFAULT_PORT", 6010)
-MODEL_PARALLEL = os.getenv("METASEQ_OPT_MODEL_PARALLEL", 8)
-TOTAL_WORLD_SIZE = os.getenv("METASEQ_OPT_TOTAL_WORLD_SIZE", 8)
-DISTRIBUTED_PORT = os.getenv("METASEQ_OPT_DISTRIBUTED_PORT", 13000)
+MAX_SEQ_LEN = int(os.getenv("METASEQ_OPT_MAX_SEQ_LEN", 2048))
+BATCH_SIZE = int(os.getenv("METASEQ_OPT_BATCH_SIZE", 2048))  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
+MAX_BATCH_TOKENS = int(os.getenv("METASEQ_OPT_MAX_BATCH_TOKENS", 3072))
+DEFAULT_PORT = int(os.getenv("METASEQ_OPT_DEFAULT_PORT", 6010))
+MODEL_PARALLEL = int(os.getenv("METASEQ_OPT_MODEL_PARALLEL", 8))
+TOTAL_WORLD_SIZE = int(os.getenv("METASEQ_OPT_TOTAL_WORLD_SIZE", 8))
+DISTRIBUTED_PORT = int(os.getenv("METASEQ_OPT_DISTRIBUTED_PORT", 13000))
 
 try:
     # internal logic denoting where checkpoints are in meta infrastructure
