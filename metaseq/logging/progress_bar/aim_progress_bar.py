@@ -48,6 +48,9 @@ class AimProgressBarWrapper(BaseProgressBar):
 
             self.run = get_aim_run(aim_repo, aim_run_hash)
 
+    def __len__(self):
+        return len(self.wrapped_bar)
+    
     def __iter__(self):
         return iter(self.wrapped_bar)
 
