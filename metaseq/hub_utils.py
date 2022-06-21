@@ -453,6 +453,7 @@ class GeneratorInterface:
 
     def __init__(self, cfg: MetaseqConfig):
         self.cfg = cfg
+        logger.info(cfg)
         if isinstance(self.cfg, Namespace):
             self.cfg = convert_namespace_to_omegaconf(self.cfg)
 
@@ -472,7 +473,7 @@ class GeneratorInterface:
 
         def _build_model(cfg, task):
             model = task.build_model(cfg.model).half().cuda()
-            model.make_generation_fast_()
+            # model.make_generation_fast_()
             return fsdp_wrap(model)
 
         # Load the model
@@ -624,7 +625,7 @@ class GeneratorInterface:
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
-                    prompt_len = src_lengths[i]
+                    prompt_len = lengths[i] + 1
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i] - 1]

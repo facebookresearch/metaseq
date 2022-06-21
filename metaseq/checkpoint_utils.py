@@ -344,7 +344,10 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
 
 
 def get_paths_to_load(local_path, suffix="rank-"):
+    logger.info(f'local path: {local_path}')
     checkpoint_files = glob(re.sub(f"{suffix}[0-9]+", f"{suffix}*", local_path))
+    logger.info('found ckpt file:')
+    logger.info(checkpoint_files)
     if not _is_checkpoint_sharded(checkpoint_files):
         return [local_path]
     checkpoint_files_count = len(checkpoint_files)
@@ -468,7 +471,13 @@ def load_model_ensemble_and_task(
             if num_shards == 1:
                 filename = filename.replace(".pt", suffix + ".pt")
             else:
-                filename = orig_filename[:-3] + f"_part{shard_idx}.pt"
+                logger.info('1 shard filename')
+                tt =filename.replace(".pt", suffix + ".pt")
+                logger.info(tt)
+                filename = orig_filename[:-3] +  suffix + f"-shard{shard_idx}.pt"
+                logger.info('2 shards filenmae:')
+                logger.info(filename)
+
             if state is None:
                 state = load_checkpoint_to_cpu(filename, arg_overrides)
             if "cfg" in state and state["cfg"] is not None:

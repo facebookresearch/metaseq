@@ -10,7 +10,7 @@ BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 2
-TOTAL_WORLD_SIZE = 2
+TOTAL_WORLD_SIZE = 2 # 16
 
 
 try:
@@ -39,6 +39,8 @@ except ModuleNotFoundError:
         raise RuntimeError(
             "You must set the variables in metaseq.service.constants to launch the API."
         )
+MODEL_SHARED_FOLDER='/data/home/liliyu/workplace/cm3-code/metaseq-internal/saved_models'
+LOCAL_SSD=MODEL_SHARED_FOLDER
 
 # tokenizer files
 BPE_MERGES = os.path.join(MODEL_SHARED_FOLDER, "gpt2-merges.txt")
@@ -49,10 +51,12 @@ CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "13B", "reshard")
 # where to store them on SSD for faster loading
 CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "13B", "reshard", "reshard.pt")
 
+
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
     "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
+    # "--task language_modeling",
     f"--bpe-merges {BPE_MERGES}",
     f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
@@ -60,7 +64,8 @@ LAUNCH_ARGS = [
     f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {CHECKPOINT_LOCAL}",
     "--beam 1 --nbest 1",
-    "--distributed-port 13000",
+    # "--distributed-port 13000",
+    # "--checkpoint-shard-count 2",
     "--checkpoint-shard-count 1",
     "--use-sharded-state",
     f"--batch-size {BATCH_SIZE}",
