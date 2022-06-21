@@ -25,6 +25,9 @@ def get_progress_bar(
     tensorboard_logdir: Optional[str] = None,
     wandb_project: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
+    aim_repo: Optional[str] = None,
+    aim_run_hash: Optional[str] = None,
+    aim_param_checkpoint_dir: Optional[str] = None,
 ):
     if log_file is not None:
         handler = logging.FileHandler(filename=log_file)
@@ -40,5 +43,10 @@ def get_progress_bar(
 
     if wandb_project:
         bar = WandBProgressBarWrapper(bar, wandb_project, run_name=wandb_run_name)
+
+    if aim_repo:
+        bar = AimProgressBarWrapper(
+            bar, aim_repo, aim_run_hash, aim_param_checkpoint_dir
+        )
 
     return bar

@@ -50,7 +50,7 @@ class AimProgressBarWrapper(BaseProgressBar):
 
     def __len__(self):
         return len(self.wrapped_bar)
-    
+
     def __iter__(self):
         return iter(self.wrapped_bar)
 
