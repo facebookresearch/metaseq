@@ -13,45 +13,19 @@ MODEL_PARALLEL = 2
 TOTAL_WORLD_SIZE = 2
 
 
-try:
-    # internal logic denoting where checkpoints are in meta infrastructure
-    from metaseq_internal.constants import CHECKPOINT_FOLDER
-except ImportError:
-    # CHECKPOINT_FOLDER should point to a shared drive (e.g. NFS) where the
-    # checkpoints from S3 are stored. As an example:
-    # CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
-    # $ ls /example/175B/reshard_no_os
-    # reshard-model_part-0.pt
-    # reshard-model_part-1.pt
-    # reshard-model_part-2.pt
-    # reshard-model_part-3.pt
-    # reshard-model_part-4.pt
-    # reshard-model_part-5.pt
-    # reshard-model_part-6.pt
-    # reshard-model_part-7.pt
-    CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
-
-# tokenizer files
-BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
-
-# where to find the raw files on nfs
-CHECKPOINT_FOLDER = os.path.join(MODEL_SHARED_FOLDER, "13B", "reshard")
+CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/experiment_1/resharded/"
 # where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join(LOCAL_SSD, "13B", "reshard", "reshard.pt")
+CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "13B", "resharded", "reshard.pt")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
     "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
-    f"--bpe-merges {BPE_MERGES}",
-    f"--bpe-vocab {BPE_VOCAB}",
-    "--bpe hf_byte_bpe",
-    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V65536_I8192_S512_M512_R1024.json",
     f"--path {CHECKPOINT_FOLDER}/reshard.pt",
     "--beam 1 --nbest 1",
+    "--bpe hf_cm3_unigram",
+    # "--final-vocab-size 65536",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",
     "--use-sharded-state",

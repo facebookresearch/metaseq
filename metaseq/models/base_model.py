@@ -171,7 +171,7 @@ class BaseModel(nn.Module):
             except (AttributeError, ValueError):  # this module didn't have weight norm
                 return
 
-        self.apply(apply_remove_weight_norm)
+        # TODO: FIGURE OUT WHY THIS BREAKS self.apply(apply_remove_weight_norm)
 
         def apply_make_generation_fast_(module, prefix):
             if len(prefix) > 0:

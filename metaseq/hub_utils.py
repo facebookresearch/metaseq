@@ -520,6 +520,7 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
+        skip_special_tokens=False,
     ):
         """
         Generate from sequences.
@@ -641,13 +642,22 @@ class GeneratorInterface:
                         if logprobs > 0:
                             distributions = distributions[prompt_len:][: max_tokens[i]]
                     # turn it into a string
-                    text = self.bpe.bpe.decode(tokens)
+                    text = self.bpe.bpe.decode(
+                        tokens, skip_special_tokens=skip_special_tokens
+                    )
                     # re-encode it so we get offsets
                     token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
 
                     result = {
-                        "text": self.bpe.bpe.decode(tokens),
-                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
+                        "text": self.bpe.bpe.decode(
+                            tokens, skip_special_tokens=skip_special_tokens
+                        ),
+                        "tokens": [
+                            self.bpe.bpe.decode(
+                                [t], skip_special_tokens=skip_special_tokens
+                            )
+                            for t in tokens
+                        ],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
