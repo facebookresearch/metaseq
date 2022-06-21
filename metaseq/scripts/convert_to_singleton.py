@@ -91,14 +91,15 @@ def worker_main(cfg: MetaseqConfig):
 
     glued = glue_megatron_parts(model_parts)
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
-    
+
     glued["decoder.version"] = model["model"]["decoder.version"].cpu()
-    
+
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
 
     output_sd = checkpoint_utils.load_checkpoint_to_cpu(
         cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt")
+    )
     output_sd["model"] = utils.move_to_cpu(glued)
     output_sd["cfg"]["model"].arch = "transformer_lm"
 
