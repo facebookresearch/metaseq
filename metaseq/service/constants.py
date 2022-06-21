@@ -34,9 +34,10 @@ except ImportError:
     CHECKPOINT_FOLDER = os.getenv(
         "METASEQ_OPT_CHECKPOINT_FOLDER", "/example/175B/reshard_no_os"
     )
-    BPE_FOLDER = os.getenv("METASEQ_OPT_BPE_FOLDER", CHECKPOINT_FOLDER)
+
 
 # tokenizer files
+BPE_FOLDER = os.getenv("METASEQ_OPT_BPE_FOLDER", CHECKPOINT_FOLDER)
 BPE_MERGES = os.path.join(BPE_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(BPE_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
