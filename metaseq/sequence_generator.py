@@ -247,9 +247,6 @@ class SequenceGenerator(nn.Module):
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
         # decisions are only over the most recent token.
-        import metaseq.pdb
-
-        # metaseq.pdb.set_trace_rank0()  # FIXME
         lprobs_cut = []
         for i in range(src_tokens.shape[0]):
             prompt_len = src_lengths[i]
@@ -261,13 +258,7 @@ class SequenceGenerator(nn.Module):
         scores = scores.cumsum(dim=1)
         # the first step of beam search also needs lprobs to be cumulative
         # in order to keep the running sum correct
-        lprobs = lprobs + scores[:, -1]
-
-        from metaseq.utils import print_r0
-
-        print_r0("Starting scores")
-        print_r0(scores[:, 1:] - scores[:, :-1])
-        print_r0("")
+        first_offset = scores[:, -1:]
 
         # start from previous timestep because we still have to do beam search
         # bookkeeping (i.e. finalize the hypothesis if it's the final token)
@@ -326,12 +317,14 @@ class SequenceGenerator(nn.Module):
             cand_scores, cand_indices, cand_beams = self.search.step(
                 # underlying search indexes from first token being generated,
                 # so we need to account for the size of the prompt.
-                step - start_step + 1,
-                lprobs.view(bsz, -1, self.vocab_size),
-                scores[:, start_step - 1 : step].view(bsz, beam_size, -1),
-                tokens[:, start_step - 1 : step + 1],
-                original_batch_idxs,
+                step=step - start_step + 1,
+                lprobs=lprobs.view(bsz, -1, self.vocab_size),
+                scores=scores[:, start_step - 1 : step].view(bsz, beam_size, -1),
+                offset=first_offset,
+                prev_output_tokens=tokens[:, start_step - 1 : step + 1],
+                original_batch_idxs=original_batch_idxs,
             )
+            first_offset = None  # reset after the first step
 
             # cand_bbsz_idx contains beam indices for the top candidate
             # hypotheses, with a range of values: [0, bsz*beam_size),
@@ -380,8 +373,6 @@ class SequenceGenerator(nn.Module):
             if self.search.stop_on_max_len and step >= max_len:
                 break
             assert step < max_len, f"{step} < {max_len}"
-
-            print_r0(scores[:, 1:] - scores[:, :-1])
 
             # Remove finalized sentences (ones for which {beam_size}
             # finished hypotheses have been generated) from the batch.

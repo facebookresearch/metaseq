@@ -624,9 +624,9 @@ class GeneratorInterface:
                     else:
                         distributions = None
 
-                    # tokens, scores, distributions = GeneratorInterface._filter_special(
-                    #     tokens, scores, distributions
-                    # )
+                    tokens, scores, distributions = GeneratorInterface._filter_special(
+                        tokens, scores, distributions
+                    )
                     prompt_len = lengths[i]
 
                     if echo:
