@@ -6,7 +6,9 @@
 import os
 
 MAX_SEQ_LEN = int(os.getenv("METASEQ_OPT_MAX_SEQ_LEN", 2048))
-BATCH_SIZE = int(os.getenv("METASEQ_OPT_BATCH_SIZE", 2048))  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
+BATCH_SIZE = int(
+    os.getenv("METASEQ_OPT_BATCH_SIZE", 2048)
+)  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = int(os.getenv("METASEQ_OPT_MAX_BATCH_TOKENS", 3072))
 DEFAULT_PORT = int(os.getenv("METASEQ_OPT_DEFAULT_PORT", 6010))
 MODEL_PARALLEL = int(os.getenv("METASEQ_OPT_MODEL_PARALLEL", 8))
@@ -29,11 +31,14 @@ except ImportError:
     # reshard-model_part-5.pt
     # reshard-model_part-6.pt
     # reshard-model_part-7.pt
-    CHECKPOINT_FOLDER = os.getenv("METASEQ_OPT_CHECKPOINT_FOLDER", "/example/175B/reshard_no_os")
+    CHECKPOINT_FOLDER = os.getenv(
+        "METASEQ_OPT_CHECKPOINT_FOLDER", "/example/175B/reshard_no_os"
+    )
+    BPE_FOLDER = os.getenv("METASEQ_OPT_BPE_FOLDER", CHECKPOINT_FOLDER)
 
 # tokenizer files
-BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+BPE_MERGES = os.path.join(BPE_FOLDER, "gpt2-merges.txt")
+BPE_VOCAB = os.path.join(BPE_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
 
