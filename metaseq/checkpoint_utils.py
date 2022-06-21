@@ -292,6 +292,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             # when the checkpoint passed by the user is not corrupted
             checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
         else:
+            logger.warning(
+                "Passed checkpoint is either corrupted or does not exist. Loading last good checkpoint"
+            )
             if get_last_good_checkpoint(cfg) is not None:
                 # checkpoint passed by user is corrupted but there is a good checkpoint to fall back on
                 checkpoint_path_to_load = os.path.join(
