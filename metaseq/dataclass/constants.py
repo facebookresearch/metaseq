@@ -39,9 +39,12 @@ DDP_BACKEND_CHOICES = ChoiceEnum(
     [
         "c10d",  # alias for pytorch_ddp
         "fully_sharded",  # FullyShardedDataParallel from fairscale
+        "ptd_fully_sharded",  # FullyShardedDataParallel from PyTorch Distributed
         "pytorch_ddp",
     ]
 )
 DATASET_IMPL_CHOICES = ChoiceEnum(["raw", "lazy", "cached", "mmap", "fasta"])
 ZERO_SHARDING_CHOICES = ChoiceEnum(["none", "os"])
 CLIP_GRAD_NORM_TYPE_CHOICES = ChoiceEnum(["l2", "inf"])
+# This is PTD FSDP config
+BACKWARD_PREFETCH_CHOICES = ChoiceEnum(["pre", "post"])

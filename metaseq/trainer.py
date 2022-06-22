@@ -19,7 +19,10 @@ import torch
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils
+from metaseq.distributed import (
+    utils as distributed_utils,
+    FSDP as FSDP
+)
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
@@ -70,7 +73,7 @@ class Trainer(object):
         else:
             self.device = torch.device("cpu")
 
-        if self.is_fsdp:
+        if self.is_fs_fsdp:
             import fairscale
 
             if self.cfg.distributed_training.zero_sharding != "none":
@@ -99,6 +102,34 @@ class Trainer(object):
         else:
             if self.cfg.distributed_training.cpu_offload:
                 raise ValueError("--cpu-offload requires --ddp-backend=fully_sharded")
+
+        if self.is_ptd_fsdp:
+            if self.cfg.distributed_training.zero_sharding != "none":
+                raise ValueError(
+                    "FullyShardedDataParallel is not compatible with --zero-sharding "
+                    "option (it's already built in)"
+                )
+            # what's the relationshhp between update-freq and fsdp?
+            if (
+                max(self.cfg.optimization.update_freq) > 1
+                and str(torch.__version__) < "1.12"
+            ):
+                raise RuntimeError(
+                    "Please update to PyTorch 1.12 or newer when combining "
+                    "--update-freq with FullyShardedDataParallel"
+                )
+            if self.cfg.optimizer == "adam8bit":
+                assert (
+                    self.use_sharded_state
+                ), "adam8bit + FSDP requires --use-sharded-state"
+            if self.use_sharded_state:
+                assert (
+                    str(torch.__version__) >= "1.12"
+                ), f"--use-sharded-state requires newer PyTorch. pip3 install torch torchvision torchaudio"
+        else:
+            if self.cfg.distributed_training.cpu_offload:
+                raise ValueError("--cpu-offload requires --ddp-backend=fully_sharded")
+
 
         # copy model and criterion to current device/dtype
         self._criterion = criterion
@@ -332,8 +363,16 @@ class Trainer(object):
         self._lr_scheduler.step_update(0)
 
     @property
+    def is_fs_fsdp(self):
+        return self.cfg.distributed_training.ddp_backend in ["fully_sharded"]
+
+    @property
+    def is_ptd_fsdp(self):
+        return self.cfg.distributed_training.ddp_backend in ["ptd_fully_sharded"]
+
+    @property
     def is_fsdp(self):
-        return self.cfg.distributed_training.ddp_backend == "fully_sharded"
+        return self.is_fs_fsdp or self.is_ptd_fsdp
 
     @property
     def use_sharded_state(self):
@@ -347,9 +386,11 @@ class Trainer(object):
         if hasattr(self.optimizer.optimizer, "consolidate_state_dict"):
             self.optimizer.optimizer.consolidate_state_dict()
         elif self.is_fsdp and not self.use_sharded_state:
-            st = self.model.gather_full_optim_state_dict(
-                self.optimizer
-            )  # only returns on rank 0
+            if self.is_fs_fsdp:
+                st = self.model.gather_full_optim_state_dict(self.optimizer)
+            else:
+                st = FSDP.full_optim_state_dict(self.model, self.optimizer)
+                # only returns on rank 0
             if st is None:
                 st = -1  # sentinel so that workers do not save optimizer.state_dict()
             self._gathered_optim_state = st
@@ -401,7 +442,7 @@ class Trainer(object):
             ):
                 state_dict["last_optimizer_state"] = optimizer_state_dict
 
-            if self.is_fsdp and self.use_sharded_state:
+            if self.is_fs_fsdp and self.use_sharded_state:
                 state_dict[
                     "shard_metadata"
                 ] = (
@@ -452,6 +493,7 @@ class Trainer(object):
         bexists = PathManager.isfile(filename)
         if bexists:
             logger.info(f"Preparing to load checkpoint {filename}")
+
             load_on_all_ranks = (
                 self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
                 # FSDP requires loading checkpoint shards on all ranks
@@ -544,11 +586,13 @@ class Trainer(object):
                     last_optim_state
                 )
             elif self.is_fsdp and not self.use_sharded_state:
-                last_optim_state = self.model.get_shard_from_optim_state_dict(
-                    last_optim_state
-                )
+                if self.is_fs_fsdp:
+                    last_optim_state = self.model.get_shard_from_optim_state_dict(
+                        last_optim_state
+                    )
+                else:
+                    last_optim_state = FSDP.shard_full_optim_state_dict(last_optim_state, self.model)
                 logger.info(f"FSDP got shard from optim_state for {filename}")
-
             self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
             logger.info(f"Loaded optim_state for {filename}")
             self.set_num_updates(last_optim["num_updates"])

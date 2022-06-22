@@ -21,6 +21,12 @@ from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as dist_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
+from torch.distributed._shard.checkpoint import (
+    save_state_dict,
+    load_state_dict,
+    FileSystemReader,
+    FileSystemWriter
+)
 
 logger = logging.getLogger(__name__)
 
@@ -406,17 +412,20 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
 
     # path to checkpoint...-shared.pt
     paths_to_load = get_paths_to_load(local_path, suffix="shard")
+    logger.info(f"rank [{ dist_utils.get_data_parallel_rank()}] paths_to_load: {paths_to_load}")
     try:
         if len(paths_to_load) > 1:
             state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
         else:
             state = torch_load_cpu(local_path)
-    except Exception:
+    except Exception as e:
         print(
             "got exception while trying to load",
             path,
             "with paths to load",
             paths_to_load,
+            "exception",
+            e
         )
     logger.info("Done reading from disk")
 
@@ -566,6 +575,8 @@ def _torch_persistent_save(obj, f, num_retries=3):
     for i in range(num_retries):
         try:
             return torch.save(obj, f)
+            # TODO (mingzhe): change to new API once ready.
+            #return save_state_dict(state_dict=obj, storage_writer=FileSystemWriter(filename))
         except Exception:
             if i == num_retries - 1:
                 logger.error(traceback.format_exc())

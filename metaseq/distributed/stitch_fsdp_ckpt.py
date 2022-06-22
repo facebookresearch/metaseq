@@ -21,6 +21,9 @@ from metaseq.file_io import load_and_pop_last_optimizer_state
 logger = logging.getLogger(__name__)
 
 
+# TODO (mingzhe)
+# update the ckpt logic to work with PTD FSDP interface.
+
 def _get_shard_number(x) -> int:
     match = re.search(r"shard(\d+).pt", x)
     if match is None:

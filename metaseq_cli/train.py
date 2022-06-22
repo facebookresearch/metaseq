@@ -89,13 +89,13 @@ def _decoder_sharding_plan(specs, num_layers):
             pre + ".self_attn.out_proj": colwise_spec,
         })
         return_local_tensor.extend([
-            pre + ".fc2", 
+            pre + ".fc2",
             pre + ".self_attn.out_proj"
         ])
 
     return ShardingPlan(
-        plan=plan, 
-        output_plan=output_plan, 
+        plan=plan,
+        output_plan=output_plan,
         return_local_tensor=return_local_tensor,
     )
 
@@ -154,9 +154,9 @@ def main(cfg: DictConfig) -> None:
         print(f'[RANK {distributed_utils.get_global_rank()}] sharding_specs: {sharding_specs} {torch.cuda.current_device()}', file=sys.stderr)
         tp_pg = distributed_utils.get_model_parallel_group()
         decoder_sharding_plan = _decoder_sharding_plan(sharding_specs, cfg.model.decoder_layers)
-        shard_module(built_model, decoder_sharding_plan, process_group=tp_pg)        
+        shard_module(built_model, decoder_sharding_plan, process_group=tp_pg)
 
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
+    if cfg.distributed_training.ddp_backend in ["fully_sharded", "ptd_fully_sharded"]:
         extra = {
             "use_sharded_state": cfg.distributed_training.use_sharded_state,
         }

@@ -163,10 +163,11 @@ def get_grid(args):
         hyperparam("--fp16-init-scale", 4),
         # we set this for the main run but it's probably nt needed here
         # hyperparam("--threshold-loss-scale", 0.25, save_dir_key=lambda val: f"minscale{val}"),
+        # TODO (mingzhe) clean this up when PT FSDP is stable.
         hyperparam(
             "--ddp-backend",
-            "fully_sharded",
-            save_dir_key=lambda val: "fsdp" if not no_save_params else "",
+            ["ptd_fully_sharded"] if os.environ.get("USE_PTD_FSDP", "False") == "True" else ["fully_sharded"],
+            save_dir_key=lambda val: f"{val}" if not no_save_params else "",
         ),
         hyperparam("--tp-enabled"),
         hyperparam("--no-reshard-after-forward", save_dir_key=lambda _: "zero2"),
