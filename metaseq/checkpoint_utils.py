@@ -302,6 +302,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                 )
             else:
                 first_launch = True
+                checkpoint_path_to_load = cfg.restore_file.replace(
+                    ".pt", suffix + ".pt"
+                )
 
     else:
         checkpoint_name = cfg.restore_file.split("/")[-1]
@@ -309,7 +312,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         if verify_shards(cfg, dir=dir, checkpoint_name=checkpoint_name):
             checkpoint_path_to_load = cfg.restore_file
         else:
+            logger.warning("Passed checkpoint is corrupted or does not exist")
             first_launch = True
+            checkpoint_path_to_load = cfg.restore_file
 
     if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
         raise ValueError(
