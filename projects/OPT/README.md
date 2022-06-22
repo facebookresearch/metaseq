@@ -1,5 +1,7 @@
 ## About OPT
-OPT (Open Pre-trained Transformers) is a family of NLP models trained on billions of tokens of text obtained from the internet.
+[OPT (Open Pre-trained Transformers)](https://arxiv.org/abs/2205.01068) is a family of NLP models trained on billions of tokens of text obtained from the internet.
+
+For notes regarding the development of all these models, please refer to our [chronicles](./chronicles/README.md).
 
 ## Pretrained Model Weights
 | Model    | Parameters |                                                                                                                                                                                                                                                                                                                                                                       Pretrained weights                                                                                                                                                                                                                                                                                                                                                                       |
