@@ -109,6 +109,7 @@ class SequenceGenerator(nn.Module):
         incremental_states = torch.jit.annotate(
             Dict[str, Dict[str, Optional[Tensor]]], {}
         )
+        print(f"{sample['id'][0].item()} {torch.distributed.get_rank()}")
         net_input = sample["net_input"]
 
         if "src_tokens" in net_input:
@@ -132,7 +133,7 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
+        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99) + src_tokens.shape[1]
         min_len = min(max_len - 1, self.min_len or 0)
 
         assert (
@@ -343,7 +344,7 @@ class SequenceGenerator(nn.Module):
             )
 
             finalized_sents: List[int] = []
-            if eos_bbsz_idx.numel() > 0:
+            if eos_bbsz_idx.numel() > 0 and num_remaining_sent>0:
                 eos_scores = torch.masked_select(
                     cand_scores[:, :beam_size], mask=eos_mask[:, :beam_size]
                 )
@@ -363,47 +364,53 @@ class SequenceGenerator(nn.Module):
                 num_remaining_sent -= len(finalized_sents)
 
             assert num_remaining_sent >= 0
-            if num_remaining_sent == 0:
-                break
-            if self.search.stop_on_max_len and step >= max_len:
+            # if num_remaining_sent == 0:
+                # break
+            # if self.search.stop_on_max_len and step >= max_len:
+            if step >= max_len:
                 break
             assert step < max_len, f"{step} < {max_len}"
 
+            dist_finished = torch.tensor([0 if f else 1 for f in finished], dtype=torch.int64, device=torch.cuda.current_device())
+            torch.distributed.all_reduce(dist_finished)
+            if torch.count_nonzero(dist_finished).item()==0:
+                break
+
             # Remove finalized sentences (ones for which {beam_size}
             # finished hypotheses have been generated) from the batch.
-            if len(finalized_sents) > 0:
-                new_bsz = bsz - len(finalized_sents)
+            # if len(finalized_sents) > 0:
+                # new_bsz = bsz - len(finalized_sents)
 
-                # construct batch_idxs which holds indices of batches to keep for the next pass
-                batch_mask = torch.ones(
-                    bsz, dtype=torch.bool, device=cand_indices.device
-                )
-                batch_mask[finalized_sents] = False
-                # TODO replace `nonzero(as_tuple=False)` after TorchScript supports it
-                batch_idxs = torch.arange(
-                    bsz, device=cand_indices.device
-                ).masked_select(batch_mask)
+                # # construct batch_idxs which holds indices of batches to keep for the next pass
+                # batch_mask = torch.ones(
+                    # bsz, dtype=torch.bool, device=cand_indices.device
+                # )
+                # batch_mask[finalized_sents] = False
+                # # TODO replace `nonzero(as_tuple=False)` after TorchScript supports it
+                # batch_idxs = torch.arange(
+                    # bsz, device=cand_indices.device
+                # ).masked_select(batch_mask)
 
-                # Choose the subset of the hypothesized constraints that will continue
-                self.search.prune_sentences(batch_idxs)
+                # # Choose the subset of the hypothesized constraints that will continue
+                # self.search.prune_sentences(batch_idxs)
 
-                eos_mask = eos_mask[batch_idxs]
-                cand_beams = cand_beams[batch_idxs]
-                bbsz_offsets.resize_(new_bsz, 1)
-                cand_bbsz_idx = cand_beams.add(bbsz_offsets)
-                cand_scores = cand_scores[batch_idxs]
-                cand_indices = cand_indices[batch_idxs]
+                # eos_mask = eos_mask[batch_idxs]
+                # cand_beams = cand_beams[batch_idxs]
+                # bbsz_offsets.resize_(new_bsz, 1)
+                # cand_bbsz_idx = cand_beams.add(bbsz_offsets)
+                # cand_scores = cand_scores[batch_idxs]
+                # cand_indices = cand_indices[batch_idxs]
 
-                if prefix_tokens is not None:
-                    prefix_tokens = prefix_tokens[batch_idxs]
-                src_lengths = src_lengths[batch_idxs]
-                cands_to_ignore = cands_to_ignore[batch_idxs]
+                # if prefix_tokens is not None:
+                    # prefix_tokens = prefix_tokens[batch_idxs]
+                # src_lengths = src_lengths[batch_idxs]
+                # cands_to_ignore = cands_to_ignore[batch_idxs]
 
-                scores = scores.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
-                tokens = tokens.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
-                bsz = new_bsz
-            else:
-                batch_idxs = None
+                # scores = scores.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
+                # tokens = tokens.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
+                # bsz = new_bsz
+            # else:
+            batch_idxs = None
 
             # Set active_mask so that values > cand_size indicate eos hypos
             # and values < cand_size indicate candidate active hypos.
