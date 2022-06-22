@@ -24,13 +24,24 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
-from metaseq.optim.adam import MetaseqAdam
-    
+
+from torch.distributed._shard.sharded_tensor import (
+    ShardedTensor
+)
 from torch.distributed._shard.sharded_optim import (
     named_params_with_sharded_tensor,
 )
 
 logger = logging.getLogger(__name__)
+
+def extract_sharded_tensor_local_tensors(params):
+    new_params = []
+    for param in params:
+        if isinstance(param, ShardedTensor):
+            new_params.append(torch.nn.Parameter(param.local_tensor()))
+        else:
+            new_params.append(param)
+    return new_params
 
 
 class Trainer(object):
@@ -256,11 +267,14 @@ class Trainer(object):
         if self.is_fsdp and self.cfg.distributed_training.tp_enabled:
             # TODO: We need to figure out whehter MemoryEfficientFP16Optimizer
             # or FP16Optimizer can work with TP.
-            self._optimizer = MetaseqAdam(
-                cfg=self.cfg,
-                params=dict(named_params_with_sharded_tensor(self.model)),
-            )
-        elif self.is_fsdp and self.cfg.common.fp16:
+            sharded_model_params = list(dict(named_params_with_sharded_tensor(self.model)).values())
+            sharded_criterion_params = list(dict(named_params_with_sharded_tensor(self.criterion)).values())
+            sharded_full_params = sharded_model_params + sharded_criterion_params
+            params = extract_sharded_tensor_local_tensors(sharded_full_params)
+
+        print(f"???? params: {params}")
+
+        if self.is_fsdp and self.cfg.common.fp16:
             # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
             # mostly for the grad scaling. But if we don't have the
             # --memory-efficient-fp16 flag set, then we're effectively doing
@@ -287,7 +301,7 @@ class Trainer(object):
                 logger.info("NOTE: your device may support faster training with --fp16")
             self._optimizer = optim.build_optimizer(self.cfg.optimizer, params)
 
-        if self.is_fsdp and not self.cfg.distributed_training.tp_enabled:
+        if self.is_fsdp:
             assert self._optimizer.supports_flat_params, (
                 "--ddp-backend=fully_sharded is only compatible with pointwise "
                 "optimizers (e.g., Adam, AdamW, Adadelta, Adamax, SGD, etc.). "
