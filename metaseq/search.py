@@ -22,7 +22,13 @@ class Search(nn.Module):
         self.stop_on_max_len = False
 
     def step(
-        self, step, lprobs, scores, prev_output_tokens=None, original_batch_idxs=None
+        self,
+        step,
+        lprobs,
+        scores,
+        offset=None,
+        prev_output_tokens=None,
+        original_batch_idxs=None,
     ):
         """Take a single search step.
 
@@ -32,6 +38,9 @@ class Search(nn.Module):
                 the model's log-probabilities over the vocabulary at the current step
             scores: (bsz x input_beam_size x step)
                 the historical model scores of each hypothesis up to this point
+            offset: (bsz x input_beam_size)
+                the NLL of the prompt. used on the first step to maintain
+                consistent cumulative sums
             prev_output_tokens: (bsz x step)
                 the previously generated output tokens
             original_batch_idxs: (bsz)
@@ -105,6 +114,7 @@ class BeamSearch(Search):
         step: int,
         lprobs,
         scores: Optional[Tensor],
+        offset: Optional[Tensor] = None,
         prev_output_tokens: Optional[Tensor] = None,
         original_batch_idxs: Optional[Tensor] = None,
     ):
@@ -113,6 +123,8 @@ class BeamSearch(Search):
         if step == 0:
             # at the first step all hypotheses are equally likely, so use
             # only the first beam
+            if offset is not None:
+                lprobs += offset
             lprobs = lprobs[:, ::beam_size, :].contiguous()
         else:
             # make probs contain cumulative scores for each hypothesis
@@ -198,6 +210,7 @@ class Sampling(Search):
         step: int,
         lprobs,
         scores,
+        offset: Optional[Tensor] = None,
         prev_output_tokens: Optional[Tensor] = None,
         original_batch_idxs: Optional[Tensor] = None,
     ):
@@ -252,6 +265,8 @@ class Sampling(Search):
 
         if step == 0:
             beams_buf = indices_buf.new_zeros(bsz, beam_size)
+            if offset is not None:
+                scores_buf.add_(offset)
         else:
             beams_buf = torch.arange(0, beam_size).to(indices_buf).repeat(bsz, 1)
             # make scores cumulative
