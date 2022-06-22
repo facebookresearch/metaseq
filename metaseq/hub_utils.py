@@ -554,7 +554,6 @@ class GeneratorInterface:
         if temperature > 0:
             self.cfg.generation.temperature = temperature
         elif temperature == 0:
-            # temperature == 0
             self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
         elif temperature < 0:
