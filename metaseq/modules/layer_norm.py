@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from metaseq import distributed_utils as dist_utils
 from typing import Tuple
 import torch.distributed as dist
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 try:
     from apex.normalization import FusedLayerNorm as _FusedLayerNorm
@@ -28,12 +29,34 @@ except ImportError:
     has_fused_layernorm = False
 
 
-def LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
-    if torch.jit.is_scripting():
-        export = True
-    if not export and torch.cuda.is_available() and has_fused_layernorm:
-        return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
-    return torch.nn.LayerNorm(normalized_shape, eps, elementwise_affine)
+# Metaseq does the layer norm only on the local shard with no comms. We have enabled the LayerNorm with comms for
+# ShardedTensor. To keep the original logic, we have to covert the original func to a nn module so 
+# it works for ShardedTensor, too.
+class LayerNorm(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.normalized_shape = args[0]
+        self.eps = kwargs.get("eps", 1e-5)
+        self.elementwise_affine = kwargs.get("elementwise_affine", True)
+        self.export = kwargs.get("export", False)
+        self.fused_layer_norm = FusedLayerNorm(
+            self.normalized_shape, self.eps, self.elementwise_affine
+        ) if has_fused_layernorm else None
+        self.fallback_layer_norm = torch.nn.LayerNorm(
+            self.normalized_shape, self.eps, self.elementwise_affine
+        )
+
+    def forward(self, input):
+        if torch.jit.is_scripting():
+            self.export = True
+        if isinstance(input, ShardedTensor):
+            local_tensor = self.fallback_layer_norm(input.local_tensor())
+            return ShardedTensor._init_from_local_tensor(
+                local_tensor, input.sharding_spec(), input.size(), process_group=input._process_group
+            )
+        if not self.export and torch.cuda.is_available() and has_fused_layernorm:
+            return self.fused_layer_norm(input)
+        return self.fallback_layer_norm(input)
 
 
 class Fp32LayerNorm(nn.LayerNorm):
@@ -94,6 +117,15 @@ class SyncedModelParallelFusedLayerNorm(nn.Module):
         return buffer
 
     def forward(self, hidden_states):
+        # Since this is a synced version of LayerNorm, we can just use ShardedTensor's 
+        # LayerNorm which comes with comms across shards on all ranks.
+        if isinstance(hidden_states, ShardedTensor):
+            return torch.nn.functional.layer_norm(
+                hidden_states,
+                self.normalized_shape,
+                weight=self.weight if self.use_bias else None,
+                bias=self.bias if self.use_bias else None,
+            )
         hid_fp32 = hidden_states.float()
         local_variance = torch.var(hid_fp32, -1, keepdim=True, unbiased=True)
         local_mean = hid_fp32.mean(-1, keepdim=True)

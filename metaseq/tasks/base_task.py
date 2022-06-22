@@ -5,6 +5,7 @@
 
 import logging
 import warnings
+import sys
 from argparse import Namespace
 from typing import Any, Callable, Dict, List
 
@@ -405,12 +406,18 @@ class BaseTask(object):
         """
         model.train()
         model.set_num_updates(update_num)
+        #TODO: Remove debugging print once down.
+        print("criterion class name ", criterion.__class__.__name__, file=sys.stderr)
         with torch.autograd.profiler.record_function("forward"):
             loss, sample_size, logging_output = criterion(model, sample)
+        print("model : ", model, file=sys.stderr)
         if ignore_grad:
             loss *= 0
+        print("loss ", loss, file=sys.stderr)
+        print("logging_output  ", logging_output, file=sys.stderr)
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
+        print("backward finished ", file=sys.stderr)
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):

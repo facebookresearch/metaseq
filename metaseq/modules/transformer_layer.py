@@ -20,6 +20,7 @@ from metaseq.modules.fused_bias_gelu import (
 )
 from metaseq.modules.layer_norm import LayerNorm, SyncedModelParallelFusedLayerNorm
 from metaseq.modules.linear import Linear
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 
 def _linear(x, weight, bias=None):
@@ -211,7 +212,7 @@ class TransformerEncoderLayer(nn.Module):
             self.activation_fn,
             self.fc2,
             self.dropout_module,
-            ffn_ln=self.ffn_layernorm,
+            ffn_ln=None,  # No initialization code.
         )
         l_aux = None
         x = self.residual_connection(x, residual)

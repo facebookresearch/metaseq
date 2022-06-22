@@ -9,6 +9,7 @@ This sweep script takes some additional optional arguments. See add_extra_option
 for more details.
 """
 import os
+import sys
 
 from metaseq.launcher.opt_job_constants import (
     TOTAL_TRAIN_TOKENS,
@@ -69,9 +70,7 @@ def get_grid(args):
     DATA_ROOT = ""
     if args.data is None and not args.benchmark:
         cluster_env = get_env_from_args(args)
-        args.data = os.path.join(
-            DATA_LOCATIONS[cluster_env], "corpus_dedup_10_10_1_0.05_exp29"
-        )
+        args.data = os.path.join(DATA_LOCATIONS[cluster_env], "")
         if os.path.exists(args.data):
             DATA_ROOT = DATA_LOCATIONS[cluster_env]
         else:
@@ -97,6 +96,7 @@ def get_grid(args):
 
     total_gpus = (args.num_gpus * args.num_nodes) // size.model_parallel
     ddp_bsz = (size.batch_size // total_gpus) // SEQ_LEN
+    # TODO: After figuring out the root cause of OOM, we need to remove this.
     total_updates = args.max_update
     if total_updates is None:
         total_updates = int(TOTAL_TRAIN_TOKENS) // size.batch_size
@@ -168,6 +168,7 @@ def get_grid(args):
             "fully_sharded",
             save_dir_key=lambda val: "fsdp" if not no_save_params else "",
         ),
+        hyperparam("--tp-enabled"),
         hyperparam("--no-reshard-after-forward", save_dir_key=lambda _: "zero2"),
         hyperparam("--use-sharded-state"),
         hyperparam("--checkpoint-activations"),
@@ -185,7 +186,7 @@ def get_grid(args):
         ),
         hyperparam(
             "--arch",
-            "transformer_lm_megatron",
+            "transformer_lm_gpt",
             save_dir_key=lambda val: val if not no_save_params else "",
         ),
         hyperparam("--share-decoder-input-output-embed"),

@@ -240,6 +240,9 @@ class DistributedTrainingConfig(MetaseqDataclass):
     ddp_backend: DDP_BACKEND_CHOICES = field(
         default="pytorch_ddp", metadata={"help": "DistributedDataParallel backend"}
     )
+    tp_enabled: bool = field(
+        default=False, metadata={"help": "use PTD native tensor parallel"}
+    )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}
     )
@@ -414,6 +417,10 @@ class OptimizationConfig(MetaseqDataclass):
     )
     clip_norm: float = field(
         default=0.0, metadata={"help": "clip threshold of gradients"}
+    )
+    # We need to access this field for optimizer too. So we need to specify the field one more time.
+    tp_enabled: bool = field(
+        default=False, metadata={"help": "use PTD native tensor parallel"}
     )
     clip_norm_type: Optional[CLIP_GRAD_NORM_TYPE_CHOICES] = field(
         default="l2",

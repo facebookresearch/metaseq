@@ -25,7 +25,23 @@ from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 
+from torch.distributed._shard.sharded_tensor import (
+    ShardedTensor
+)
+from torch.distributed._shard.sharded_optim import (
+    named_params_with_sharded_tensor,
+)
+
 logger = logging.getLogger(__name__)
+
+def extract_sharded_tensor_local_tensors(params):
+    new_params = []
+    for param in params:
+        if isinstance(param, ShardedTensor):
+            new_params.append(torch.nn.Parameter(param.local_tensor()))
+        else:
+            new_params.append(param)
+    return new_params
 
 
 class Trainer(object):
@@ -248,6 +264,16 @@ class Trainer(object):
             )
         )
 
+        if self.is_fsdp and self.cfg.distributed_training.tp_enabled:
+            # TODO: We need to figure out whehter MemoryEfficientFP16Optimizer
+            # or FP16Optimizer can work with TP.
+            sharded_model_params = list(dict(named_params_with_sharded_tensor(self.model)).values())
+            sharded_criterion_params = list(dict(named_params_with_sharded_tensor(self.criterion)).values())
+            sharded_full_params = sharded_model_params + sharded_criterion_params
+            params = extract_sharded_tensor_local_tensors(sharded_full_params)
+
+        print(f"???? params: {params}")
+
         if self.is_fsdp and self.cfg.common.fp16:
             # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
             # mostly for the grad scaling. But if we don't have the
@@ -295,6 +321,7 @@ class Trainer(object):
                 )
             else:
                 optim.shard_(self._optimizer, self.data_parallel_process_group)
+        
 
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
@@ -587,8 +614,11 @@ class Trainer(object):
             ignore_invalid_inputs=True,
             required_batch_size_multiple=self.cfg.dataset.required_batch_size_multiple,
             seed=self.cfg.common.seed,
-            num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
-            shard_id=self.data_parallel_rank if shard_batch_itr else 0,
+            # Make each rank use different data so we are running TP is a SPMD style.
+            num_shards=distributed_utils.get_global_world_size(),
+            shard_id=distributed_utils.get_global_rank(),            
+            #num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
+            #shard_id=self.data_parallel_rank if shard_batch_itr else 0,
             num_workers=self.cfg.dataset.num_workers,
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
@@ -694,6 +724,7 @@ class Trainer(object):
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
                     )
+                    print("sample_size_i ", sample_size_i, file=sys.stderr)
                     del loss
 
                 logging_outputs.append(logging_output)
@@ -704,6 +735,9 @@ class Trainer(object):
                 if self.cuda and self.get_num_updates() == 0:
                     torch.cuda.empty_cache()
             except RuntimeError as e:
+                print("Run time error ", str(e), file=sys.stderr)
+                import traceback
+                traceback.print_exception(*sys.exc_info(), file=sys.stderr)
                 if "out of memory" in str(e):
                     self._log_oom(e)
                     if raise_oom:
@@ -778,6 +812,7 @@ class Trainer(object):
                 )
 
             # check that grad norms are consistent across workers
+            print("grad_norm ", grad_norm, file=sys.stderr)
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
@@ -847,14 +882,18 @@ class Trainer(object):
         if self.cfg.common.fp16 and not self.cfg.common.bf16:
             metrics.log_scalar(
                 "loss_scale",
-                self.optimizer.scaler.loss_scale,
+                #TODO: Recover this input param once we change back from the vanilla optimizer.
+                #self.optimizer.scaler.loss_scale,
+                1000,
                 priority=700,
                 round=4,
                 weight=0,
             )
             metrics.log_scalar(
                 "scale_window",
-                self.optimizer.scaler.scale_window,
+                #TODO: Recover this input param once we change back from the vanilla optimizer.
+                #self.optimizer.scaler.scale_window,
+                20,
                 priority=700,
                 round=4,
                 weight=0,
@@ -1008,7 +1047,7 @@ class Trainer(object):
             clip_norm,
             clip_norm_type,
             aggregate_norm_fn=None,
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            #skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def cumulative_training_time(self):
