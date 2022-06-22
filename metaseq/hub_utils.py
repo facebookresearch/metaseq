@@ -556,6 +556,7 @@ class GeneratorInterface:
         elif temperature == 0:
             self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
+            self.cfg.generation.sampling_topp = -1
         elif temperature < 0:
             raise ValueError("temperature must be >= 0 and <= 1")
 
