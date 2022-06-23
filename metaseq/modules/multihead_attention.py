@@ -270,11 +270,16 @@ class MultiheadAttention(nn.Module):
         else:
             saved_state = None
 
+        # Originally, tgt_len, bsz, embed_dim = query.size()
+        # After transpose and TP Linear, bsz * tp_world_size, tgt_len, embed_dim = q.size()
+        query = query.transpose(0, 1).contiguous()
+        key = key.transpose(0, 1).contiguous() if key is not None else key
+        value = value.transpose(0, 1).contiguous() if value is not None else value
+
         tp_world_size = distributed_utils.get_model_parallel_world_size()
         if self.self_attention:
             # For TP, batch size needs to be dimension 0 and gets expanded 
             # due to all_gather of inputs.
-            query = query.transpose(0, 1)
             bsz *= tp_world_size
 
             q = self.q_proj(query)
@@ -456,13 +461,12 @@ class MultiheadAttention(nn.Module):
         if self.onnx_trace and attn.size(1) == 1:
             # when ONNX tracing a single decoder step (sequence length == 1)
             # the transpose is a no-op copy before view, thus unnecessary
-            attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
+            attn = attn.contiguous().view(bsz, tgt_len, embed_dim)
         else:
             # As mentioned ealier, view op itself does not change the sharding dim.
             # We need to manually change the sharding dim of attn from 1 to -1(2).
             attn = _view_with_sharding_dim_change(-1, attn, (bsz, -1, embed_dim))
 
-        # TODO: validate if we need this for megatron-lm baseline.
         attn = self.out_proj(attn).transpose(0, 1)
         attn_weights: Optional[Tensor] = None
         if need_weights:
