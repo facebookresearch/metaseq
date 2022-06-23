@@ -261,6 +261,7 @@ def reshard_megatron_parts(model_parts, new_model_part_count=1):
     When new_model_part_count=1 return glued model
     """
     new_model_parts = [OrderedDict() for _ in range(new_model_part_count)]
+
     def assert_all_close(key):
         for part_id in range(len(model_parts)):
             if not torch.allclose(model_parts[part_id][key], model_parts[0][key]):
