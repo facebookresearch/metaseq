@@ -303,7 +303,7 @@ class Trainer(object):
             sharded_full_params = sharded_model_params + sharded_criterion_params
             params = extract_sharded_tensor_local_tensors(sharded_full_params)
 
-        print(f"???? params: {params}")
+        #print(f"???? params: {params}")
 
         if self.is_fsdp and self.cfg.common.fp16:
             # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
