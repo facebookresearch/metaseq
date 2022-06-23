@@ -658,8 +658,6 @@ class Trainer(object):
             # Make each rank use different data so we are running TP is a SPMD style.
             num_shards=distributed_utils.get_global_world_size(),
             shard_id=distributed_utils.get_global_rank(),            
-            #num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
-            #shard_id=self.data_parallel_rank if shard_batch_itr else 0,
             num_workers=self.cfg.dataset.num_workers,
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
