@@ -185,11 +185,12 @@ def consolidate_model_parallel(
         all_parts_consolidated[k] = part_weights
     if no_stitch_megatron:
         return all_parts_consolidated
-    model = glue_megatron_parts(all_parts_consolidated)
+    # glue to be a single megatron mdoel part
+    model = reshard_megatron_parts(all_parts_consolidated, new_model_part_count=1)[0]
     return model
 
 
-def handle_qkv_proj(model_parts, key):
+def handle_qkv_proj(model_parts, key, new_model_part_count):
     parts = [model_parts[part_id][key] for part_id in range(len(model_parts))]
     ks, vs, qs = [], [], []
     for p in parts:
@@ -197,7 +198,10 @@ def handle_qkv_proj(model_parts, key):
         ks.append(k)
         vs.append(v)
         qs.append(q)
-    return torch.cat(ks, dim=0), torch.cat(vs, dim=0), torch.cat(qs, dim=0)
+    resharded_ks = torch.chunk(torch.cat(ks, dim=0), new_model_part_count)
+    resharded_vs = torch.chunk(torch.cat(vs, dim=0), new_model_part_count)
+    resharded_qs = torch.chunk(torch.cat(qs, dim=0), new_model_part_count)
+    return resharded_ks, resharded_vs, resharded_qs
 
 
 def _handle_one(parts, is_weight):
@@ -251,8 +255,12 @@ def get_n_layers(glued_model):
             return n_layers
 
 
-def glue_megatron_parts(model_parts):
-    glued_model = OrderedDict()
+def reshard_megatron_parts(model_parts, new_model_part_count=1):
+    """
+    Reshard to different number of model parts.
+    When new_model_part_count=1 return glued model
+    """
+    new_model_parts = [OrderedDict() for _ in range(new_model_part_count)]
 
     def assert_all_close(key):
         for part_id in range(len(model_parts)):
@@ -266,85 +274,94 @@ def glue_megatron_parts(model_parts):
                 )
                 logger.info(f"max discrepancy {key}: {err}")
 
+    def _conslidate_and_redshard(key, dim):
+        consolidated_tensor = torch.cat(
+            [model_parts[part_id][key] for part_id in range(len(model_parts))],
+            dim=dim,
+        )
+        assert consolidated_tensor.size(dim) % new_model_part_count == 0
+        newly_resharded_tensors = torch.chunk(
+            consolidated_tensor,
+            new_model_part_count,
+            dim=dim,
+        )
+        for i in range(new_model_part_count):
+            new_model_parts[i][key] = newly_resharded_tensors[i].clone()
+
+    def _copy_key_to_all_parts(key):
+        for new_model_part in new_model_parts:
+            new_model_part[key] = model_parts[0][key].clone()
+
     for key in model_parts[0]:
         if "qkv" in key:
             # Bias of CP gets concatenated
             if key.endswith("bias"):
-                k, v, q = handle_qkv_proj(model_parts, key)
+                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(
+                    model_parts, key, new_model_part_count
+                )
             else:
                 assert key.endswith("weight")
-                k, v, q = handle_qkv_proj(model_parts, key)
-            glued_model[key.replace("qkv", "k")] = k
-            glued_model[key.replace("qkv", "v")] = v
-            glued_model[key.replace("qkv", "q")] = q
-        elif "ffn_layernorm" in key:
-            glued_model[key] = torch.cat(
-                [model_parts[part_id][key] for part_id in range(len(model_parts))]
-            )
+                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(
+                    model_parts, key, new_model_part_count
+                )
 
+            for i in range(new_model_part_count):
+                new_model_parts[i][key] = torch.cat(
+                    (resharded_ks[i], resharded_vs[i], resharded_qs[i]), dim=0
+                )
+
+        elif "ffn_layernorm" in key:
+            _conslidate_and_redshard(key, dim=0)
         elif "layer_norm" in key:
             assert_all_close(key)
-            glued_model[key] = model_parts[0][key]
+            _copy_key_to_all_parts(key)
         elif "fc1" in key or "k_proj" in key or "q_proj" in key or "v_proj" in key:
             # Bias of CP gets concatenated
             if key.endswith("bias"):
-                glued_bias = torch.cat(
-                    [model_parts[part_id][key] for part_id in range(len(model_parts))]
-                )
-                glued_model[key] = glued_bias
+                _conslidate_and_redshard(key, dim=0)
             # weights of CP gets concatenated along dim 0
             else:
                 assert key.endswith("weight")
-                glued_weight = torch.cat(
-                    [model_parts[part_id][key] for part_id in range(len(model_parts))],
-                    dim=0,
-                )
-                glued_model[key] = glued_weight
+                _conslidate_and_redshard(key, dim=0)
                 # FC1 is CP
         # FC2 is RP
         elif "fc2" in key or "out_proj" in key:
             # Bias of RP gets replicated
             if key.endswith("bias"):
                 assert_all_close(key)
-                glued_model[key] = model_parts[0][key]
+                _copy_key_to_all_parts(key)
             # weights of RP gets concatenated along dim 1
             else:
                 assert key.endswith("weight")
-                glued_weight = torch.cat(
-                    [model_parts[part_id][key] for part_id in range(len(model_parts))],
-                    dim=1,
-                )
-                glued_model[key] = glued_weight
+                _conslidate_and_redshard(key, dim=1)
         elif "embed_tokens.weight" in key:
-            glued_weight = torch.cat(
-                [model_parts[part_id][key] for part_id in range(len(model_parts))],
-                dim=0,
-            )
-            glued_model[key] = glued_weight
+            _conslidate_and_redshard(key, dim=0)
         elif "embed_positions" in key:
             if "_float_tensor" in key:
                 # Assume embed positions are non learned ie.e sinusoidal
-                glued_model[key] = torch.zeros([1])
+                for new_model_part in new_model_parts:
+                    new_model_part[key] = torch.zeros([1])
             else:
                 assert_all_close(key)
-                glued_model[key] = model_parts[0][key]
+                _copy_key_to_all_parts(key)
         elif "version" in key:
-            glued_model[key] = model_parts[0][key]
+            _copy_key_to_all_parts(key)
         else:
             assert_all_close(key)
-            glued_model[key] = model_parts[0][key]
+            _copy_key_to_all_parts(key)
 
-    assert len(glued_model.keys()) >= len(model_parts[0].keys())
+    for new_model_part in new_model_parts:
+        assert len(new_model_part.keys()) >= len(model_parts[0].keys())
+        assert "decoder.layers.0.ffn_layernorm.lns.0.weight" not in new_model_part
     # Consolidate ffn_layernorm.lns.weight.{part_id} -> ffn_layernorm.weight
-    handle_legacy_ln_(glued_model, len(model_parts))
-    assert "decoder.layers.0.ffn_layernorm.lns.0.weight" not in glued_model
-    return glued_model
+    # handle_legacy_ln_(glued_model, len(model_parts))
+    return new_model_parts
 
 
 def find_num_parts(names) -> int:
     parts = []
     for n in names:
-        part = re.search(r"part-(\d+)-", n)
+        part = re.search(r"-model_part-(\d+)", n)
         if part is not None:
             parts.append(int(part.groups()[0]))
     if parts:

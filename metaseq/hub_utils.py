@@ -553,8 +553,12 @@ class GeneratorInterface:
         self.cfg.generation.beam = best_of
         if temperature > 0:
             self.cfg.generation.temperature = temperature
-        else:
+        elif temperature == 0:
+            self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
+            self.cfg.generation.sampling_topp = -1
+        elif temperature < 0:
+            raise ValueError("temperature must be >= 0 and <= 1")
 
         MAX_SEQ_LEN = utils.resolve_max_positions(
             self.task.max_positions(), *[model.max_positions() for model in self.models]
@@ -628,6 +632,7 @@ class GeneratorInterface:
                         tokens, scores, distributions
                     )
                     prompt_len = lengths[i]
+
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i]]
