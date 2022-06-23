@@ -334,7 +334,6 @@ def reshard_megatron_parts(model_parts, new_model_part_count=1):
                 # Assume embed positions are non learned ie.e sinusoidal
                 for new_model_part in new_model_parts:
                     new_model_part[key] = torch.zeros([1])
-                glued_model[key] = torch.zeros([1])
             else:
                 assert_all_close(key)
                 _copy_key_to_all_parts(key)
