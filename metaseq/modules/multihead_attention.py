@@ -4,7 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-import sys
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -448,7 +447,7 @@ class MultiheadAttention(nn.Module):
 
         if before_softmax:
             return attn_weights, v
-        
+
         attn_weights_float = utils.softmax(
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )

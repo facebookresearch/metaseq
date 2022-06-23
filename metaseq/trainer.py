@@ -350,7 +350,6 @@ class Trainer(object):
                 )
             else:
                 optim.shard_(self._optimizer, self.data_parallel_process_group)
-        
 
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
@@ -491,7 +490,6 @@ class Trainer(object):
         bexists = PathManager.isfile(filename)
         if bexists:
             logger.info(f"Preparing to load checkpoint {filename}")
-
             load_on_all_ranks = (
                 self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
                 # FSDP requires loading checkpoint shards on all ranks
@@ -591,6 +589,7 @@ class Trainer(object):
                 else:
                     last_optim_state = FSDP.shard_full_optim_state_dict(last_optim_state, self.model)
                 logger.info(f"FSDP got shard from optim_state for {filename}")
+
             self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
             logger.info(f"Loaded optim_state for {filename}")
             self.set_num_updates(last_optim["num_updates"])
@@ -766,7 +765,6 @@ class Trainer(object):
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
                     )
-                    print("sample_size_i ", sample_size_i, file=sys.stderr)
                     del loss
 
                 logging_outputs.append(logging_output)
@@ -924,18 +922,14 @@ class Trainer(object):
         if self.cfg.common.fp16 and not self.cfg.common.bf16:
             metrics.log_scalar(
                 "loss_scale",
-                #TODO: Recover this input param once we change back from the vanilla optimizer.
-                #self.optimizer.scaler.loss_scale,
-                1000,
+                self.optimizer.scaler.loss_scale,
                 priority=700,
                 round=4,
                 weight=0,
             )
             metrics.log_scalar(
                 "scale_window",
-                #TODO: Recover this input param once we change back from the vanilla optimizer.
-                #self.optimizer.scaler.scale_window,
-                20,
+                self.optimizer.scaler.scale_window,
                 priority=700,
                 round=4,
                 weight=0,
@@ -1089,7 +1083,7 @@ class Trainer(object):
             clip_norm,
             clip_norm_type,
             aggregate_norm_fn=None,
-            #skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def cumulative_training_time(self):

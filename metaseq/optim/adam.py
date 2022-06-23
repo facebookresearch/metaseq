@@ -17,10 +17,6 @@ from metaseq.dataclass import MetaseqDataclass
 from metaseq.optim import BaseOptimizer, register_optimizer
 from metaseq.optim.fused_adam import get_fused_adam_class
 
-from torch.distributed._shard.sharded_tensor import (
-     ShardedTensor,
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -64,9 +60,6 @@ class MetaseqAdam(BaseOptimizer):
             and fused_adam_cls is not None
             and torch.cuda.is_available()
         )
-        # if tp_enabled:
-        #     logger.info("using PTD sharding Adam")
-        #     params = extract_sharded_tensor_local_tensors(params)
         if use_fused_adam:
             logger.info("using FusedAdam")
             self._optimizer = fused_adam_cls(

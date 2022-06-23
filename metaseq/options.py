@@ -161,7 +161,7 @@ def parse_args_and_arch(
     # Modify the parser a second time, since defaults may have been reset
     if modify_parser is not None:
         modify_parser(parser)
- 
+
     # Parse a second time.
     if parse_known:
         args, extra = parser.parse_known_args(input_args)

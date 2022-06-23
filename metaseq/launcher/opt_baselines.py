@@ -9,7 +9,6 @@ This sweep script takes some additional optional arguments. See add_extra_option
 for more details.
 """
 import os
-import sys
 
 from metaseq.launcher.opt_job_constants import (
     TOTAL_TRAIN_TOKENS,
@@ -23,7 +22,6 @@ from metaseq.launcher.sweep import (
     get_env_from_args,
     main as sweep_main,
 )
-import metaseq.distributed.utils as distributed_utils
 
 # have to do this at the module level, unfortunately; unable to use args.<env>
 for _cluster, _folder in DATA_LOCATIONS.items():
