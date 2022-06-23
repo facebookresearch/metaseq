@@ -296,13 +296,19 @@ def reshard_megatron_parts(model_parts, new_model_part_count=1):
         if "qkv" in key:
             # Bias of CP gets concatenated
             if key.endswith("bias"):
-                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(model_parts, key, new_model_part_count)
+                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(
+                    model_parts, key, new_model_part_count
+                )
             else:
                 assert key.endswith("weight")
-                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(model_parts, key, new_model_part_count)
+                resharded_ks, resharded_vs, resharded_qs = handle_qkv_proj(
+                    model_parts, key, new_model_part_count
+                )
 
             for i in range(new_model_part_count):
-                new_model_parts[i][key] = torch.cat((resharded_ks[i], resharded_vs[i], resharded_qs[i]), dim=0)
+                new_model_parts[i][key] = torch.cat(
+                    (resharded_ks[i], resharded_vs[i], resharded_qs[i]), dim=0
+                )
 
         elif "ffn_layernorm" in key:
             _conslidate_and_redshard(key, dim=0)
