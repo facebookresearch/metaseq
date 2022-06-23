@@ -741,7 +741,6 @@ class TransformerDecoder(IncrementalDecoder):
         for idx, layer in enumerate(self.layers):
             # To debug OOM and perf analysis, this is the entry-point for the profiling about the fwd for each layer.
             # TODO: Remove all print and profiling code after debugging/analysis.
-            print("start running layer: ", idx, file=sys.stderr) 
             with profile(activities=[ProfilerActivity.CUDA], profile_memory=True, record_shapes=True) as prof:
                 with record_function("decoder_layer_forward"): 
                     x, layer_attn, _, l_aux_i = layer(
@@ -763,7 +762,7 @@ class TransformerDecoder(IncrementalDecoder):
                     )
                     l_aux.append(l_aux_i)
             print("finished running layer: ", idx, file=sys.stderr) 
-            print(prof.key_averages(group_by_stack_n=50).table(sort_by="self_cpu_time_total", row_limit=50), file=sys.stderr) 
+            #print(prof.key_averages(group_by_stack_n=50).table(sort_by="self_cpu_time_total", row_limit=50), file=sys.stderr) 
         if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
 
