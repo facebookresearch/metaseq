@@ -553,8 +553,11 @@ class GeneratorInterface:
         self.cfg.generation.beam = best_of
         if temperature > 0:
             self.cfg.generation.temperature = temperature
-        else:
+        elif temperature == 0:
+            self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
+        elif temperature < 0:
+            raise ValueError("temperature must be >= 0 and <= 1")
 
         MAX_SEQ_LEN = utils.resolve_max_positions(
             self.task.max_positions(), *[model.max_positions() for model in self.models]
@@ -591,8 +594,11 @@ class GeneratorInterface:
             self.cfg.generation.max_len_a = 0
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
+            need_logprobs = True if logprobs > 0 else False
             generator = self.task.build_generator(
-                self.models, self.cfg.generation, extra_gen_cls_kwargs={"stop": stop}
+                self.models,
+                self.cfg.generation,
+                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
             )
 
             # okay actually generate
@@ -624,23 +630,20 @@ class GeneratorInterface:
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
-                    prompt_len = src_lengths[i]
+                    prompt_len = lengths[i]
+
                     if echo:
                         # don't cut off prompt
-                        tokens = tokens[: prompt_len + max_tokens[i] - 1]
-                        scores = scores[: prompt_len + max_tokens[i] - 1]
+                        tokens = tokens[: prompt_len + max_tokens[i]]
+                        scores = scores[: prompt_len + max_tokens[i]]
                         if logprobs > 0:
-                            distributions = distributions[
-                                : prompt_len + max_tokens[i] - 1
-                            ]
+                            distributions = distributions[: prompt_len + max_tokens[i]]
                     else:
                         # cut off prompt
-                        tokens = tokens[prompt_len - 1 :][: max_tokens[i]]
-                        scores = scores[prompt_len - 1 :][: max_tokens[i]]
+                        tokens = tokens[prompt_len:][: max_tokens[i]]
+                        scores = scores[prompt_len:][: max_tokens[i]]
                         if logprobs > 0:
-                            distributions = distributions[prompt_len - 1 :][
-                                : max_tokens[i]
-                            ]
+                            distributions = distributions[prompt_len:][: max_tokens[i]]
                     # turn it into a string
                     text = self.bpe.bpe.decode(tokens)
                     # re-encode it so we get offsets

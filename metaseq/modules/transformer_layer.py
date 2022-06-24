@@ -246,6 +246,7 @@ class TransformerDecoderLayer(nn.Module):
     ):
         super().__init__()
         load_megatron_fused_kernel()
+        self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
@@ -269,7 +270,12 @@ class TransformerDecoderLayer(nn.Module):
             args, "tensor_parallel_init_model_on_gpu", False
         )
         if initialize_params_on_gpu and self.attn_ln is not None:
-            self.attn_ln = self.attn_ln.cuda().half()
+            self.attn_ln = utils.floating_point_precision_convertor(
+                self.attn_ln.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
+            )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
         scale_heads = getattr(args, "scale_heads", False)
@@ -286,8 +292,12 @@ class TransformerDecoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         if initialize_params_on_gpu:
-            assert getattr(args, "memory_efficient_fp16", False)
-            self.self_attn_layer_norm = self.self_attn_layer_norm.cuda().half()
+            self.self_attn_layer_norm = utils.floating_point_precision_convertor(
+                self.self_attn_layer_norm.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
+            )
 
         if no_encoder_attn:
             self.encoder_attn = None
@@ -296,8 +306,11 @@ class TransformerDecoderLayer(nn.Module):
             self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
             if initialize_params_on_gpu:
-                self.encoder_attn_layer_norm = (
-                    self.encoder_attn_layer_norm.cuda().half()
+                self.encoder_attn_layer_norm = utils.floating_point_precision_convertor(
+                    self.encoder_attn_layer_norm.cuda(),
+                    fp16=getattr(args, "fp16", False),
+                    memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                    bf16=getattr(args, "bf16", False),
                 )
 
         ffn_dim = args.decoder_ffn_embed_dim
@@ -328,7 +341,14 @@ class TransformerDecoderLayer(nn.Module):
             else:
                 self.ffn_layernorm = LayerNorm(ffn_dim)
                 if initialize_params_on_gpu:
-                    self.ffn_layernorm = self.ffn_layernorm.cuda().half()
+                    self.ffn_layernorm = utils.floating_point_precision_convertor(
+                        self.ffn_layernorm.cuda(),
+                        fp16=getattr(args, "fp16", False),
+                        memory_efficient_fp16=getattr(
+                            args, "memory_efficient_fp16", False
+                        ),
+                        bf16=getattr(args, "bf16", False),
+                    )
         self.skip_bias_add = (self.activation_fn == gelu) and has_fused_bias_gelu
         self.fc1 = self.build_fc1(
             self.embed_dim,
@@ -336,6 +356,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+            dtype=self._get_model_init_dtype(),
         )
 
         self.fc2 = self.build_fc2(
@@ -345,16 +366,27 @@ class TransformerDecoderLayer(nn.Module):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
+            dtype=self._get_model_init_dtype(),
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
         if initialize_params_on_gpu:
-            self.final_layer_norm = self.final_layer_norm.cuda().half()
+            self.final_layer_norm = utils.floating_point_precision_convertor(
+                self.final_layer_norm.cuda(),
+                fp16=getattr(args, "fp16", False),
+                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                bf16=getattr(args, "bf16", False),
+            )
         self.need_attn = True
 
         self.onnx_trace = False
 
         self.args = args
+
+    def _get_model_init_dtype(self):
+        if getattr(self.args, "memory_efficient_fp16", False):
+            return torch.bfloat16 if getattr(self.args, "bf16", False) else torch.half
+        return torch.float32
 
     def build_fc1(
         self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args

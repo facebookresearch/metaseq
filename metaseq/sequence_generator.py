@@ -215,7 +215,7 @@ class SequenceGenerator(nn.Module):
         # decoding
         start_step = src_tokens.shape[1]
         # set all the forced tokens
-        tokens[:, :start_step] = src_tokens
+        tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
         model_out = self.model.decoder(
             tokens[:, :start_step],
@@ -256,6 +256,9 @@ class SequenceGenerator(nn.Module):
         # finally, scores is actually stored as the cumulative NLL, but we have
         # individual NLL scores right now
         scores = scores.cumsum(dim=1)
+        # the first step of beam search also needs lprobs to be cumulative
+        # in order to keep the running sum correct
+        first_offset = scores[:, -1:]
 
         # start from previous timestep because we still have to do beam search
         # bookkeeping (i.e. finalize the hypothesis if it's the final token)
@@ -314,12 +317,14 @@ class SequenceGenerator(nn.Module):
             cand_scores, cand_indices, cand_beams = self.search.step(
                 # underlying search indexes from first token being generated,
                 # so we need to account for the size of the prompt.
-                step - start_step + 1,
-                lprobs.view(bsz, -1, self.vocab_size),
-                scores[:, start_step - 1 : step].view(bsz, beam_size, -1),
-                tokens[:, start_step - 1 : step + 1],
-                original_batch_idxs,
+                step=step - start_step + 1,
+                lprobs=lprobs.view(bsz, -1, self.vocab_size),
+                scores=scores[:, start_step - 1 : step].view(bsz, beam_size, -1),
+                offset=first_offset,
+                prev_output_tokens=tokens[:, start_step - 1 : step + 1],
+                original_batch_idxs=original_batch_idxs,
             )
+            first_offset = None  # reset after the first step
 
             # cand_bbsz_idx contains beam indices for the top candidate
             # hypotheses, with a range of values: [0, bsz*beam_size),
@@ -445,14 +450,14 @@ class SequenceGenerator(nn.Module):
             # the prompt tokens here for ease of bookkeeping.
 
             # Set the tokens for each beam (can select the same row more than once)
-            tokens[:, start_step : step + 1] = torch.index_select(
-                tokens[:, start_step : step + 1], dim=0, index=active_bbsz_idx
+            tokens[:, start_step:step] = torch.index_select(
+                tokens[:, start_step:step], dim=0, index=active_bbsz_idx
             )
             # Select the next token for each of them
             tokens.view(bsz, beam_size, -1)[:, :, step + 1] = torch.gather(
                 cand_indices, dim=1, index=active_hypos
             )
-            if step > start_step:
+            if step >= start_step:
                 scores[:, start_step:step] = torch.index_select(
                     scores[:, start_step:step], dim=0, index=active_bbsz_idx
                 )
