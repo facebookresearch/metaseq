@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import torch
 from omegaconf import OmegaConf
 
-from metaseq.dataclass.configs import CheckpointConfig
+from metaseq.dataclass.configs import CheckpointConfig, DistributedTrainingConfig
 from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as dist_utils
 from metaseq.file_io import PathManager, torch_load_cpu
@@ -182,7 +182,7 @@ def _delete_old_checkpoint_files(
 def verify_shards(cfg, dir=None, checkpoint_name=None):
     # verifies that all the shards of the checkpoint are present
     checkpoint_name = checkpoint_name.replace(".pt", "")
-    num_gpus = int(cfg.save_dir[-1:])
+    num_gpus = DistributedTrainingConfig.distributed_world_size
     num_shards = 0
     for file in os.listdir(dir):
         if file.startswith(checkpoint_name):
