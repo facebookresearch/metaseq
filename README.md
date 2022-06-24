@@ -9,7 +9,7 @@ A codebase for working with [Open Pre-trained Transformers](projects/OPT).
 
 The OPT 125M--30B models are now available in [HuggingFace Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0).
 
-### Serving OPT-175B with Alpa
+### Using OPT-175B with Alpa
 
 The OPT 125M--175B models are now supported in the [Alpa project](https://alpa-projects.github.io/tutorials/opt_serving.html), 
 which adapts the model computation to different cluster and GPU setup. It enables serving OPT-175B on clusters with older generations of GPUs, such as 40GB A100, V100, T4, M60, etc.
