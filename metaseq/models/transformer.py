@@ -761,10 +761,10 @@ class TransformerDecoder(IncrementalDecoder):
                         need_head_weights=bool((idx == alignment_layer)),
                     )
                     l_aux.append(l_aux_i)
+                    if layer_attn is not None and idx == alignment_layer:
+                        attn = layer_attn.float().to(x)
             print("finished running layer: ", idx, file=sys.stderr) 
             #print(prof.key_averages(group_by_stack_n=50).table(sort_by="self_cpu_time_total", row_limit=50), file=sys.stderr) 
-        if layer_attn is not None and idx == alignment_layer:
-                attn = layer_attn.float().to(x)
 
         inner_states.append(x)
         if attn is not None:

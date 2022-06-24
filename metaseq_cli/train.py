@@ -146,7 +146,6 @@ def main(cfg: DictConfig) -> None:
 
     # Build model and criterioni
     # For 175B large model, we need to use meta tensor to initialize the model same as FSDP.
-    built_model = task.build_model(cfg.model)
     if cfg.distributed_training.tp_enabled:
         sharding_specs = _generate_chunk_sharding_spec(
             cfg.common.model_parallel_size,
@@ -154,6 +153,7 @@ def main(cfg: DictConfig) -> None:
         print(f'[RANK {distributed_utils.get_global_rank()}] sharding_specs: {sharding_specs} {torch.cuda.current_device()}', file=sys.stderr)
         tp_pg = distributed_utils.get_model_parallel_group()
         decoder_sharding_plan = _decoder_sharding_plan(sharding_specs, cfg.model.decoder_layers)
+        built_model = task.build_model(cfg.model)
         shard_module(built_model, decoder_sharding_plan, process_group=tp_pg)
 
     if cfg.distributed_training.ddp_backend in ["fully_sharded", "ptd_fully_sharded"]:
@@ -162,10 +162,18 @@ def main(cfg: DictConfig) -> None:
         }
 
         with fsdp_enable_wrap(cfg.distributed_training, **extra):
-            model = fsdp_wrap(
-                built_model,
-                process_group=distributed_utils.get_data_parallel_group(),
-            )
+            if cfg.distributed_training.tp_enabled:
+                #built_model = task.build_model(cfg.model)
+                #shard_module(built_model, decoder_sharding_plan, process_group=tp_pg)
+                model = fsdp_wrap(
+                    built_model,
+                    process_group=distributed_utils.get_data_parallel_group(),
+                ) 
+            else:
+                model = fsdp_wrap(
+                    task.build_model(cfg.model),
+                    process_group=distributed_utils.get_data_parallel_group(),
+                )
     else:
         model = built_model
     criterion = task.build_criterion(cfg.criterion)
