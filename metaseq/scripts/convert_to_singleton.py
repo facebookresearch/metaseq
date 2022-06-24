@@ -93,10 +93,6 @@ def worker_main(cfg: MetaseqConfig):
 
     if dist_utils.get_global_rank() == 0:
         glued = glue_megatron_parts(model_parts)
-
-        with open("temp.pt", "wb") as f:
-            torch.save(glued, f)
-
         glued["decoder.version"] = torch.tensor([3])
 
         if "decoder.output_projection.weight" in glued:
