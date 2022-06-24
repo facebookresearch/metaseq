@@ -12,8 +12,9 @@ The OPT 125M--30B models are now available in [HuggingFace Transformers](https:/
 ### Serving OPT-175B with Alpa
 
 The OPT 125M--175B models are now supported in the [Alpa project](https://github.com/alpa-projects/alpa).
+If you only have access to clusters with older generations of GPUs (e.g., 40GB A100, V100, T4, M60, etc.), Alpa might be advantageous due to more parallelism supported.
 
-If you cannot access 8x 80GB A100 GPUs, but have clusters with older genenrations of GPUs (e.g., 40GB A100, V100, Titan X, or 2080 Ti), Alpa can serve the OPT-175B model as long as the total GPU memory in the cluster is sufficient. Following [this guide](https://alpa-projects.github.io/tutorials/opt_serving.html) to setup the serving system.
+Check out [the guide](https://alpa-projects.github.io/tutorials/opt_serving.html) to set up the serving using Alpa.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
