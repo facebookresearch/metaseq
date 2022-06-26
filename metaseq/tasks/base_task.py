@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List
 import torch
 from omegaconf import DictConfig
 
-from metaseq import metrics, search, tokenizer, utils
+from metaseq import metrics, tokenizer, utils
 from metaseq.data import Dictionary, BaseDataset, data_utils, encoders, iterators
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.dataclass.utils import gen_parser_from_dataclass
@@ -357,13 +357,6 @@ class BaseTask(object):
         assert sampling_topk < 0 or sampling, "--sampling-topk requires --sampling"
         assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
-        if sampling:
-            search_strategy = search.Sampling(
-                self.target_dictionary, sampling_topk, sampling_topp
-            )
-        else:
-            search_strategy = search.BeamSearch(self.target_dictionary)
-
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
         if seq_gen_cls is None:
             seq_gen_cls = SequenceGenerator
@@ -376,7 +369,6 @@ class BaseTask(object):
             max_len_b=getattr(args, "max_len_b", 200),
             min_len=getattr(args, "min_len", 1),
             temperature=getattr(args, "temperature", 1.0),
-            search_strategy=search_strategy,
             **extra_gen_cls_kwargs,
         )
 

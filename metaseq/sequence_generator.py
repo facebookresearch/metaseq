@@ -209,6 +209,8 @@ class SequenceGenerator(nn.Module):
             lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
         lprobs = torch.cat(lprobs_cut, dim=0)
 
+        eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
+
         for step in range(start_step, max_len + 1):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -224,24 +226,21 @@ class SequenceGenerator(nn.Module):
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
-            # todo: hardcode <eos> lprobs if we've already seen an eos
-            # import metaseq.pdb
+            # already ended beams should only do eos
+            lprobs[eos_mask, : self.eos] = -math.inf
+            lprobs[eos_mask, self.eos + 1 :] = -math.inf
 
-            # metaseq.pdb.set_trace_rank0()
-
-            next_scores, next_toks = self._sample_topp(
-                lprobs.view(bsz, -1, self.vocab_size)
-            )
-            from metaseq.utils import print_r0
-
-            print_r0(next_scores, next_toks)
-            print_r0(tokens)
-            print_r0(scores)
-            print_r0()
-            next_scores += scores[:, step - 1]
+            # find our next tokens and record them
+            next_scores, next_toks = self._sample_topp(lprobs)
             tokens[:, step] = next_toks
             scores[:, step] = next_scores
 
+            eos_mask |= next_toks == self.eos
+            for stop_token in self.stop:
+                # if there are other early stopping tokens, allow those to trigger stop
+                eos_mask |= next_toks == stop_token
+
+            # forward through the next pass
             model_out = self.model.decoder(
                 tokens[:, : step + 1],
                 incremental_state=incremental_states,
@@ -254,11 +253,22 @@ class SequenceGenerator(nn.Module):
             if self.need_logprobs:
                 all_lprobs[:, step] = lprobs
 
+        # we want the highest scoring items to be top ranked
+        beamscores = scores.view(bsz, beam_size, -1).cumsum(dim=-1)[:, :, -1]
+        indices = beamscores.sort(dim=-1, descending=True).indices
+        sorted_indices = (
+            indices + beam_size * torch.arange(bsz, device=lprobs.device).unsqueeze(1)
+        ).view(-1)
+        tokens = tokens[sorted_indices]
+        scores = scores[sorted_indices]
+
+        # prepare the return value
         retval = {
             "tokens": tokens.view(bsz, beam_size, -1)[:, :, 1:],
             "scores": scores.view(bsz, beam_size, -1)[:, :, 1:],
         }
-        if all_lprobs:
+        if all_lprobs is not None:
+            all_lprobs = all_lprobs[sorted_indices]
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
@@ -281,4 +291,18 @@ class SequenceGenerator(nn.Module):
             truncated_indices: (bsz x input_beam_size x ?)
                 the indices of the chosen elements.
         """
-        return tuple(lprobs.max(dim=-1))
+        if self.temperature == 0.0 or self.sampling_topp == 0.0:
+            # greedy search
+            return tuple(lprobs.max(dim=-1))
+
+        probs = torch.softmax(lprobs, dim=-1)
+        sprobs, sinds = probs.sort(dim=-1, descending=True)
+        mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        trunc_sprobs = sprobs.detach().clone()
+        trunc_sprobs[mask] = 0
+        trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
+        choices = torch.multinomial(trunc_sprobs, 1)[:, 0]
+        hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
+        tok_ids = sinds[hyp_ids, choices]
+        scores = sprobs[hyp_ids, choices].log()
+        return scores, tok_ids
