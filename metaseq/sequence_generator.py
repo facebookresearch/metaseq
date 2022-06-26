@@ -24,9 +24,9 @@ class SequenceGenerator(nn.Module):
         max_len_b: int = 200,
         min_len: int = 1,
         temperature: float = 1.0,
-        search_strategy=None,
         need_logprobs: bool = False,
         stop: Optional[List[int]] = None,
+        topp: float = -1,
         profile=False,
     ):
         """Generates translations of a given source sentence.
@@ -60,8 +60,9 @@ class SequenceGenerator(nn.Module):
         self.min_len = min_len
         self.need_logprobs = need_logprobs
         self.stop = stop if stop is not None else []
-        self.sampling_topp = 0.9
-
+        if topp is None:
+            topp = 0.0
+        self.sampling_topp = max(0, topp)
         self.temperature = temperature
         assert temperature > 0, "--temperature must be greater than 0"
 
@@ -239,6 +240,9 @@ class SequenceGenerator(nn.Module):
             for stop_token in self.stop:
                 # if there are other early stopping tokens, allow those to trigger stop
                 eos_mask |= next_toks == stop_token
+
+            if torch.all(eos_mask):
+                break
 
             # forward through the next pass
             model_out = self.model.decoder(

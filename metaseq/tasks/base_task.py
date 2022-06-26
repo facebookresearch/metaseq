@@ -352,9 +352,7 @@ class BaseTask(object):
 
         # Choose search strategy.
         sampling = getattr(args, "sampling", False)
-        sampling_topk = getattr(args, "sampling_topk", -1)
         sampling_topp = getattr(args, "sampling_topp", -1.0)
-        assert sampling_topk < 0 or sampling, "--sampling-topk requires --sampling"
         assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
@@ -369,6 +367,7 @@ class BaseTask(object):
             max_len_b=getattr(args, "max_len_b", 200),
             min_len=getattr(args, "min_len", 1),
             temperature=getattr(args, "temperature", 1.0),
+            topp=sampling_topp,
             **extra_gen_cls_kwargs,
         )
 
