@@ -637,17 +637,13 @@ class GeneratorInterface:
                         tokens = tokens[: prompt_len + max_tokens[i]]
                         scores = scores[: prompt_len + max_tokens[i]]
                         if logprobs > 0:
-                            distributions_ = distributions_[
-                                : prompt_len + max_tokens[i]
-                            ]
+                            distributions = distributions[: prompt_len + max_tokens[i]]
                     else:
                         # cut off prompt
                         tokens = tokens[prompt_len:][: max_tokens[i]]
                         scores = scores[prompt_len:][: max_tokens[i]]
                         if logprobs > 0:
-                            distributions_ = distributions_[prompt_len:][
-                                : max_tokens[i]
-                            ]
+                            distributions = distributions[prompt_len:][: max_tokens[i]]
                     # turn it into a string
                     text = self.bpe.bpe.decode(tokens)
                     # re-encode it so we get offsets
