@@ -44,3 +44,8 @@ Right now only on Azure, as it requires the 80GB A100s. To enable it on other
 locations, we need to either try CPU offloading, or we need to use MP 16. FSDP
 should *not* be used because some workers will only be used for parameter
 hosting, and will not actually perform computations.
+
+Alternatively, one can run OPT-175B via the integration provided by the
+[Alpa project](https://alpa-projects.github.io/tutorials/opt_serving.html), which 
+enables serving OPT-175B with more flexible parallelisms on older generations of
+GPUs, such as 40GB A100, V100, T4, M60, etc.
