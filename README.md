@@ -2,9 +2,17 @@
 # Metaseq
 A codebase for working with [Open Pre-trained Transformers](projects/OPT).
 
-## Using OPT with 🤗 Transformers
+
+## Community Integrations
+
+### Using OPT with 🤗 Transformers
 
 The OPT 125M--30B models are now available in [HuggingFace Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0).
+
+### Using OPT-175B with Alpa
+
+The OPT 125M--175B models are now supported in the [Alpa project](https://alpa-projects.github.io/tutorials/opt_serving.html), which 
+enables serving OPT-175B with more flexible parallelisms on older generations of GPUs, such as 40GB A100, V100, T4, M60, etc.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.

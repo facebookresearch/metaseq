@@ -103,6 +103,17 @@ class CommonConfig(MetaseqDataclass):
             "of running tensorboard (default: no tensorboard logging)"
         },
     )
+    aim_repo: Optional[str] = field(
+        default=None,
+        metadata={"help": "path to Aim repository"},
+    )
+    aim_run_hash: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Aim run hash. If skipped, creates or continues run "
+            "based on save_dir"
+        },
+    )
     wandb_project: Optional[str] = field(
         default=None,
         metadata={"help": "Weights and Biases project name to use for logging"},

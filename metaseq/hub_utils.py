@@ -632,7 +632,6 @@ class GeneratorInterface:
                         tokens, scores, distributions
                     )
                     prompt_len = lengths[i]
-
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i]]
