@@ -268,6 +268,13 @@ class StreamingFinetuneLanguageModelingTask(LegacyTask):
             logger.error(
                 f"found {n_duplicate}/{ids.numel()} duplicate document IDs in the same batch!"
             )
+        # # TODO PING test
+        # print("id: ",id)
+        # print("src_tokens: ",input)
+        # print("target: ",target)
+        # print("nsentences: ",input.size(0))
+        # print("ntokens: ",input.numel())
+        # print("n_target_tokens: ",(target != self.source_dictionary.pad()).sum().item())
 
         # fairseq expects batches to have the following structure
         return {
