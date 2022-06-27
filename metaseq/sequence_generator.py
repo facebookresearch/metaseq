@@ -13,6 +13,8 @@ from torch import Tensor
 
 from metaseq import search
 
+import metaseq.distributed.utils as dist
+
 logger = logging.getLogger(__name__)
 
 
@@ -133,8 +135,14 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99) + src_tokens.shape[1]
+        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
+        actual_max_len = max_len
         min_len = min(max_len - 1, self.min_len or 0)
+        max_steps_list = [torch.zeros(1, dtype=torch.int64, device=torch.cuda.current_device()) for _ in range(dist.get_global_world_size())]
+        max_steps = torch.tensor(max_len - src_tokens.shape[1], dtype=torch.int64, device=torch.cuda.current_device())
+        torch.distributed.all_gather(max_steps_list, max_steps)
+        max_steps = max([t.item() for t in max_steps_list])
+        max_len = src_tokens.shape[1] + max_steps
 
         assert (
             min_len <= max_len
@@ -307,7 +315,7 @@ class SequenceGenerator(nn.Module):
             lprobs[:, self.pad] = -math.inf  # never select pad
 
             # handle max length constraint
-            if step >= max_len:
+            if step >= actual_max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
@@ -344,7 +352,7 @@ class SequenceGenerator(nn.Module):
             )
 
             finalized_sents: List[int] = []
-            if eos_bbsz_idx.numel() > 0 and num_remaining_sent>0:
+            if eos_bbsz_idx.numel() > 0 and num_remaining_sent > 0 and step<=actual_max_len:
                 eos_scores = torch.masked_select(
                     cand_scores[:, :beam_size], mask=eos_mask[:, :beam_size]
                 )
@@ -366,7 +374,6 @@ class SequenceGenerator(nn.Module):
             assert num_remaining_sent >= 0
             # if num_remaining_sent == 0:
                 # break
-            # if self.search.stop_on_max_len and step >= max_len:
             if step >= max_len:
                 break
             assert step < max_len, f"{step} < {max_len}"
