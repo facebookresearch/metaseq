@@ -37,7 +37,14 @@ class JsonlDataset(torch.utils.data.Dataset):
     Note that only the "text" key is used.
     """
 
-    def __init__(self, path: str, tokenizer: Optional[Callable] = None, recache=False):
+    def __init__(
+        self,
+        path: str,
+        tokenizer: Optional[Callable] = None,
+        recache=False,
+        epoch=1,
+        data_subshard_count=1,
+    ):
         self.path = path
         self.tokenizer = tokenizer
 
@@ -56,6 +63,9 @@ class JsonlDataset(torch.utils.data.Dataset):
         if dist_utils.get_global_rank() == 0:
             dist_utils.global_barrier()
 
+        self.epoch = epoch
+        self.data_subshard_count = data_subshard_count
+
     def _get_mmap(self):
         if not hasattr(self.threadlocal, "handles"):
             f = open(self.path, "rb")
@@ -73,18 +83,51 @@ class JsonlDataset(torch.utils.data.Dataset):
         return self.threadlocal.handles[-1]
 
     def __getitem__(self, idx):
-        if idx < 0 or idx >= len(self):
-            raise IndexError
-        f = self._get_mmap()
-        f.seek(self.offsets[idx])
-        item = f.readline().decode("utf-8")
-        item = json.loads(item)
-        if self.tokenizer is not None:
-            item = self.tokenizer(item)
-        return item
+        # Convert 0 based idx to subshard based idx
+        # For instance, for a data_subshard_count of 3 and epoch number of 1,
+        # subshard_idx goes like 0, 3, 6, 9 ...
+        subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
+        try:
+            if subshard_idx < 0 or subshard_idx >= len(self.offsets):
+                raise IndexError
+            f = self._get_mmap()
+            f.seek(self.offsets[subshard_idx])
+            item = f.readline().decode("utf-8")
+            item = json.loads(item)
+            if self.tokenizer is not None:
+                item = self.tokenizer(item)
+            return item
+        except BaseException as error:
+            logger.error(f"Parse error in subshard_idx: {subshard_idx}, path: {self.path}")
+            logger.error(f"Skipping subshard_idx: {subshard_idx} with error \n\t{error}")
+            # len(self.offsets) is the actual number of documents in the file
+            if subshard_idx + 1 < len(self.offsets):
+                return self[subshard_idx + 1]
+            else:
+                logger.error(
+                    "Index error occurred at the last sample. DATA MOST LIKELY CORRUPTED."
+                )
+                return self[0]
 
     def __len__(self):
-        return len(self.offsets)
+        # Virtual length of the dataset depends on the epoch number if the number of documents
+        # is not perfectly divisible by the data_subshard_count
+        if len(self.offsets) % self.data_subshard_count == 0:
+            return len(self.offsets) // self.data_subshard_count
+        else:
+            # We are left with len(self.offsets) % self.data_subshard_count extra documents at the end
+            extra_document_count = len(self.offsets) % self.data_subshard_count
+
+            # Depending on the subshard id, these extra documents would be included or not
+            if self._get_subshard_id() + 1 <= extra_document_count:
+                return (len(self.offsets) // self.data_subshard_count) + 1
+            else:
+                return len(self.offsets) // self.data_subshard_count
+    
+    def _get_subshard_id(self):
+        # Returns the subshard_id, which goes from 0 to self.data_subshard_count - 1 (0 indexed)
+        # and then wraps around if the epoch id goes beyond the data_subshard_count
+        return (self.epoch - 1) % self.data_subshard_count
 
     def _build_index(self, path: str):
         """Build index of start positions of each line."""
