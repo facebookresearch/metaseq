@@ -100,7 +100,7 @@ class TestJsonlDataset(unittest.TestCase):
                 assert orig_json.keys() == read_json.keys()
                 for k in orig_json.keys():
                     assert orig_json[k] == read_json[k]
-    
+
     def test_dataset_with_subshards(self):
         with tempfile.NamedTemporaryFile() as jsonl_file:
             write_one_jsonl_(jsonl_file.name, num_lines=11)
@@ -123,7 +123,9 @@ class TestJsonlDataset(unittest.TestCase):
             # over the whole dataset
             iterated_documents = []
             for epoch in range(1, 4):
-                dataset = JsonlDataset(jsonl_file.name, epoch=epoch, data_subshard_count=3)
+                dataset = JsonlDataset(
+                    jsonl_file.name, epoch=epoch, data_subshard_count=3
+                )
                 for idx in range(len(dataset)):
                     iterated_documents.append(dataset[idx])
 
@@ -134,11 +136,14 @@ class TestJsonlDataset(unittest.TestCase):
             # was iterated over thrice
             iterated_documents = []
             for epoch in range(1, 10):
-                dataset = JsonlDataset(jsonl_file.name, epoch=epoch, data_subshard_count=3)
+                dataset = JsonlDataset(
+                    jsonl_file.name, epoch=epoch, data_subshard_count=3
+                )
                 for idx in range(len(dataset)):
                     iterated_documents.append(dataset[idx])
-            
-            assert len(iterated_documents) == 33 # 11*3
+
+            assert len(iterated_documents) == 33  # 11*3
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -98,8 +98,12 @@ class JsonlDataset(torch.utils.data.Dataset):
                 item = self.tokenizer(item)
             return item
         except BaseException as error:
-            logger.error(f"Parse error in subshard_idx: {subshard_idx}, path: {self.path}")
-            logger.error(f"Skipping subshard_idx: {subshard_idx} with error \n\t{error}")
+            logger.error(
+                f"Parse error in subshard_idx: {subshard_idx}, path: {self.path}"
+            )
+            logger.error(
+                f"Skipping subshard_idx: {subshard_idx} with error \n\t{error}"
+            )
             # len(self.offsets) is the actual number of documents in the file
             if subshard_idx + 1 < len(self.offsets):
                 return self[subshard_idx + 1]
@@ -123,7 +127,7 @@ class JsonlDataset(torch.utils.data.Dataset):
                 return (len(self.offsets) // self.data_subshard_count) + 1
             else:
                 return len(self.offsets) // self.data_subshard_count
-    
+
     def _get_subshard_id(self):
         # Returns the subshard_id, which goes from 0 to self.data_subshard_count - 1 (0 indexed)
         # and then wraps around if the epoch id goes beyond the data_subshard_count
