@@ -6,6 +6,7 @@
 import math
 from functools import partial
 from typing import Dict, Optional, Tuple
+from megatron import mpu
 
 import torch
 from torch import Tensor, nn
@@ -57,37 +58,42 @@ class ModelParallelMultiheadAttention(nn.Module):
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
+        sequence_parallel=False,
     ):
         super().__init__()
         if not has_megatron_submodule:
             raise ImportError(
                 "\n\nPlease install megatron using the setup instructions!"
             )
+
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+        qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
 
         self.model_parallel_size = get_tensor_model_parallel_world_size()
-
-        self.num_heads_partition = num_heads // self.model_parallel_size
-        assert (
-            self.num_heads_partition * self.model_parallel_size == num_heads
-        ), "Number of heads must be divisible by model parallel size"
-
-        self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
-        self.head_dim = embed_dim // num_heads
-        assert (
-            self.head_dim * num_heads == self.embed_dim
-        ), "embed_dim must be divisible by num_heads"
-        self.scaling = self.head_dim**-0.5
-
         self.self_attention = self_attention
-        self.encoder_decoder_attention = encoder_decoder_attention
+        num_heads_partition = num_heads // self.model_parallel_size
+        head_dim = embed_dim // num_heads
 
         assert (
-            not self.self_attention or self.qkv_same_dim
+            num_heads_partition * self.model_parallel_size == num_heads
+        ), "Number of heads must be divisible by model parallel size"
+        assert (
+            head_dim * num_heads == self.embed_dim
+        ), "embed_dim must be divisible by num_heads"
+
+        assert (
+            not self.self_attention or qkv_same_dim
         ), "Self-attention requires query, key and value to be of the same size"
+
+        self.core_attention = CoreAttention(
+            dropout,
+            num_heads_partition,
+            head_dim,
+            self_attention,
+            encoder_decoder_attention,
+        )
 
         self.combine_qkv_proj = True
         if self.combine_qkv_proj:
@@ -192,6 +198,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 init_method_bias=init_method_bias,
                 use_cpu_initialization=use_cpu_initialization,
                 dtype=dtype,
+                sequence_parallel=sequence_parallel,
             )
         else:
 
@@ -213,6 +220,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 else partial(_init_method_bias, self.kdim),
                 use_cpu_initialization=use_cpu_initialization,
                 dtype=dtype,
+                sequence_parallel=sequence_parallel,
             )
             self.v_proj = ColumnParallelLinear(
                 self.vdim,
@@ -225,6 +233,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 else partial(_init_method_bias, self.vdim),
                 use_cpu_initialization=use_cpu_initialization,
                 dtype=dtype,
+                sequence_parallel=sequence_parallel,
             )
             self.q_proj = ColumnParallelLinear(
                 embed_dim,
@@ -237,6 +246,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 else partial(_init_method_bias, embed_dim),
                 use_cpu_initialization=use_cpu_initialization,
                 dtype=dtype,
+                sequence_parallel=sequence_parallel,
             )
 
         def _init_method_weight(weight):
@@ -258,6 +268,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             skip_bias_add=True,
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
+            sequence_parallel=sequence_parallel,
         )
 
     def forward(
@@ -281,9 +292,10 @@ class ModelParallelMultiheadAttention(nn.Module):
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
         """
-        tgt_len, bsz, embed_dim = query.size()
+        # Dont assume here that query's tensors first dimension is sequence_length cause
+        # it could be divided across tensor parallel gpus for sequence parallelism.
+        _, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
-        assert list(query.size()) == [tgt_len, bsz, embed_dim]
         if key is not None:
             src_len, key_bsz, _ = key.size()
             if not torch.jit.is_scripting():
@@ -302,7 +314,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         else:
             saved_state = None
 
-        # logger.info("query:" + str(query.float().norm().item()))
         if self.self_attention:
             if self.combine_qkv_proj:
                 kvq, _ = self.qkv_proj(query)
@@ -329,174 +340,22 @@ class ModelParallelMultiheadAttention(nn.Module):
             k, _ = self.k_proj(key)
             v, _ = self.v_proj(value)
 
-        # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
-        # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
-        # we have seq_lens not power of 2.
-        CHANGES = not getattr(self, "inference", False)
+        attn, saved_state = self.core_attention(
+            q, k, v, key_padding_mask, attn_mask, saved_state
+        )
+        if saved_state is not None:
+            assert incremental_state is not None
+            incremental_state = self._set_input_buffer(incremental_state, saved_state)
 
-        if CHANGES:
-            output_size = (
-                q.size(1),
-                self.num_heads_partition,
-                q.size(0),
-                k.size(0),
-            )
-
-            q = q.view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
-            if k is not None:
-                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim)
-            if v is not None:
-                v = (
-                    v.contiguous()
-                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
-                    .transpose(0, 1)
-                )
-            matmul_result = torch.empty(
-                output_size[0] * output_size[1],
-                output_size[2],
-                output_size[3],
-                dtype=q.dtype,
-                device=torch.cuda.current_device(),
-            )
-
-            # Scale q,k before matmul for stability see https://tinyurl.com/sudb9s96 for math
-            matmul_result = torch.baddbmm(
-                matmul_result,
-                math.sqrt(self.scaling) * q.transpose(0, 1),  # [b * np, sq, hn]
-                math.sqrt(self.scaling)
-                * k.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
-                beta=0.0,
-            )
-
-            # Replace any non-finite values with finite equivalents, since otherwise
-            # we may get NaN when adding attn_mask or computing softmax.
-            if attn_mask is not None:
-                matmul_result = torch.nan_to_num(matmul_result)
-
-            # attention_scores = matmul_result.view(*output_size)
-            attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
-            # attn_probs = self.scale_mask_softmax(attention_scores,
-            #                                         attn_mask)
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_probs)
-
-        else:
-            q *= self.scaling
-
-            q = (
-                q.contiguous()
-                .view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
-                .transpose(0, 1)
-            )
-            if k is not None:
-                k = (
-                    k.contiguous()
-                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
-                    .transpose(0, 1)
-                )
-            if v is not None:
-                v = (
-                    v.contiguous()
-                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
-                    .transpose(0, 1)
-                )
-
-            if saved_state is not None:
-                # saved states are stored with shape (bsz, num_heads_partition, seq_len, head_dim)
-                if "prev_key" in saved_state:
-                    _prev_key = saved_state["prev_key"]
-                    assert _prev_key is not None
-                    prev_key = _prev_key.view(
-                        bsz * self.num_heads_partition, -1, self.head_dim
-                    )
-                    if static_kv:
-                        k = prev_key
-                    else:
-                        assert k is not None
-                        k = torch.cat([prev_key, k], dim=1)
-                    src_len = k.size(1)
-                if "prev_value" in saved_state:
-                    _prev_value = saved_state["prev_value"]
-                    assert _prev_value is not None
-                    prev_value = _prev_value.view(
-                        bsz * self.num_heads_partition, -1, self.head_dim
-                    )
-                    if static_kv:
-                        v = prev_value
-                    else:
-                        assert v is not None
-                        v = torch.cat([prev_value, v], dim=1)
-                saved_state["prev_key"] = k.view(
-                    bsz, self.num_heads_partition, -1, self.head_dim
-                )
-                saved_state["prev_value"] = v.view(
-                    bsz, self.num_heads_partition, -1, self.head_dim
-                )
-                saved_state["prev_key_padding_mask"] = key_padding_mask
-                # In this branch incremental_state is never None
-                assert incremental_state is not None
-                incremental_state = self._set_input_buffer(
-                    incremental_state, saved_state
-                )
-            assert k is not None
-            assert k.size(1) == src_len
-
-            # This is part of a workaround to get around fork/join parallelism
-            # not supporting Optional types.
-            if key_padding_mask is not None and key_padding_mask.dim() == 0:
-                key_padding_mask = None
-
-            if key_padding_mask is not None:
-                assert key_padding_mask.size(0) == bsz
-                assert key_padding_mask.size(1) == src_len
-
-            attn_weights = torch.bmm(q, k.transpose(1, 2))
-
-            assert list(attn_weights.size()) == [
-                bsz * self.num_heads_partition,
-                tgt_len,
-                src_len,
-            ]
-
-            if attn_mask is not None:
-                attn_mask = attn_mask.unsqueeze(0)
-                attn_weights += attn_mask
-
-            if key_padding_mask is not None:
-                # don't attend to padding symbols
-                attn_weights = attn_weights.view(
-                    bsz, self.num_heads_partition, tgt_len, src_len
-                )
-                attn_weights = attn_weights.masked_fill(
-                    key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool),
-                    float("-inf"),
-                )
-                attn_weights = attn_weights.view(
-                    bsz * self.num_heads_partition, tgt_len, src_len
-                )
-
-            attn_weights_float = utils.softmax(attn_weights, dim=-1)
-            attn_weights = attn_weights_float.type_as(attn_weights)
-
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_weights)
-
-        # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
-        assert v is not None
-        attn = torch.bmm(attn_probs, v)
-        # logger.info("attn:" + str(attn.float().norm().item()))
-        assert list(attn.size()) == [
-            bsz * self.num_heads_partition,
-            tgt_len,
-            self.head_dim,
-        ]
+        tgt_len = q.size(0)
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
         attn, attn_bias = self.out_proj(attn)
+
         # return attn_weights None to keep the return type same as single gpu multihead attention
         # This will be deprecated.
         attn_weights: Optional[Tensor] = None
-        # logger.info("output:" + str(attn.float().norm().item()))
+
         return (attn, attn_bias), attn_weights
 
     @staticmethod
@@ -568,3 +427,185 @@ class ModelParallelMultiheadAttention(nn.Module):
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
         self.inference = True
+        self.core_attention.inference = True
+
+
+class CoreAttention(nn.Module):
+    # Similar to Megatron codebase split MHA to have projections spearate from core attention code
+    # So core attention can be checkpointed separately
+    def __init__(
+        self,
+        dropout,
+        num_heads_partition,
+        head_dim,
+        self_attention,
+        encoder_decoder_attention,
+    ):
+        super().__init__()
+        self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
+        self.head_dim = head_dim
+        self.scaling = self.head_dim**-0.5
+        self.num_heads_partition = num_heads_partition
+        self.self_attention = self_attention
+        self.encoder_decoder_attention = encoder_decoder_attention
+        self.inference = False
+
+    def forward(self, q, k, v, key_padding_mask, attn_mask, saved_state):
+        tgt_len, bsz = q.size(0), q.size(1)
+        src_len = tgt_len
+        # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
+        # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
+        # we have seq_lens not power of 2.
+        if not getattr(self, "inference", False):
+            output_size = (
+                q.size(1),
+                self.num_heads_partition,
+                q.size(0),
+                k.size(0),
+            )
+
+            q = q.view(-1, bsz * self.num_heads_partition, self.head_dim)
+            if k is not None:
+                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim)
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            matmul_result = torch.empty(
+                output_size[0] * output_size[1],
+                output_size[2],
+                output_size[3],
+                dtype=q.dtype,
+                device=torch.cuda.current_device(),
+            )
+
+            # Scale q,k before matmul for stability see https://tinyurl.com/sudb9s96 for math
+            matmul_result = torch.baddbmm(
+                matmul_result,
+                math.sqrt(self.scaling) * q.transpose(0, 1),  # [b * np, sq, hn]
+                math.sqrt(self.scaling)
+                * k.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+                beta=0.0,
+            )
+
+            # Replace any non-finite values with finite equivalents, since otherwise
+            # we may get NaN when adding attn_mask or computing softmax.
+            # if attn_mask is not None:
+            #     matmul_result = torch.nan_to_num(matmul_result)
+
+            # attention_scores = matmul_result.view(*output_size)
+            attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
+            with get_cuda_rng_tracker().fork():
+                attn_probs = self.dropout_module(attn_probs)
+        else:
+            q *= self.scaling
+
+            q = (
+                q.contiguous()
+                .view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
+                .transpose(0, 1)
+            )
+            if k is not None:
+                k = (
+                    k.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+
+            if saved_state is not None:
+                # saved states are stored with shape (bsz, num_heads_partition, seq_len, head_dim)
+                if "prev_key" in saved_state:
+                    _prev_key = saved_state["prev_key"]
+                    assert _prev_key is not None
+                    prev_key = _prev_key.view(
+                        bsz * self.num_heads_partition, -1, self.head_dim
+                    )
+                    if static_kv:
+                        k = prev_key
+                    else:
+                        assert k is not None
+                        k = torch.cat([prev_key, k], dim=1)
+                    src_len = k.size(1)
+                if "prev_value" in saved_state:
+                    _prev_value = saved_state["prev_value"]
+                    assert _prev_value is not None
+                    prev_value = _prev_value.view(
+                        bsz * self.num_heads_partition, -1, self.head_dim
+                    )
+                    if static_kv:
+                        v = prev_value
+                    else:
+                        assert v is not None
+                        v = torch.cat([prev_value, v], dim=1)
+                saved_state["prev_key"] = k.view(
+                    bsz, self.num_heads_partition, -1, self.head_dim
+                )
+                saved_state["prev_value"] = v.view(
+                    bsz, self.num_heads_partition, -1, self.head_dim
+                )
+                saved_state["prev_key_padding_mask"] = key_padding_mask
+                # In this branch incremental_state is never None
+                # assert incremental_state is not None
+                # incremental_state = self._set_input_buffer(
+                #     incremental_state, saved_state
+                # )
+            assert k is not None
+            assert k.size(1) == src_len
+
+            # This is part of a workaround to get around fork/join parallelism
+            # not supporting Optional types.
+            if key_padding_mask is not None and key_padding_mask.dim() == 0:
+                key_padding_mask = None
+
+            if key_padding_mask is not None:
+                assert key_padding_mask.size(0) == bsz
+                assert key_padding_mask.size(1) == src_len
+
+            attn_weights = torch.bmm(q, k.transpose(1, 2))
+
+            assert list(attn_weights.size()) == [
+                bsz * self.num_heads_partition,
+                tgt_len,
+                src_len,
+            ]
+
+            if attn_mask is not None:
+                attn_mask = attn_mask.unsqueeze(0)
+                attn_weights += attn_mask
+
+            if key_padding_mask is not None:
+                # don't attend to padding symbols
+                attn_weights = attn_weights.view(
+                    bsz, self.num_heads_partition, tgt_len, src_len
+                )
+                attn_weights = attn_weights.masked_fill(
+                    key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool),
+                    float("-inf"),
+                )
+                attn_weights = attn_weights.view(
+                    bsz * self.num_heads_partition, tgt_len, src_len
+                )
+
+            attn_weights_float = utils.softmax(attn_weights, dim=-1)
+            attn_weights = attn_weights_float.type_as(attn_weights)
+
+            with get_cuda_rng_tracker().fork():
+                attn_probs = self.dropout_module(attn_weights)
+
+        assert v is not None
+
+        attn = torch.bmm(attn_probs, v)
+        assert list(attn.size()) == [
+            bsz * self.num_heads_partition,
+            tgt_len,
+            self.head_dim,
+        ]
+        return attn, saved_state

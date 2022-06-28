@@ -3,6 +3,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from collections import defaultdict
+import contextlib
 import logging
 import math
 from typing import Any, Dict, List, Optional
@@ -336,6 +338,64 @@ def _log_weight_stats(tensor, name):
     )
 
 
+
+class CheckpointOffloader():
+
+    def __init__(self):
+        self.copy_stream = torch.cuda.Stream()
+        self.storage = defaultdict()
+        self.pack_key_order = []
+        self.unpack_key_order = []
+
+    def move_to_cpu(self, x, counter):
+        if not getattr(x, '_fsdp_weight', False) and x.numel() > 1e5:
+            # packed.copy_(x, non_blocking=True)
+            # self.storage[counter] = (packed, x.device , None)
+
+            if counter in self.storage and self.storage[counter][0].size() == x.size() and self.storage[counter][0].dtype == x.dtype:
+                packed = self.storage[counter][0]
+            else:
+                packed = torch.empty(
+                    x.size(),
+                    dtype=x.dtype,
+                    layout=x.layout,
+                    pin_memory=(torch.cuda.is_available() and not x.is_sparse)
+                )
+            self.copy_stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(self.copy_stream):
+                packed.copy_(x, non_blocking=True)
+            x.record_stream(self.copy_stream)
+            event = self.copy_stream.record_event()
+            self.storage[counter] = (packed, x.device , event, None, True)
+            self.pack_key_order.append(counter)
+        else:
+            self.storage[counter] = (x, x.device, None, None, False)
+
+
+    def move_to_device(self, counter):
+        tensor, device, event, _, needs_conversion = self.storage[counter]
+        if needs_conversion:
+            assert event is not None
+            # torch.cuda.current_stream().wait_event(event)
+            # tensor = tensor.to(device, non_blocking=True)
+
+            # torch.cuda.current_stream().wait_event(event)
+            with torch.cuda.stream(self.copy_stream):
+                tensor = tensor.to(device, non_blocking=True)
+            torch.cuda.current_stream().wait_stream(self.copy_stream)
+            tensor.record_stream(torch.cuda.current_stream())
+            # if not torch.allclose(tensor, original):
+            #     logger.info(f"different: {counter}")
+            # else:
+            #     logger.info(f"same: {counter}")
+            self.unpack_key_order.append(counter)
+            return tensor
+
+        del self.storage[counter]
+        assert event is None
+        return tensor
+
+
 class TransformerDecoder(IncrementalDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
@@ -429,6 +489,10 @@ class TransformerDecoder(IncrementalDecoder):
                 )
                 checkpoint = getattr(args, "checkpoint_activations", False)
                 if checkpoint:
+                    assert (
+                        getattr(args, "checkpoint_activations_granularity", "full")
+                        == "full"
+                    )
                     offload_to_cpu = getattr(args, "offload_activations", False)
                     distribute_checkpointed_activations = getattr(
                         args, "distribute_checkpointed_activations", False
@@ -498,6 +562,9 @@ class TransformerDecoder(IncrementalDecoder):
                 self.max_positions(), args.decoder_attention_heads
             )
 
+        if getattr(self.args, "cpu_activations", False):
+            self.checkpoint_offloader = CheckpointOffloader()
+
     @staticmethod
     def _build_alibi_tensor(max_seq_len: int, n_attention_heads: int):
         """Returns tensor shaped (n_head, 1, max_seq_len)"""
@@ -532,7 +599,7 @@ class TransformerDecoder(IncrementalDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args, no_encoder_attn=False):
+    def build_base_decoder_layer(self, args, no_encoder_attn=False, **unused):
         return TransformerDecoderLayer(args, no_encoder_attn=no_encoder_attn)
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
@@ -547,11 +614,22 @@ class TransformerDecoder(IncrementalDecoder):
             distribute_checkpointed_activations = getattr(
                 args, "distribute_checkpointed_activations", False
             )
-            layer = checkpoint_wrapper(
-                layer,
-                offload_to_cpu=offload_to_cpu,
-                distribute_checkpointed_activations=distribute_checkpointed_activations,
-            )
+            if getattr(args, "checkpoint_activations_granularity", "full") == "full":
+                layer = checkpoint_wrapper(
+                    layer,
+                    offload_to_cpu=offload_to_cpu,
+                    distribute_checkpointed_activations=distribute_checkpointed_activations,
+                )
+            else:
+                assert (
+                    getattr(args, "checkpoint_activations_granularity", "full") == "mha"
+                )
+
+                layer.self_attn.core_attention = checkpoint_wrapper(
+                    layer.self_attn.core_attention,
+                    offload_to_cpu=offload_to_cpu,
+                    distribute_checkpointed_activations=distribute_checkpointed_activations,
+                )
         # if we are checkpointing, enforce that FSDP always wraps the
         # checkpointed layer, regardless of layer size
         min_params_to_wrap = (
@@ -578,7 +656,6 @@ class TransformerDecoder(IncrementalDecoder):
             positions = self.embed_positions(
                 tokens, incremental_state=incremental_state
             )
-
         # see IncrementalDecoder for important information about
         # incremental state
         if incremental_state:
@@ -600,6 +677,7 @@ class TransformerDecoder(IncrementalDecoder):
         if self.dropout_module is not None:
             x = self.dropout_module(x)
 
+        x = x.transpose(0, 1)
         return x, embed, positions
 
     def forward(
@@ -660,6 +738,7 @@ class TransformerDecoder(IncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
+        # x = x.transpose(0, 1).contiguous()
         return x, extra
 
     def extract_features(
@@ -711,6 +790,7 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
+        # x is T x B x C
         x, tok, pos = self.forward_embedding(
             prev_output_tokens, token_embeddings, incremental_state
         )
@@ -722,8 +802,8 @@ class TransformerDecoder(IncrementalDecoder):
         else:
             self_attn_mask = None
 
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
+        # # B x T x C -> T x B x C
+        # x = x.transpose(0, 1)
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -736,24 +816,40 @@ class TransformerDecoder(IncrementalDecoder):
             l_aux = []
         else:
             l_aux = encoder_out["l_aux"] if "l_aux" in encoder_out else []
+
+        counter = 0
+
+        # assert len(self.checkpoint_offloader.storage.values()) == 0
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _, l_aux_i = layer(
-                x,
-                encoder_out=encoder_out["encoder_out"][0]
-                if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
-                else None,
-                encoder_padding_mask=encoder_out["encoder_padding_mask"][0]
-                if (
-                    encoder_out is not None
-                    and len(encoder_out["encoder_padding_mask"]) > 0
+
+            def pack_hook(x):
+                nonlocal counter
+                self.checkpoint_offloader.move_to_cpu(x, counter)
+                counter += 1
+                return counter - 1
+
+            def unpack_hook(x):
+                return self.checkpoint_offloader.move_to_device(x)
+
+            with torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook) if getattr(self.args, "cpu_activations", False) else contextlib.ExitStack():
+                x, layer_attn, _, l_aux_i = layer(
+                    x,
+                    encoder_out=encoder_out["encoder_out"][0]
+                    if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
+                    else None,
+                    encoder_padding_mask=encoder_out["encoder_padding_mask"][0]
+                    if (
+                        encoder_out is not None
+                        and len(encoder_out["encoder_padding_mask"]) > 0
+                    )
+                    else None,
+                    incremental_state=incremental_state,
+                    self_attn_mask=self_attn_mask,
+                    self_attn_padding_mask=self_attn_padding_mask,
+                    need_attn=bool((idx == alignment_layer)),
+                    need_head_weights=bool((idx == alignment_layer)),
                 )
-                else None,
-                incremental_state=incremental_state,
-                self_attn_mask=self_attn_mask,
-                self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == alignment_layer)),
-                need_head_weights=bool((idx == alignment_layer)),
-            )
+
             l_aux.append(l_aux_i)
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
@@ -770,7 +866,7 @@ class TransformerDecoder(IncrementalDecoder):
             x = self.layer_norm(x)
 
         # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
+        # x = x.transpose(0, 1).contiguous()
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
@@ -788,7 +884,7 @@ class TransformerDecoder(IncrementalDecoder):
         return min(self.max_target_positions, self.embed_positions.max_positions)
 
     def buffered_future_mask(self, tensor):
-        batch_size, cur_seq_len = tensor.size(0), tensor.size(1)
+        cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
         need_to_make_new_mask = (
             self._future_mask.size(0) == 0

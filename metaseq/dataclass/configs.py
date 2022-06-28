@@ -170,6 +170,13 @@ class CommonConfig(MetaseqDataclass):
     model_parallel_size: int = field(
         default=1, metadata={"help": "total number of GPUs to parallelize model over"}
     )
+    sequence_parallel: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use sequeunce level parallelism as over tensor parallel gpus."
+            " only use this option when --model-parallel-size > 1"
+        },
+    )
     profile: bool = field(
         default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
     )

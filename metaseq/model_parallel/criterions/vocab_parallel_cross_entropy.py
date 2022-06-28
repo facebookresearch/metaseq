@@ -38,11 +38,12 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         3) logging outputs to display while training
         """
         target = sample["target"]
+        target = target.transpose(0, 1).contiguous()
         has_pad = target.eq(self.padding_idx).any().item()
 
         net_output = model(**sample["net_input"])
-
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
+
         if has_pad:
             loss = loss * (target != self.padding_idx)
         loss = loss.sum()

@@ -76,9 +76,16 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     checkpoint_activations: bool = field(
         default=False, metadata={"help": "checkpoint activations at each layer"}
     )
+    checkpoint_activations_granularity: ChoiceEnum(["full", "mha"]) = field(
+        default="full", metadata={"help": "checkpoint activations at each layer"}
+    )
     offload_activations: bool = field(
         default=False,
         metadata={"help": "move checkpointed activations to CPU after they are used."},
+    )
+    cpu_activations: bool = field(
+        default=False,
+        metadata={"help": "move all activations to CPU"},
     )
     # config for Fully Sharded Data Parallel (FSDP) training
     min_params_to_wrap: int = field(

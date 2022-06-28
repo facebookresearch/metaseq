@@ -280,27 +280,31 @@ def train(
                 samples = [samples]
             log_output = trainer.train_step(samples)
 
-        if log_output is not None:  # not OOM, overflow, ...
-            # log mid-epoch stats
-            num_updates = trainer.get_num_updates()
-            if num_updates % cfg.common.log_interval == 0:
-                stats = get_training_stats(metrics.get_smoothed_values("train_inner"))
-                progress.log(stats, tag="train_inner", step=num_updates)
+        with torch.autograd.profiler.record_function("logging_stats"):
+            if log_output is not None:  # not OOM, overflow, ...
+                # log mid-epoch stats
+                num_updates = trainer.get_num_updates()
+                if num_updates % cfg.common.log_interval == 0:
+                    stats = get_training_stats(
+                        metrics.get_smoothed_values("train_inner")
+                    )
+                    progress.log(stats, tag="train_inner", step=num_updates)
 
-                # reset mid-epoch stats after each log interval
-                # the end-of-epoch stats will still be preserved
-                metrics.reset_meters("train_inner")
+                    # reset mid-epoch stats after each log interval
+                    # the end-of-epoch stats will still be preserved
+                    metrics.reset_meters("train_inner")
 
         end_of_epoch = not itr.has_next()
-        valid_losses, should_stop = validate_and_save(
-            cfg,
-            trainer,
-            task,
-            epoch_itr,
-            valid_subsets,
-            end_of_epoch,
-            log_output is not None,
-        )
+        with torch.autograd.profiler.record_function("validate_and_save"):
+            valid_losses, should_stop = validate_and_save(
+                cfg,
+                trainer,
+                task,
+                epoch_itr,
+                valid_subsets,
+                end_of_epoch,
+                log_output is not None,
+            )
 
         return valid_losses, should_stop
 

@@ -22,23 +22,31 @@ from metaseq.modules.layer_norm import LayerNorm, SyncedModelParallelFusedLayerN
 from metaseq.modules.linear import Linear
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def _linear(x, weight, bias=None):
     return F.linear(x, weight, bias)
 
 
 def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
     x_shape = x.shape
-    x = x.reshape(-1, x.size(-1))
+    # x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
     # TODO [namangoyal]: Find better way to do this
     model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
     if model_parallel and activation_fn == gelu and has_fused_bias_gelu:
         # here, we do the bias computation outside fc1 and fc2 to take advantage of fused_bias_gelu
-        assert fc1.skip_bias_add
+        # assert fc1.skip_bias_add
+
         x, bias_fc1 = fc1(x)
-        x = fused_bias_gelu(x, bias_fc1)
-        if ffn_ln is not None:
-            x = ffn_ln(x)
+        # x = fused_bias_gelu(x, bias_fc1)
+        # if ffn_ln is not None:
+        #     x = ffn_ln(x)
+
+        # GELU is applied inside ColumnParallelLinear
         x, bias_fc2 = fc2(x)
         x = x + bias_fc2
     elif model_parallel:
@@ -357,6 +365,7 @@ class TransformerDecoderLayer(nn.Module):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             dtype=self._get_model_init_dtype(),
+            sequence_parallel=getattr(args, "sequence_parallel", False),
         )
 
         self.fc2 = self.build_fc2(
@@ -367,6 +376,7 @@ class TransformerDecoderLayer(nn.Module):
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=self._get_model_init_dtype(),
+            sequence_parallel=getattr(args, "sequence_parallel", False),
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
@@ -403,11 +413,7 @@ class TransformerDecoderLayer(nn.Module):
         )
 
     def build_self_attention(
-        self,
-        embed_dim,
-        args,
-        add_bias_kv=False,
-        add_zero_attn=False,
+        self, embed_dim, args, add_bias_kv=False, add_zero_attn=False, **unused_args
     ):
         return MultiheadAttention(
             embed_dim,
@@ -432,6 +438,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            sequence_parallel=getattr(args, "sequence_parallel", False),
         )
 
     def prepare_for_onnx_export_(self):
@@ -503,6 +510,7 @@ class TransformerDecoderLayer(nn.Module):
 
         if self.normalize_before:
             x = self.self_attn_layer_norm(x)
+
         if prev_self_attn_state is not None:
             prev_key, prev_value = prev_self_attn_state[:2]
             saved_state: Dict[str, Optional[Tensor]] = {
@@ -548,6 +556,7 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
+
         if not self.normalize_before:
             x = self.self_attn_layer_norm(x)
 
