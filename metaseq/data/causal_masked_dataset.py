@@ -41,7 +41,11 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
         self.sentinel_method = sentinel_method
         self.tokens_per_sample = tokens_per_sample
         self.eos = sentinel_eos
-        assert self.sentinel_method == "fixed" or self.sentinel_method == "poisson"
+        assert (
+            self.sentinel_method == "fixed"
+            or self.sentinel_method == "poisson"
+            or self.sentinel_method == "causal"
+        )
         assert len(self.sentinel_tokens) >= 1
         assert self.tokens_per_sample > 1
 
@@ -134,18 +138,21 @@ class CausalMaskedDataset(StreamingTokenBlockDataset):
 
     def __iter__(self):
         for packed_item in super().__iter__():
-            ids, item = packed_item["ids"], packed_item["block"]
-            assert len(item) > 0
-            spans = self.get_spans_to_mask(len(item))
-            if spans is None:
+            if self.sentinel_method == "causal":
                 yield packed_item
             else:
-                spans = self.get_ordered_spans(spans)
-                causal_source = self.sentinel_masking(item, spans)
-                causal_masked = self.sentinel_targets(item, spans)
-                yield {
-                    "ids": ids,
-                    "block": torch.cat([causal_source, causal_masked])[
-                        : self.tokens_per_sample
-                    ],
-                }
+                ids, item = packed_item["ids"], packed_item["block"]
+                assert len(item) > 0
+                spans = self.get_spans_to_mask(len(item))
+                if spans is None:
+                    yield packed_item
+                else:
+                    spans = self.get_ordered_spans(spans)
+                    causal_source = self.sentinel_masking(item, spans)
+                    causal_masked = self.sentinel_targets(item, spans)
+                    yield {
+                        "ids": ids,
+                        "block": torch.cat([causal_source, causal_masked])[
+                            : self.tokens_per_sample
+                        ],
+                    }

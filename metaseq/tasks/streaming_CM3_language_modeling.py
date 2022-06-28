@@ -68,7 +68,10 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
         metadata={"help": "poisson lambda for the cm3 objective"},
     )
     spm_path: Optional[str] = field(
-        default=None, metadata={"help": "path to data directory with JSONL files"}
+        default=None, metadata={"help": "path to the HF spm vocab"}
+    )
+    causal_only: bool = field(
+        default=False, metadata={"help": "do only causal modeling"}
     )
 
 
@@ -248,7 +251,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         self.datasets[split] = CausalMaskedDataset(
             self.args.lambda_sentinel_tokens,
             self.sentinel_tokens_ind,
-            "poisson",
+            "causal" if self.args.causal_only else "poisson",
             self.args.tokens_per_sample + 1,
             self.sentinel_end_ind,
             dataset,

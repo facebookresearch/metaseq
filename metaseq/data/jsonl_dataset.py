@@ -54,10 +54,10 @@ class JsonlDataset(torch.utils.data.Dataset):
             except Exception as e:
                 logger.error(f"Loading up cache failed: {self.cache} with {e}")
                 self.offsets = self._build_index(path)
-                np.save(self.cache, self.offsets, allow_pickle=False)
+                # np.save(self.cache, self.offsets, allow_pickle=False)
         else:
             self.offsets = self._build_index(path)
-            np.save(self.cache, self.offsets, allow_pickle=False)
+            # np.save(self.cache, self.offsets, allow_pickle=False)
         # print(f'n offsets: {len(self.offsets)}')
 
     def _get_mmap(self):
