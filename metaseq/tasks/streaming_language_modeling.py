@@ -90,6 +90,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
+    data_subshards: int = field(
+        default=1,
+        metadata={"help": "Number of data subshards to use while training."}
+    )
 
     # TODO common vars below add to parent
     seed: int = II("common.seed")
@@ -305,6 +309,8 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
+                    epoch=epoch,
+                    data_subshard_count=self.args.data_subshards,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
