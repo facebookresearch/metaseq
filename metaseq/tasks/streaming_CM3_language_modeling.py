@@ -10,7 +10,7 @@ on-the-fly tokenization.
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 from metaseq.data import (
@@ -55,6 +55,10 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
         default=8192,
         metadata={"help": "total number of vision tokens used"},
     )
+    image_length: int = field(
+        default=1024,
+        metadata={"help": "total number of tokens per single image"},
+    )
     speech_tokens: int = field(
         default=512,
         metadata={"help": "total number of speech tokens used"},
@@ -73,12 +77,34 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
     causal_only: bool = field(
         default=False, metadata={"help": "do only causal modeling"}
     )
+    # TODO: Armen: make this structured enum instead of using strings
+    dataset_type: str = field(
+        default="all",
+        metadata={
+            "help": "what type of dataset to enforce. Useful for doing ablations. Possible values: all|image"
+        },
+    )
 
 
 @register_task(
     "streaming_CM3_language_modeling", dataclass=StreamingCM3LanguageModelingConfig
 )
 class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
+    def _tokenize_one_json_imageonly(self, json):
+        text = json["text"]
+        text = text.split()
+        text_with_spaces = ""
+        for x in text:
+            assert x[0] == IMAGE_PREFIX, "Expected every token to contain image prefix."
+            text_with_spaces += x + " "
+        tensor = torch.LongTensor(
+            self.tokenizer.encode(text_with_spaces).ids + [self.eod]
+        )
+        assert (
+            tensor.size(0) == self.args.image_length + 1
+        ), f"Expected image size to be {self.args.image_length + 1} but got {tensor.size(0)}"
+        return tensor
+
     def _initialize_gpt2_tokenizer(self, args):
         tokenizer = ByteLevelBPETokenizer.from_file(
             args.vocab_filename, args.merges_filename
@@ -230,10 +256,17 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         ):
             if not file.endswith(".jsonl"):
                 continue
+            tokenizer_func: Optional[Callable] = None
+            if self.args.dataset_type == "all":
+                tokenizer_func = self._tokenize_one_json
+            elif self.args.dataset_type == "image":
+                tokenizer_func = self._tokenize_one_json_imageonly
+            else:
+                raise ValueError(f"Expected all|image but got {self.args.dataset_type}")
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self._tokenize_one_json,
+                    tokenizer=tokenizer_func,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
