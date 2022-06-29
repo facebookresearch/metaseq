@@ -91,7 +91,11 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         metadata={"help": "Maximum size for example proportional sampling"},
     )
     data_subshards: int = field(
-        default=1, metadata={"help": "Number of data subshards to use while training."}
+        default=1,
+        metadata={
+            "help": "Number of data subshards to use while training."
+            "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
+        },
     )
 
     # TODO common vars below add to parent
