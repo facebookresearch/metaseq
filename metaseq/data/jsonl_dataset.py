@@ -86,6 +86,7 @@ class JsonlDataset(torch.utils.data.Dataset):
         # Convert 0 based idx to subshard based idx
         # For instance, for a data_subshard_count of 3 and epoch number of 1,
         # subshard_idx goes like 0, 3, 6, 9 ...
+        # For more details, see https://github.com/facebookresearch/metaseq/issues/166
         subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
         if subshard_idx < 0 or subshard_idx >= len(self.offsets):
             raise IndexError
