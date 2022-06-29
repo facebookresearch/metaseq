@@ -163,7 +163,7 @@ class TestJsonlDataset(unittest.TestCase):
             assert len(iterated_documents) == 33  # 11*3
 
             # We iterated over the same data thrice, so deduplicated documents should still match
-            self.assertCountEqual(set(documents), set(iterated_documents))
+            self.assertEqual(set(documents), set(iterated_documents))
 
 
 if __name__ == "__main__":
