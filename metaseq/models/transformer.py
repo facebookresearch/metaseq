@@ -7,6 +7,7 @@ import logging
 import math
 from typing import Any, Dict, List, Optional
 
+import sys
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -24,12 +25,52 @@ from metaseq.modules import (
 )
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
 
+import torch.distributed as dist
+from torch.distributed._shard import shard_module
+from torch.distributed._shard.sharding_plan import ShardingPlan
+from torch.distributed._shard.sharding_spec import ChunkShardingSpec
+import torch.distributed.distributed_c10d as distributed_c10d
+
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 DEFAULT_MIN_PARAMS_TO_WRAP = int(1e8)
+
+
+def _generate_chunk_sharding_spec(world_size):
+    mp_group = dist_utils.get_model_parallel_group()
+    placements = [f"rank:{idx}/cuda:{distributed_c10d._get_global_rank(mp_group, idx) % torch.cuda.device_count()}" for idx in range(world_size)]
+    colwise_spec = ChunkShardingSpec(
+        dim=0,
+        placements=placements,
+    )
+    rowwise_spec = ChunkShardingSpec(
+        dim=1,
+        placements=placements,
+    )
+    return colwise_spec, rowwise_spec
+
+	
+def _decoder_layer_sharding_plan(specs):
+    colwise_spec, rowwise_spec = specs[0], specs[1]
+    return ShardingPlan(
+        plan={
+            "fc1.weight": colwise_spec,
+            "fc2.weight": rowwise_spec,
+            "self_attn.k_proj.weight": colwise_spec,
+            "self_attn.v_proj.weight": colwise_spec,
+            "self_attn.q_proj.weight": colwise_spec,
+            "self_attn.out_proj.weight": rowwise_spec,
+        },
+        output_plan={
+            "fc2": colwise_spec,
+            "self_attn.out_proj": colwise_spec,
+        },
+        return_local_tensor=["fc2", "self_attn.out_proj"]
+    )
+
 
 
 class TransformerEncoder(BaseEncoder):
@@ -539,6 +580,14 @@ class TransformerDecoder(IncrementalDecoder):
         layer = self.build_base_decoder_layer(args, no_encoder_attn)
         for name, param in layer.named_parameters():
             _log_weight_stats(param, name)
+        # Shard decoder layer.
+        if args.tp_enabled:
+            tp_pg = dist_utils.get_model_parallel_group()
+            sharding_specs = _generate_chunk_sharding_spec(tp_pg.size())
+            print(f'[RANK {dist_utils.get_global_rank()}] sharding_specs: {sharding_specs} {torch.cuda.current_device()}', file=sys.stderr)
+            decoder_layer_sharding_plan = _decoder_layer_sharding_plan(sharding_specs)
+            shard_module(layer, decoder_layer_sharding_plan, process_group=tp_pg)
+       
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
             return layer
         checkpoint = getattr(args, "checkpoint_activations", False)

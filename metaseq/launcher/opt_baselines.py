@@ -100,8 +100,6 @@ def get_grid(args):
     # TP implementation since unlike Megatron-LM it receives unique data on
     # each rank.
     ddp_bsz //= size.model_parallel
-    # TODO: After figuring out the root cause of OOM, we need to remove this.
-    ddp_bsz //= 8 
 
     total_updates = args.max_update
     if total_updates is None:
@@ -178,9 +176,10 @@ def get_grid(args):
         hyperparam("--tp-enabled"),
         hyperparam("--no-reshard-after-forward", save_dir_key=lambda _: "zero2"),
         hyperparam("--use-sharded-state"),
-        #hyperparam("--checkpoint-activations"),
+        hyperparam("--checkpoint-activations"),
         hyperparam("--model-parallel-size", size.model_parallel),
         hyperparam("--criterion", "vocab_parallel_cross_entropy"),
+        # This is Megatron Specific and TP does not need it since TP already assume FSDP style.
         #hyperparam("--distribute-checkpointed-activations"),
         hyperparam("--tensor-parallel-init-model-on-gpu"),
         # Flags to match exact same initialization of Megatron code for exp 12.00

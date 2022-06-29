@@ -173,6 +173,7 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     batch_size: Optional[int] = II("dataset.batch_size")
     batch_size_valid: Optional[int] = II("dataset.batch_size_valid")
     model_parallel_size: int = II("common.model_parallel_size")
+    tp_enabled: bool = II("distributed_training.tp_enaled")
 
 
 @register_model("transformer_lm", dataclass=TransformerLanguageModelConfig)
@@ -250,6 +251,7 @@ def base_lm_architecture(args):
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)
+    args.tp_enabled = getattr(args, "tp_enabled", True)
     if args.offload_activations:
         args.checkpoint_activations = True
 
