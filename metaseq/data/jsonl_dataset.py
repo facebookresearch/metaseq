@@ -87,31 +87,15 @@ class JsonlDataset(torch.utils.data.Dataset):
         # For instance, for a data_subshard_count of 3 and epoch number of 1,
         # subshard_idx goes like 0, 3, 6, 9 ...
         subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
-        try:
-            if subshard_idx < 0 or subshard_idx >= len(self.offsets):
-                raise IndexError
-            f = self._get_mmap()
-            f.seek(self.offsets[subshard_idx])
-            item = f.readline().decode("utf-8")
-            item = json.loads(item)
-            if self.tokenizer is not None:
-                item = self.tokenizer(item)
-            return item
-        except BaseException as error:
-            logger.error(
-                f"Parse error in subshard_idx: {subshard_idx}, path: {self.path}"
-            )
-            logger.error(
-                f"Skipping subshard_idx: {subshard_idx} with error \n\t{error}"
-            )
-            # len(self.offsets) is the actual number of documents in the file
-            if subshard_idx + 1 < len(self.offsets):
-                return self[subshard_idx + 1]
-            else:
-                logger.error(
-                    "Index error occurred at the last sample. DATA MOST LIKELY CORRUPTED."
-                )
-                return self[0]
+        if subshard_idx < 0 or subshard_idx >= len(self.offsets):
+            raise IndexError
+        f = self._get_mmap()
+        f.seek(self.offsets[subshard_idx])
+        item = f.readline().decode("utf-8")
+        item = json.loads(item)
+        if self.tokenizer is not None:
+            item = self.tokenizer(item)
+        return item
 
     def __len__(self):
         # Virtual length of the dataset depends on the epoch number if the number of documents
