@@ -12,6 +12,7 @@ import torch
 
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.distributed import utils as dist_utils
+from torch.distributed._shard.sharded_tensor import ShardedTensor
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ def fsdp_wrap(module, min_num_params: Optional[int] = None, **kwargs):
             kwargs["process_group"] = DummyProcessGroup(rank=0, size=1)
 
         if min_num_params is not None:
-            num_params = sum(p.numel() for p in module.parameters())
+            num_params = sum(p.local_tensor().numel() if isinstance(p, ShardedTensor) else p.numel() for p in module.parameters())
             if num_params >= min_num_params:
                 return wrap(module, **kwargs)
             else:
