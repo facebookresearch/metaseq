@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from metaseq import utils
+from metaseq import pdb, utils
 from metaseq.distributed import utils as dist_utils, fsdp_wrap
 from metaseq.models import BaseEncoder, IncrementalDecoder
 from metaseq.modules import (
@@ -344,16 +344,21 @@ class CheckpointOffloader():
     def __init__(self):
         self.copy_stream = torch.cuda.Stream()
         self.storage = defaultdict()
+        # We will use reverse of pack order for prefetching in unpack
+        # unpack order is not necessary reverse of pack order
+        # but it should approximate okay for our usecase.
         self.pack_key_order = []
-        self.unpack_key_order = []
+        # Prefetch next 10 activations.
+        self.prefetch_count = 10
 
     def move_to_cpu(self, x, counter):
         if not getattr(x, '_fsdp_weight', False) and x.numel() > 1e5:
-            # packed.copy_(x, non_blocking=True)
-            # self.storage[counter] = (packed, x.device , None)
-
-            if counter in self.storage and self.storage[counter][0].size() == x.size() and self.storage[counter][0].dtype == x.dtype:
-                packed = self.storage[counter][0]
+            if (
+                counter in self.storage
+                and self.storage[counter]['packed_tensor'].size() == x.size()
+                and self.storage[counter]['packed_tensor'].dtype == x.dtype
+            ):
+                packed = self.storage[counter]['packed_tensor']
             else:
                 packed = torch.empty(
                     x.size(),
@@ -365,35 +370,53 @@ class CheckpointOffloader():
             with torch.cuda.stream(self.copy_stream):
                 packed.copy_(x, non_blocking=True)
             x.record_stream(self.copy_stream)
-            event = self.copy_stream.record_event()
-            self.storage[counter] = (packed, x.device , event, None, True)
+            self.storage[counter] = {
+                'packed_tensor': packed,
+                'original_device': x.device,
+                'needs_conversion': True,
+            }
             self.pack_key_order.append(counter)
         else:
-            self.storage[counter] = (x, x.device, None, None, False)
+            self.storage[counter] = {
+                'packed_tensor': x,
+                'original_device': x.device,
+                'needs_conversion': False,
+            }
 
 
     def move_to_device(self, counter):
-        tensor, device, event, _, needs_conversion = self.storage[counter]
+        needs_conversion = self.storage[counter]['needs_conversion']
         if needs_conversion:
-            assert event is not None
-            # torch.cuda.current_stream().wait_event(event)
-            # tensor = tensor.to(device, non_blocking=True)
+            self._fetch_activation(counter, is_prefetch=False)
+            assert counter in self.pack_key_order
+            counter_index = self.pack_key_order.index(counter)
+            start = counter_index - 1
+            end = min(0, counter_index - 1 - self.prefetch_count)
+            for prefetch_counter in self.pack_key_order[start:end:-1]:
+                self._fetch_activation(prefetch_counter, is_prefetch=True)
 
-            # torch.cuda.current_stream().wait_event(event)
+            return self.storage[counter].pop('unpacked_tensor')
+
+        tensor = self.storage[counter]['packed_tensor']
+        del self.storage[counter]
+        return tensor
+
+    def _fetch_activation(self, counter, is_prefetch=False):
+        tensor = self.storage[counter]['packed_tensor']
+        device = self.storage[counter]['original_device']
+
+        # We dont need to wait for the pack event here cause
+        # packing and unpacking are happening on the same stream
+        if 'unpacked_tensor' not in self.storage[counter]:
             with torch.cuda.stream(self.copy_stream):
                 tensor = tensor.to(device, non_blocking=True)
-            torch.cuda.current_stream().wait_stream(self.copy_stream)
             tensor.record_stream(torch.cuda.current_stream())
-            # if not torch.allclose(tensor, original):
-            #     logger.info(f"different: {counter}")
-            # else:
-            #     logger.info(f"same: {counter}")
-            self.unpack_key_order.append(counter)
-            return tensor
+            self.storage[counter]['unpacked_tensor'] = tensor
+            self.storage[counter]['unpacking_event'] = self.copy_stream.record_event()
 
-        del self.storage[counter]
-        assert event is None
-        return tensor
+        if not is_prefetch:
+            torch.cuda.current_stream().wait_event(self.storage[counter]['unpacking_event'])
+            del self.storage[counter]['unpacking_event']
 
 
 class TransformerDecoder(IncrementalDecoder):
@@ -831,7 +854,8 @@ class TransformerDecoder(IncrementalDecoder):
             def unpack_hook(x):
                 return self.checkpoint_offloader.move_to_device(x)
 
-            with torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook) if getattr(self.args, "cpu_activations", False) else contextlib.ExitStack():
+            offload_activations = getattr(self.args, "cpu_activations", False) and idx % getattr(self.args, "cpu_activations_freq", 1) == 0
+            with torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook) if offload_activations else contextlib.ExitStack():
                 x, layer_attn, _, l_aux_i = layer(
                     x,
                     encoder_out=encoder_out["encoder_out"][0]

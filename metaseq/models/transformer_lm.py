@@ -87,6 +87,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "move all activations to CPU"},
     )
+    cpu_activations_freq: int = field(
+        default=1,
+        metadata={"help": "only offload evey nth layer, if 1 then cpu offload every layer, if 2 offload every other and so on"},
+    )
     # config for Fully Sharded Data Parallel (FSDP) training
     min_params_to_wrap: int = field(
         default=DEFAULT_MIN_PARAMS_TO_WRAP,
