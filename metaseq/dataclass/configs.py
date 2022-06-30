@@ -637,10 +637,6 @@ class GenerationConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "sample hypotheses instead of using beam search"},
     )
-    sampling_topk: int = field(
-        default=-1,
-        metadata={"help": "sample from top K likely next words instead of all words"},
-    )
     sampling_topp: float = field(
         default=-1.0,
         metadata={
