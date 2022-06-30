@@ -17,7 +17,8 @@ import subprocess
 class TestTraining(unittest.TestCase):
     def test_training(self):
         command = (
-            "python3 metaseq/launcher/opt_baselines.py   --prefix xlmg.try.cm3 --model-size 8m    --checkpoints-dir ./test-checkpoint    "
+            "python3 metaseq/launcher/opt_baselines.py   "
+            "--prefix xlmg.try.cm3 --model-size 8m    --checkpoints-dir ./test-checkpoint    "
             "--tensorboard-logdir ./test-checkpoint     --num-trials 1  --azure   --num-gpus 8 --num-nodes 1   --seed 1   "
             "--partition xlmg --circleci --local --disable-validation --max-epoch 5 --max-update 5"
         )
