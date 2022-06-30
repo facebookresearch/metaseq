@@ -620,7 +620,6 @@ class GeneratorInterface:
                 all_distributions = None
 
             # actually turn everything into strings
-            results = []
             for i in range(all_tokens.size(0)):
                 beams = []
                 for j in range(best_of):
