@@ -49,8 +49,6 @@ class TransformerEncoder(BaseEncoder):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
-        self._past_mask = torch.empty(0)
-        self._future_mask = torch.empty(0)
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
 
         embed_dim = embed_tokens.embedding_dim
@@ -81,8 +79,6 @@ class TransformerEncoder(BaseEncoder):
             self.layer_norm = LayerNorm(embed_dim)
         else:
             self.layer_norm = None
-
-        self.attn_mask = getattr(args, "encoder_attn_mask", "none")
 
     def build_encoder_layer(self, args):
         layer = TransformerEncoderLayer(args)
@@ -201,20 +197,6 @@ class TransformerEncoder(BaseEncoder):
         if has_pads:
             x = x * (1 - encoder_padding_mask.unsqueeze(-1).type_as(x))
 
-        # build attention mask
-        if self.attn_mask == "future":
-            attn_mask = self.buffered_mask(x, future=True)
-        elif self.attn_mask == "past":
-            attn_mask = self.buffered_mask(x, future=False)
-        elif self.attn_mask == "random":
-            attn_mask = self.buffered_mask(x, future=np.random.rand() > 0.5)
-        elif self.attn_mask == "none":
-            attn_mask = None
-        else:
-            raise NotImplementedError(
-                f"Unknown --encoder-attn-mask: {self.args.encoder_attn_mask}"
-            )
-
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
@@ -227,9 +209,7 @@ class TransformerEncoder(BaseEncoder):
         l_aux = []
         for layer in self.layers:
             x, l_aux_i = layer(
-                x,
-                encoder_padding_mask=encoder_padding_mask if has_pads else None,
-                attn_mask=attn_mask,
+                x, encoder_padding_mask=encoder_padding_mask if has_pads else None,
             )
             if return_all_hiddens:
                 assert encoder_states is not None
@@ -311,29 +291,6 @@ class TransformerEncoder(BaseEncoder):
         if self.embed_positions is None:
             return self.max_source_positions
         return min(self.max_source_positions, self.embed_positions.max_positions)
-
-    def buffered_mask(self, tensor, future=True):
-        cur_seq_len = tensor.size(1)
-        max_seq_len = self.max_positions()
-        buf_mask = self._future_mask if future else self._past_mask
-        need_to_make_new_mask = (
-            buf_mask.size(0) == 0
-            or (not buf_mask.device == tensor.device)
-            or buf_mask.size(1) < max_seq_len
-        )
-
-        if need_to_make_new_mask:
-            aux = utils.fill_with_neg_inf(torch.zeros([max_seq_len, max_seq_len]))
-            if future:
-                buf_mask = self._future_mask = torch.triu(aux, 1)
-            else:
-                buf_mask = self._past_mask = torch.tril(aux, -1)
-        if future:
-            self._future_mask = self._future_mask.to(tensor)
-            return self._future_mask[:cur_seq_len, :cur_seq_len]
-        else:
-            self._past_mask = self._past_mask.to(tensor)
-            return self._past_mask[:cur_seq_len, :cur_seq_len]
 
     def upgrade_state_dict_named(self, state_dict, name):
         """Upgrade a (possibly old) state dict for new versions of metaseq."""
@@ -604,9 +561,6 @@ class TransformerDecoder(IncrementalDecoder):
         tokens,
         token_embedding: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        indices: Optional[torch.Tensor] = None,
-        lengths: Optional[torch.Tensor] = None,
-        start_pos_idx: Optional[torch.Tensor] = None,
     ):
         # embed tokens and positions
         positions = None
@@ -614,20 +568,6 @@ class TransformerDecoder(IncrementalDecoder):
             positions = self.embed_positions(
                 tokens, incremental_state=incremental_state, positions=indices
             )
-
-            # Rotate position embeddings
-            # TODO Hacky and inefficient implementation
-            if start_pos_idx is not None and lengths is not None:
-                assert lengths.max() <= tokens.shape[1]
-                if isinstance(start_pos_idx, list):
-                    start_pos_idx = torch.tensor(start_pos_idx, device=lengths.device)
-                first_pos = lengths - start_pos_idx
-                positions = torch.stack(
-                    [
-                        torch.cat([embs[first:length], embs[:first], embs[length:]])
-                        for embs, first, length in zip(positions, first_pos, lengths)
-                    ]
-                )
 
         # see IncrementalDecoder for important information about
         # incremental state
@@ -667,8 +607,6 @@ class TransformerDecoder(IncrementalDecoder):
         positions: Optional[Tensor] = None,
         doc_ids: Optional[Tensor] = None,
         bidir_attn_mask: Optional[Tensor] = None,
-        bidir_attn_prefix=None,
-        src_start_pos_idx: Optional[int] = None,
     ):
         """
         Includes several features from "Jointly Learning to Align and
@@ -715,8 +653,6 @@ class TransformerDecoder(IncrementalDecoder):
             positions=positions,
             doc_ids=doc_ids,
             bidir_attn_mask=bidir_attn_mask,
-            bidir_attn_prefix=bidir_attn_prefix,
-            src_start_pos_idx=src_start_pos_idx,
         )
         if not features_only:
             x = self.output_layer(x)
@@ -736,8 +672,6 @@ class TransformerDecoder(IncrementalDecoder):
         positions: Optional[Tensor] = None,
         doc_ids: Optional[Tensor] = None,
         bidir_attn_mask: Optional[Tensor] = None,
-        bidir_attn_prefix=None,
-        src_start_pos_idx: Optional[int] = None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -752,8 +686,6 @@ class TransformerDecoder(IncrementalDecoder):
             positions=positions,
             doc_ids=doc_ids,
             bidir_attn_mask=bidir_attn_mask,
-            bidir_attn_prefix=bidir_attn_prefix,
-            src_start_pos_idx=src_start_pos_idx,
         )
 
     def extract_features_scriptable(
@@ -770,8 +702,6 @@ class TransformerDecoder(IncrementalDecoder):
         positions: Optional[Tensor] = None,
         doc_ids: Optional[Tensor] = None,
         bidir_attn_mask: Optional[Tensor] = None,
-        bidir_attn_prefix=None,
-        src_start_pos_idx: Optional[int] = None,
     ):
         """
         A scriptable subclass of this class has an extract_features method and calls
@@ -794,17 +724,7 @@ class TransformerDecoder(IncrementalDecoder):
             token_embeddings,
             incremental_state,
             indices=positions,
-            lengths=src_lengths,
-            start_pos_idx=src_start_pos_idx,
         )
-        if bidir_attn_prefix is not None and (bidir_attn_prefix >= src_lengths).all():
-            # No need for mask, just use full bidirectional attention
-            full_context_alignment = True
-            bidir_attn_prefix = None
-
-        if bidir_attn_prefix is not None and (bidir_attn_prefix <= 1).all():
-            # No need for mask, just use fully causal attention
-            bidir_attn_prefix = None
 
         if bidir_attn_mask is not None and doc_ids is not None:
             self_attn_mask = torch.ones(
@@ -829,24 +749,6 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_mask = self.buffered_future_mask(x)
         else:
             self_attn_mask = None
-
-        if bidir_attn_prefix is not None:
-            # HACK Modifying triangular mask
-            if not isinstance(bidir_attn_prefix, int):
-                self_attn_mask = self_attn_mask.unsqueeze(0)
-                self_attn_mask = self_attn_mask.repeat(
-                    x.size(0), 1, 1
-                )  # bsz * seq_len * seq_len
-                batch_size, cur_seq_len = x.size(0), x.size(1)
-                self_attn_mask[
-                    torch.arange(cur_seq_len).repeat(batch_size, cur_seq_len, 1).to(x)
-                    < bidir_attn_prefix.view(-1, 1, 1)
-                ] = 0
-                self_attn_mask = self_attn_mask.repeat_interleave(
-                    self.args.decoder_attention_heads, 0
-                )
-            else:
-                self_attn_mask[:, :bidir_attn_prefix] = 0
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -883,16 +785,6 @@ class TransformerDecoder(IncrementalDecoder):
             l_aux.append(l_aux_i)
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
-
-            if bidir_attn_prefix is not None:
-                # HACK Restore triangular mask
-                if not isinstance(bidir_attn_prefix, int):
-                    self_attn_mask = self_attn_mask[0]  # torch.empty(0)
-                    self_attn_mask = torch.full_like(
-                        self_attn_mask, float("-inf")
-                    ).triu_(1)
-                else:
-                    self_attn_mask.fill_(float("-inf")).triu_(1)
 
         inner_states.append(x)
         if attn is not None:
