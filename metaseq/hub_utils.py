@@ -471,7 +471,7 @@ class GeneratorInterface:
         task = tasks.setup_task(self.cfg.task)
 
         def _build_model(cfg, task):
-            model = task.build_model(cfg.model).half().cuda()
+            model = task.build_model(cfg.model).bfloat16().cuda()
             model.make_generation_fast_()
             return fsdp_wrap(model)
 

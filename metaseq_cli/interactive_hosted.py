@@ -202,7 +202,7 @@ def completions(engine=None):
         prompts = [prompts]
     assert isinstance(prompts[0], list)
     # final case: multi pre-tokenized
-    assert len(prompts[0]) > 0
+    # assert len(prompts[0]) > 0
 
     if "min_tokens" in generation_args:
         generation_args["min_tokens"] = int(generation_args["min_tokens"])

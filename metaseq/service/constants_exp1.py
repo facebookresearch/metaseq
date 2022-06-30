@@ -9,19 +9,19 @@ MAX_SEQ_LEN = 2048
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
-MODEL_PARALLEL = 4
-TOTAL_WORLD_SIZE = 4
+MODEL_PARALLEL = 2
+TOTAL_WORLD_SIZE = 2
 
 
-CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/causal_one_image/resharded"
+CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/experiment_1/resharded/"
 # where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "2.7B", "resharded", "reshard.pt")
+CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "13B", "resharded", "reshard.pt")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
     "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
-    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V262144_I8192_S512_M512_R1024.json",
+    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V65536_I8192_S512_M512_R1024.json",
     f"--path {CHECKPOINT_FOLDER}/reshard.pt",
     "--beam 1 --nbest 1",
     "--bpe hf_cm3_unigram",
