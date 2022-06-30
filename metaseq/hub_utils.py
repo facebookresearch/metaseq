@@ -556,6 +556,7 @@ class GeneratorInterface:
         elif temperature == 0:
             self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
+            self.cfg.generation.sampling_topp = -1
         elif temperature < 0:
             raise ValueError("temperature must be >= 0 and <= 1")
 
@@ -608,30 +609,28 @@ class GeneratorInterface:
 
             translate_start_time = time.time()
             translations = self.task.inference_step(generator, self.models, batch)
-
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
 
-            # possibly cut off any bsz padding we did
-            translations = translations[: len(inputs)]
-            # actually turn everything into strings
-            for i in range(len(translations)):
-                decoding = translations[i]
-                beams = []
-                for beam in decoding:
-                    # first beam is always the highest scoring
-                    tokens = beam["tokens"].tolist()  # implicit move to cpu
-                    scores = beam["positional_scores"].tolist()
-                    if logprobs > 0:
-                        distributions = beam["distributions"].cpu()
-                    else:
-                        distributions = None
+            all_tokens = translations["tokens"].cpu()[: len(inputs)]
+            all_scores = translations["scores"].cpu()[: len(inputs)]
+            if logprobs > 0:
+                all_distributions = translations["distributions"].cpu()[: len(inputs)]
+            else:
+                all_distributions = None
 
+            # actually turn everything into strings
+            for i in range(all_tokens.size(0)):
+                beams = []
+                for j in range(best_of):
+                    # first beam is always the highest scoring
+                    tokens = all_tokens[i, j].tolist()
+                    scores = all_scores[i, j].tolist()
+                    distributions = all_distributions[i, j] if logprobs > 0 else None
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
                     prompt_len = lengths[i]
-
                     if echo:
                         # don't cut off prompt
                         tokens = tokens[: prompt_len + max_tokens[i]]

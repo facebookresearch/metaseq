@@ -2,9 +2,17 @@
 # Metaseq
 A codebase for working with [Open Pre-trained Transformers](projects/OPT).
 
-## Using OPT with 🤗 Transformers
+
+## Community Integrations
+
+### Using OPT with 🤗 Transformers
 
 The OPT 125M--30B models are now available in [HuggingFace Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0).
+
+### Using OPT-175B with Alpa
+
+The OPT 125M--175B models are now supported in the [Alpa project](https://alpa-projects.github.io/tutorials/opt_serving.html), which 
+enables serving OPT-175B with more flexible parallelisms on older generations of GPUs, such as 40GB A100, V100, T4, M60, etc.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
@@ -28,7 +36,10 @@ We welcome PRs from the community!
 You can find information about contributing to metaseq in our [Contributing](docs/CONTRIBUTING.md) document.
 
 ## The Team
-Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Stephen Roller](https://github.com/stephenroller), [Anjali Sridhar](https://github.com/anj-s), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), and [Christopher Dewan](https://github.com/m3rlin45).
+Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Stephen Roller](https://github.com/stephenroller), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), and [Kurt Shuster](https://github.com/klshuster).
+
+Previous maintainers include:
+[Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).
 
 
 ## License

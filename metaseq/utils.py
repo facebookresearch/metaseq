@@ -602,9 +602,9 @@ def remove_prefix(text: str, prefix: str):
     return text
 
 
-def print_r0(x, file=None):
+def print_r0(*x, file=None):
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        print(x, file=file, flush=True)
+        print(*x, file=file, flush=True)
 
 
 def get_random_port():

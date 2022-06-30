@@ -103,6 +103,17 @@ class CommonConfig(MetaseqDataclass):
             "of running tensorboard (default: no tensorboard logging)"
         },
     )
+    aim_repo: Optional[str] = field(
+        default=None,
+        metadata={"help": "path to Aim repository"},
+    )
+    aim_run_hash: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Aim run hash. If skipped, creates or continues run "
+            "based on save_dir"
+        },
+    )
     wandb_project: Optional[str] = field(
         default=None,
         metadata={"help": "Weights and Biases project name to use for logging"},
@@ -625,10 +636,6 @@ class GenerationConfig(MetaseqDataclass):
     sampling: bool = field(
         default=False,
         metadata={"help": "sample hypotheses instead of using beam search"},
-    )
-    sampling_topk: int = field(
-        default=-1,
-        metadata={"help": "sample from top K likely next words instead of all words"},
     )
     sampling_topp: float = field(
         default=-1.0,

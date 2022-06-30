@@ -136,6 +136,7 @@ def do_setup(package_data):
             # protobuf version pinned due to tensorboard not pinning a version.
             #  https://github.com/protocolbuffers/protobuf/issues/10076
             "protobuf==3.20.1",
+            "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
             "black==22.1.0",
