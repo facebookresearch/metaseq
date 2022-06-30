@@ -15,7 +15,7 @@ from metaseq.launcher.opt_job_constants import (
     TOTAL_WARMUP_TOKENS,
     MODEL_SIZES,
     DATA_LOCATIONS,
-    VALID_SUBSETS
+    VALID_SUBSETS,
 )
 from metaseq.launcher.sweep import (
     hyperparam,
@@ -81,9 +81,7 @@ def get_grid(args):
         if args.circleci:
             data_loc_by_env = "./gpu_tests/circleci"
             valid_subsets = ["BookCorpusFair"]
-        args.data = os.path.join(
-            data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29"
-        )
+        args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
         if os.path.exists(args.data):
             DATA_ROOT = data_loc_by_env
         else:
@@ -319,11 +317,13 @@ def get_grid(args):
         grid += [hyperparam("--disable-validation")]
 
     if args.max_epoch is not None:
-        grid += [hyperparam(
-            "--max-epoch",
-            total_epochs,
-            save_dir_key=lambda val: f"me{val}" if not no_save_params else "",
-        )]
+        grid += [
+            hyperparam(
+                "--max-epoch",
+                total_epochs,
+                save_dir_key=lambda val: f"me{val}" if not no_save_params else "",
+            )
+        ]
 
     return grid
 
