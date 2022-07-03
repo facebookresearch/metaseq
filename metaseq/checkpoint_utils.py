@@ -645,9 +645,7 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
         merged_state[key] = shards_to_load[0][key]
 
     pad_info = _get_pad_info(shards_to_load[-1])
-    dtype = torch.float16
     for k in shards_to_load[0]["model"]:
-        dtype = shards_to_load[0]["model"][k].dtype
         if "flat_param" in k:
             pad_info_k = pad_info[k]
             catted = torch.cat([x["model"][k] for x in shards_to_load])
