@@ -20,7 +20,6 @@ from metaseq.modules import (
     Dropout,
     LayerNorm,
     PositionalEmbedding,
-    SinusoidalPositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
 )
