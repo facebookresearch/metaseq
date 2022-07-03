@@ -308,13 +308,6 @@ class TransformerEncoder(BaseEncoder):
             self.layers[i].upgrade_state_dict_named(
                 state_dict, "{}.layers.{}".format(name, i)
             )
-
-        version_key = "{}.version".format(name)
-        if utils.item(state_dict.get(version_key, torch.Tensor([1]))[0]) < 2:
-            # earlier checkpoints did not normalize after the stack of layers
-            self.layer_norm = None
-            self.normalize = False
-            state_dict[version_key] = torch.Tensor([1])
         return state_dict
 
 
