@@ -137,8 +137,6 @@ def worker_main(cfg: MetaseqConfig):
     glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
 
-    glued["decoder.version"] = model.state_dict()["decoder.version"].cpu()
-
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
 

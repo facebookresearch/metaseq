@@ -737,8 +737,6 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
 
             merged_state["model"][k] = catted
 
-    if "decoder.version" not in merged_state["model"]:
-        merged_state["model"]["decoder.version"] = torch.tensor([3.0], dtype=dtype)
     if OPT_KEY in merged_state:
         merged_state[OPT_KEY] = _merge_flat_fsdp_opt_state(shards_to_load)
     return merged_state

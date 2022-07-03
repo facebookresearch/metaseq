@@ -94,7 +94,7 @@ def reshard_mp(
     state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
     model_state = state.pop("model")
 
-    dummy_model_state = {}  # for decoder.version and other useless keys
+    dummy_model_state = {}  # metadata keys
 
     local_state_dicts: List[dict] = [{} for _ in range(target_ddp_size)]
     for k, v in model_state.items():
