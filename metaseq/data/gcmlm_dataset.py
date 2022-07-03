@@ -53,7 +53,6 @@ def collate(samples, pad_idx, eos_idx, fixed_pad_length=None, pad_to_bsz=None):
         "ntokens": sum(len(s["source"]) for s in samples),
         "net_input": {
             "src_tokens": src_tokens,
-            "src_lengths": torch.LongTensor([s["source"].numel() for s in samples]),
             "positions": positions,
             "doc_ids": doc_ids,
             "bidir_attn_mask": bidir_attn_mask,

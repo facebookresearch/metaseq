@@ -7,7 +7,6 @@ import logging
 import math
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -561,6 +560,7 @@ class TransformerDecoder(IncrementalDecoder):
         tokens,
         token_embedding: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        indices: Optional[torch.Tensor] = None,
     ):
         # embed tokens and positions
         positions = None
@@ -600,7 +600,6 @@ class TransformerDecoder(IncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
-        src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
@@ -647,7 +646,6 @@ class TransformerDecoder(IncrementalDecoder):
             full_context_alignment=full_context_alignment,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
-            src_lengths=src_lengths,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
             positions=positions,
@@ -666,7 +664,6 @@ class TransformerDecoder(IncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
-        src_lengths: Optional[Any] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
         positions: Optional[Tensor] = None,
@@ -680,7 +677,6 @@ class TransformerDecoder(IncrementalDecoder):
             full_context_alignment=full_context_alignment,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
-            src_lengths=src_lengths,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
             positions=positions,
@@ -696,7 +692,6 @@ class TransformerDecoder(IncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
-        src_lengths: Optional[Any] = None,
         token_embeddings: Optional[Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
         positions: Optional[Tensor] = None,
