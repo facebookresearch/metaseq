@@ -108,35 +108,7 @@ class BaseModel(nn.Module):
         Overrides the method in :class:`nn.Module`. Compared with that method
         this additionally "upgrades" *state_dicts* from old checkpoints.
         """
-        self.upgrade_state_dict(state_dict)
         return super().load_state_dict(state_dict, strict)
-
-    def upgrade_state_dict(self, state_dict):
-        """Upgrade old state dicts to work with newer code."""
-        self.upgrade_state_dict_named(state_dict, "")
-
-    def upgrade_state_dict_named(self, state_dict, name):
-        """Upgrade old state dicts to work with newer code.
-
-        Args:
-            state_dict (dict): state dictionary to upgrade, in place
-            name (str): the state dict key corresponding to the current module
-        """
-        assert state_dict is not None
-
-        def do_upgrade(m, prefix):
-            if len(prefix) > 0:
-                prefix += "."
-
-            for n, c in m.named_children():
-                name = prefix + n
-                if hasattr(c, "upgrade_state_dict_named"):
-                    c.upgrade_state_dict_named(state_dict, name)
-                elif hasattr(c, "upgrade_state_dict"):
-                    c.upgrade_state_dict(state_dict)
-                do_upgrade(c, name)
-
-        do_upgrade(self, name)
 
     def set_num_updates(self, num_updates):
         """State from trainer to pass along to model at every update."""
