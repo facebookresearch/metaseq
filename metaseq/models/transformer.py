@@ -542,6 +542,7 @@ class TransformerDecoder(IncrementalDecoder):
 
         return x, embed, positions
 
+    # forward for TransformerDecoder
     def forward(
         self,
         prev_output_tokens,
