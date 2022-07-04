@@ -267,7 +267,6 @@ class LanguageModel(BaseModel):
         Args:
             src_tokens (LongTensor): tokens on which to condition the decoder,
                 of shape `(batch, tgt_len)`
-            src_lengths (LongTensor): source sentence lengths of shape `(batch)`
 
         Returns:
             tuple:
