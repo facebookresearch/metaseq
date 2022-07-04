@@ -168,10 +168,6 @@ class BaseModel(nn.Module):
 
         self.apply(apply_prepare_for_onnx_export_)
 
-    @classmethod
-    def hub_models(cls):
-        return {}
-
 
 class EncoderDecoderModel(BaseModel):
     """Base class for encoder-decoder models.
