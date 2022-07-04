@@ -7,7 +7,6 @@ Base classes for various metaseq models.
 """
 
 import logging
-from argparse import Namespace
 from typing import Dict, List, Optional, Tuple
 
 import torch
