@@ -71,7 +71,7 @@ class FullyShardedDataParallel(FSDP):
                 super().state_dict()
                 return destination or {}
 
-    def load_state_dict(self, state_dict, strict=True, model_cfg=None):
+    def load_state_dict(self, state_dict, strict=True):
         if self.use_sharded_state:
             return super().load_local_state_dict(state_dict, strict=strict)
         else:
