@@ -54,9 +54,7 @@ class TransformerEncoder(BaseEncoder):
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
-
         self.embed_tokens = embed_tokens
-
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.embed_positions = (
@@ -253,17 +251,13 @@ class TransformerDecoder(IncrementalDecoder):
             self.dropout_module = None
 
         self.share_input_output_embed = args.share_decoder_input_output_embed
-
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
         self.output_embed_dim = args.decoder_output_dim
-
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
-
         self.embed_tokens = embed_tokens
-
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.project_in_dim = (
@@ -292,6 +286,7 @@ class TransformerDecoder(IncrementalDecoder):
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
+
         if initialize_params_on_gpu and self.embed_positions is not None:
             self.embed_positions = utils.floating_point_precision_convertor(
                 self.embed_positions.cuda(),
@@ -303,7 +298,6 @@ class TransformerDecoder(IncrementalDecoder):
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
         self.layers = nn.ModuleList([])
-
         layers = []
         for i in range(args.decoder_layers):
             layers.append(
@@ -320,7 +314,7 @@ class TransformerDecoder(IncrementalDecoder):
                 0, len(layers), self.args.fsdp_checkpoint_wrap_layer_frequency
             ):
                 layer_block = TransformerDecoderMultiLayerBlockModule(
-                    layers[i : i + self.args.fsdp_checkpoint_wrap_layer_frequency]
+                    layers[i: i + self.args.fsdp_checkpoint_wrap_layer_frequency]
                 )
                 checkpoint = getattr(args, "checkpoint_activations", False)
                 if checkpoint:
@@ -549,7 +543,6 @@ class TransformerDecoder(IncrementalDecoder):
         encoder_out: Optional[Dict[str, List[Tensor]]] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
-        alignment_layer: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
@@ -567,8 +560,6 @@ class TransformerDecoder(IncrementalDecoder):
                 :ref:`Incremental decoding`
             features_only (bool, optional): only return features without
                 applying output layer (default: False).
-            alignment_layer (int, optional): return mean alignment over
-                heads at this layer (default: last layer).
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
             self_attn_padding_mask (torch.Tensor, optional): precomputed padding
@@ -586,7 +577,6 @@ class TransformerDecoder(IncrementalDecoder):
             prev_output_tokens,
             encoder_out=encoder_out,
             incremental_state=incremental_state,
-            alignment_layer=alignment_layer,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
@@ -599,7 +589,6 @@ class TransformerDecoder(IncrementalDecoder):
         prev_output_tokens,
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        alignment_layer: Optional[int] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
@@ -607,7 +596,6 @@ class TransformerDecoder(IncrementalDecoder):
             prev_output_tokens,
             encoder_out=encoder_out,
             incremental_state=incremental_state,
-            alignment_layer=alignment_layer,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
@@ -617,7 +605,6 @@ class TransformerDecoder(IncrementalDecoder):
         prev_output_tokens,
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        alignment_layer: Optional[int] = None,
         token_embeddings: Optional[Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
@@ -626,8 +613,7 @@ class TransformerDecoder(IncrementalDecoder):
         super().extract_features, but super() is not supported in torchscript. A copy
         of this function is made to be used in the subclass instead.
         """
-        if alignment_layer is None:
-            alignment_layer = self.num_layers - 1
+        last_layer_idx = self.num_layers - 1
 
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
@@ -677,11 +663,11 @@ class TransformerDecoder(IncrementalDecoder):
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == alignment_layer)),
-                need_head_weights=bool((idx == alignment_layer)),
+                need_attn=bool((idx == last_layer_idx)),
+                need_head_weights=bool((idx == last_layer_idx)),
             )
             l_aux.append(l_aux_i)
-            if layer_attn is not None and idx == alignment_layer:
+            if layer_attn is not None and idx == last_layer_idx:
                 attn = layer_attn.float().to(x)
 
         inner_states.append(x)
