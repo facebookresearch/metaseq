@@ -123,7 +123,6 @@ class TransformerEncoder(BaseEncoder):
         self,
         src_tokens,
         src_lengths: Optional[torch.Tensor] = None,
-        return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
     ):
         """
@@ -132,8 +131,6 @@ class TransformerEncoder(BaseEncoder):
                 `(batch, src_len)`
             src_lengths (torch.LongTensor): lengths of each source sentence of
                 shape `(batch)`
-            return_all_hiddens (bool, optional): also return all of the
-                intermediate hidden states (default: False).
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
 
@@ -145,12 +142,9 @@ class TransformerEncoder(BaseEncoder):
                   padding elements of shape `(batch, src_len)`
                 - **encoder_embedding** (Tensor): the (scaled) embedding lookup
                   of shape `(batch, src_len, embed_dim)`
-                - **encoder_states** (List[Tensor]): all intermediate
-                  hidden states of shape `(src_len, batch, embed_dim)`.
-                  Only populated if *return_all_hiddens* is True.
         """
         return self.forward_scriptable(
-            src_tokens, src_lengths, return_all_hiddens, token_embeddings
+            src_tokens, src_lengths, token_embeddings
         )
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
@@ -161,7 +155,6 @@ class TransformerEncoder(BaseEncoder):
         self,
         src_tokens,
         src_lengths: Optional[torch.Tensor] = None,
-        return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
     ):
         """
@@ -170,8 +163,6 @@ class TransformerEncoder(BaseEncoder):
                 `(batch, src_len)`
             src_lengths (torch.LongTensor): lengths of each source sentence of
                 shape `(batch)`
-            return_all_hiddens (bool, optional): also return all of the
-                intermediate hidden states (default: False).
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
 
@@ -183,9 +174,6 @@ class TransformerEncoder(BaseEncoder):
                   padding elements of shape `(batch, src_len)`
                 - **encoder_embedding** (Tensor): the (scaled) embedding lookup
                   of shape `(batch, src_len, embed_dim)`
-                - **encoder_states** (List[Tensor]): all intermediate
-                  hidden states of shape `(src_len, batch, embed_dim)`.
-                  Only populated if *return_all_hiddens* is True.
         """
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
@@ -200,20 +188,12 @@ class TransformerEncoder(BaseEncoder):
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
-        encoder_states = []
-
-        if return_all_hiddens:
-            encoder_states.append(x)
-
         # encoder layers
         l_aux = []
         for layer in self.layers:
             x, l_aux_i = layer(
                 x, encoder_padding_mask=encoder_padding_mask if has_pads else None
             )
-            if return_all_hiddens:
-                assert encoder_states is not None
-                encoder_states.append(x)
             l_aux.append(l_aux_i)
 
         if self.layer_norm is not None:
@@ -227,7 +207,6 @@ class TransformerEncoder(BaseEncoder):
             "encoder_out": [x],  # T x B x C
             "encoder_padding_mask": [encoder_padding_mask],  # B x T
             "encoder_embedding": [encoder_embedding],  # B x T x C
-            "encoder_states": encoder_states,  # List[T x B x C]
             "src_tokens": [],
             "src_lengths": [],
             "l_aux": l_aux,
@@ -585,7 +564,6 @@ class TransformerDecoder(IncrementalDecoder):
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
-        return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
