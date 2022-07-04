@@ -146,11 +146,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
     )
-    sync_ln_variance: Optional[bool] = field(
-        default=False,
-        metadata={"help": "sync_ln_variance stats", "argparse_alias": "--sync-ln"},
-    )
-
     no_emb_dropout: Optional[bool] = field(
         default=False, metadata={"help": "Avoid emb dropout for decoder"}
     )
