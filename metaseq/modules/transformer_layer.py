@@ -248,10 +248,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.normalize_before = args.decoder_normalize_before
 
-        # use layerNorm rather than FusedLayerNorm for exporting.
-        # char_inputs can be used to determint this.
-        # TODO  remove this once we update apex with the fix
-        export = getattr(args, "char_inputs", False)
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -275,7 +271,7 @@ class TransformerDecoderLayer(nn.Module):
             else:
                 self.c_attn = nn.Parameter(torch.ones((self.nh,)), requires_grad=True)
 
-        self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         if initialize_params_on_gpu:
             self.self_attn_layer_norm = utils.floating_point_precision_convertor(
@@ -290,7 +286,7 @@ class TransformerDecoderLayer(nn.Module):
             self.encoder_attn_layer_norm = None
         else:
             self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
-            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim)
             if initialize_params_on_gpu:
                 self.encoder_attn_layer_norm = utils.floating_point_precision_convertor(
                     self.encoder_attn_layer_norm.cuda(),
@@ -355,7 +351,7 @@ class TransformerDecoderLayer(nn.Module):
             dtype=self._get_model_init_dtype(),
         )
 
-        self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.final_layer_norm = LayerNorm(self.embed_dim)
         if initialize_params_on_gpu:
             self.final_layer_norm = utils.floating_point_precision_convertor(
                 self.final_layer_norm.cuda(),
@@ -364,9 +360,7 @@ class TransformerDecoderLayer(nn.Module):
                 bf16=getattr(args, "bf16", False),
             )
         self.need_attn = True
-
         self.onnx_trace = False
-
         self.args = args
 
     def _get_model_init_dtype(self):
@@ -374,6 +368,7 @@ class TransformerDecoderLayer(nn.Module):
             return torch.bfloat16 if getattr(self.args, "bf16", False) else torch.half
         return torch.float32
 
+    # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
         self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
     ):
