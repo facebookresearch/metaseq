@@ -174,7 +174,6 @@ class BaseModel(nn.Module):
         model_name_or_path,
         checkpoint_file="model.pt",
         data_name_or_path=".",
-        moe_disable_padding=True,
         skip_prepare_for_inference=False,
         **kwargs,
     ):
@@ -208,7 +207,6 @@ class BaseModel(nn.Module):
             x["args"],
             x["task"],
             x["models"],
-            moe_disable_padding=moe_disable_padding,
             skip_prepare_for_inference=skip_prepare_for_inference,
         )
 
