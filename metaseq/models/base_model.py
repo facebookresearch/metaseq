@@ -52,7 +52,7 @@ class BaseModel(nn.Module):
         raise NotImplementedError("Model must implement the build_model method")
 
     def get_targets(self, sample):
-        """Get targets from either the sample or the net's output."""
+        """Get targets from sample."""
         return sample["target"]
 
     def get_normalized_probs(
@@ -94,21 +94,6 @@ class BaseModel(nn.Module):
     def max_positions(self):
         """Maximum length supported by the model."""
         return None
-
-    def load_state_dict(
-        self,
-        state_dict,
-        strict=True,
-        model_cfg: Optional[DictConfig] = None,
-        args: Optional[Namespace] = None,
-    ):
-        """Copies parameters and buffers from *state_dict* into this module and
-        its descendants.
-
-        Overrides the method in :class:`nn.Module`. Compared with that method
-        this additionally "upgrades" *state_dicts* from old checkpoints.
-        """
-        return super().load_state_dict(state_dict, strict)
 
     def set_num_updates(self, num_updates):
         """State from trainer to pass along to model at every update."""
