@@ -103,20 +103,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "argparse_alias": "--stable-emb",
         },
     )
-    # NormFormer
-    scale_fc: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Insert LayerNorm between fully connected layers",
-        },
-    )
-    scale_attn: Optional[bool] = field(
-        default=False, metadata={"help": "Insert LayerNorm after attention"}
-    )
-    scale_heads: Optional[bool] = field(
-        default=False,
-        metadata={"help": "Learn a scale coefficient for each attention head"},
-    )
 
     # ALiBi
     alibi: bool = field(
