@@ -60,19 +60,6 @@ class BaseEncoder(nn.Module):
         }
         return self.forward(**encoder_input)
 
-    def reorder_encoder_out(self, encoder_out, new_order):
-        """
-        Reorder encoder output according to `new_order`.
-
-        Args:
-            encoder_out: output from the ``forward()`` method
-            new_order (LongTensor): desired order
-
-        Returns:
-            `encoder_out` rearranged according to `new_order`
-        """
-        raise NotImplementedError
-
     def max_positions(self):
         """Maximum input length supported by the encoder."""
         return 1e6  # an arbitrary large number
