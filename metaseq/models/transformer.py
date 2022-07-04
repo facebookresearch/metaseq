@@ -582,7 +582,6 @@ class TransformerDecoder(IncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
@@ -603,8 +602,6 @@ class TransformerDecoder(IncrementalDecoder):
                 applying output layer (default: False).
             alignment_layer (int, optional): return mean alignment over
                 heads at this layer (default: last layer).
-            alignment_heads (int, optional): only average alignment over
-                this many heads (default: all heads).
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
             self_attn_padding_mask (torch.Tensor, optional): precomputed padding
@@ -623,7 +620,6 @@ class TransformerDecoder(IncrementalDecoder):
             encoder_out=encoder_out,
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
-            alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
@@ -637,7 +633,6 @@ class TransformerDecoder(IncrementalDecoder):
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
@@ -646,7 +641,6 @@ class TransformerDecoder(IncrementalDecoder):
             encoder_out=encoder_out,
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
-            alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
@@ -657,7 +651,6 @@ class TransformerDecoder(IncrementalDecoder):
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
         token_embeddings: Optional[Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
@@ -726,9 +719,6 @@ class TransformerDecoder(IncrementalDecoder):
 
         inner_states.append(x)
         if attn is not None:
-            if alignment_heads is not None:
-                attn = attn[:alignment_heads]
-
             # average probabilities over heads
             attn = attn.mean(dim=0)
 
