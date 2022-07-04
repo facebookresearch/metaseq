@@ -581,7 +581,6 @@ class TransformerDecoder(IncrementalDecoder):
         encoder_out: Optional[Dict[str, List[Tensor]]] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
-        full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
@@ -602,8 +601,6 @@ class TransformerDecoder(IncrementalDecoder):
                 :ref:`Incremental decoding`
             features_only (bool, optional): only return features without
                 applying output layer (default: False).
-            full_context_alignment (bool, optional): don't apply
-                auto-regressive mask to self-attention (default: False).
             alignment_layer (int, optional): return mean alignment over
                 heads at this layer (default: last layer).
             alignment_heads (int, optional): only average alignment over
@@ -625,7 +622,6 @@ class TransformerDecoder(IncrementalDecoder):
             prev_output_tokens,
             encoder_out=encoder_out,
             incremental_state=incremental_state,
-            full_context_alignment=full_context_alignment,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
@@ -640,7 +636,6 @@ class TransformerDecoder(IncrementalDecoder):
         prev_output_tokens,
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         token_embeddings: Optional[torch.Tensor] = None,
@@ -650,7 +645,6 @@ class TransformerDecoder(IncrementalDecoder):
             prev_output_tokens,
             encoder_out=encoder_out,
             incremental_state=incremental_state,
-            full_context_alignment=full_context_alignment,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
@@ -662,7 +656,6 @@ class TransformerDecoder(IncrementalDecoder):
         prev_output_tokens,
         encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         token_embeddings: Optional[Tensor] = None,
@@ -690,7 +683,7 @@ class TransformerDecoder(IncrementalDecoder):
 
         # see IncrementalDecoder for important information about
         # incremental state. Note that it may be an empty dictionary.
-        if not incremental_state and not full_context_alignment:
+        if not incremental_state:
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
         else:
             self_attn_mask = None
