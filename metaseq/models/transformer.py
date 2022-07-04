@@ -543,7 +543,7 @@ class TransformerDecoder(IncrementalDecoder):
         encoder_out: Optional[Dict[str, List[Tensor]]] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
-        src_lengths: Optional[Any] = None,
+        src_lengths: Optional[Any] = None,  # TODO(susanz): remove this!
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
