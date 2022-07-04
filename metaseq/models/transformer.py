@@ -314,7 +314,7 @@ class TransformerDecoder(IncrementalDecoder):
                 0, len(layers), self.args.fsdp_checkpoint_wrap_layer_frequency
             ):
                 layer_block = TransformerDecoderMultiLayerBlockModule(
-                    layers[i: i + self.args.fsdp_checkpoint_wrap_layer_frequency]
+                    layers[i : i + self.args.fsdp_checkpoint_wrap_layer_frequency]
                 )
                 checkpoint = getattr(args, "checkpoint_activations", False)
                 if checkpoint:
