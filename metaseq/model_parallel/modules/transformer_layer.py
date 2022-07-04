@@ -179,7 +179,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             bias_dropout_add_func = bias_dropout_add_fused_train
         else:
             bias_dropout_add_func = bias_dropout_add_fused_inference
-
         x = bias_dropout_add_func(
             attn_output, attn_bias.view(1, 1, -1), residual, self.args.dropout
         )
