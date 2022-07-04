@@ -179,14 +179,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             bias_dropout_add_func = bias_dropout_add_fused_train
         else:
             bias_dropout_add_func = bias_dropout_add_fused_inference
-
-        if self.c_attn is not None:
-            # NormFormer Head Scaling Logic
-            tgt_len, bsz = attn_output.size(0), attn_output.size(1)
-            attn_output = attn_output.view(tgt_len, bsz, self.nh, self.head_dim)
-            attn_output = torch.einsum("tbhd,h->tbhd", attn_output, self.c_attn)
-            attn_output = attn_output.reshape(tgt_len, bsz, self.embed_dim)
-
         x = bias_dropout_add_func(
             attn_output, attn_bias.view(1, 1, -1), residual, self.args.dropout
         )
