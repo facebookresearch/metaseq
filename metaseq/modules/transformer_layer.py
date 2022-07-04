@@ -112,10 +112,6 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.encoder_normalize_before
         ffn_dim = args.encoder_ffn_embed_dim
-        self.attn_ln = (
-            LayerNorm(self.embed_dim) if getattr(args, "scale_attn", False) else None
-        )
-
         self.activation_fn = utils.get_activation_fn(
             activation=getattr(args, "activation_fn", "relu") or "relu"
         )
@@ -227,10 +223,6 @@ class TransformerDecoderLayer(nn.Module):
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
-        self.attn_ln = (
-            LayerNorm(self.embed_dim) if getattr(args, "scale_attn", False) else None
-        )
-
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
@@ -242,13 +234,6 @@ class TransformerDecoderLayer(nn.Module):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
-        if initialize_params_on_gpu and self.attn_ln is not None:
-            self.attn_ln = utils.floating_point_precision_convertor(
-                self.attn_ln.cuda(),
-                fp16=getattr(args, "fp16", False),
-                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                bf16=getattr(args, "bf16", False),
-            )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
         scale_heads = getattr(args, "scale_heads", False)
@@ -409,8 +394,6 @@ class TransformerDecoderLayer(nn.Module):
             x = torch.einsum("tbhd,h->tbhd", x, self.c_attn)
             x = x.reshape(tgt_len, bsz, self.embed_dim)
         x = self.dropout_module(x)
-        if self.attn_ln is not None:
-            x = self.attn_ln(x)
         return self.residual_connection(x, residual), attn
 
     def forward(
