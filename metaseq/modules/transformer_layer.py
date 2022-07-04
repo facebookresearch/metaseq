@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from metaseq import distributed_utils as dist_utils, utils
+from metaseq import utils
 from metaseq.modules import gelu, MultiheadAttention
 from metaseq.modules.dropout import Dropout
 from metaseq.modules.fused_bias_gelu import (
@@ -18,7 +18,7 @@ from metaseq.modules.fused_bias_gelu import (
     has_fused_bias_gelu,
     load_megatron_fused_kernel,
 )
-from metaseq.modules.layer_norm import LayerNorm, SyncedModelParallelFusedLayerNorm
+from metaseq.modules.layer_norm import LayerNorm
 from metaseq.modules.linear import Linear
 
 
