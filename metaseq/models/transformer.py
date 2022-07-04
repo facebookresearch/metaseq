@@ -143,9 +143,7 @@ class TransformerEncoder(BaseEncoder):
                 - **encoder_embedding** (Tensor): the (scaled) embedding lookup
                   of shape `(batch, src_len, embed_dim)`
         """
-        return self.forward_scriptable(
-            src_tokens, src_lengths, token_embeddings
-        )
+        return self.forward_scriptable(src_tokens, src_lengths, token_embeddings)
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
     # can't access the base class model in Torchscript.
@@ -165,15 +163,6 @@ class TransformerEncoder(BaseEncoder):
                 shape `(batch)`
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
-
-        Returns:
-            dict:
-                - **encoder_out** (Tensor): the last encoder layer's output of
-                  shape `(src_len, batch, embed_dim)`
-                - **encoder_padding_mask** (ByteTensor): the positions of
-                  padding elements of shape `(batch, src_len)`
-                - **encoder_embedding** (Tensor): the (scaled) embedding lookup
-                  of shape `(batch, src_len, embed_dim)`
         """
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
