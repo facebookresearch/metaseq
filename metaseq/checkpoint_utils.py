@@ -243,10 +243,10 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             best_checkpoint = get_last_good_checkpoint(cfg)
             if best_checkpoint is not None:
                 cfg.restore_file = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + ".pt"
+                    cfg.save_dir, best_checkpoint + ".pt"
                 )
                 checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + ".pt"
+                    cfg.save_dir, best_checkpoint + suffix + ".pt"
                 )
             else:
                 first_launch = True
