@@ -236,17 +236,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
-        scale_heads = getattr(args, "scale_heads", False)
-        self.c_attn = None
-        if scale_heads:
-            if initialize_params_on_gpu:
-                self.c_attn = nn.Parameter(
-                    torch.ones((self.nh,), dtype=torch.float16).cuda(),
-                    requires_grad=True,
-                )
-            else:
-                self.c_attn = nn.Parameter(torch.ones((self.nh,)), requires_grad=True)
-
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         if initialize_params_on_gpu:
@@ -388,11 +377,6 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=need_weights,
             attn_mask=attn_mask,
         )
-        if self.c_attn is not None:
-            tgt_len, bsz = x.size(0), x.size(1)
-            x = x.view(tgt_len, bsz, self.nh, self.head_dim)
-            x = torch.einsum("tbhd,h->tbhd", x, self.c_attn)
-            x = x.reshape(tgt_len, bsz, self.embed_dim)
         x = self.dropout_module(x)
         return self.residual_connection(x, residual), attn
 
