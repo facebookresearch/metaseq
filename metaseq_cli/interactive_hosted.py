@@ -32,6 +32,7 @@ from metaseq.service.workers import WorkItem
 from metaseq.service.constants import (
     MAX_SEQ_LEN,
     MAX_BATCH_TOKENS,
+    MAX_BEAM,
     DEFAULT_PORT,
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
@@ -129,6 +130,10 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 )
                 try:
                     generations = generator.generate(**request_object)
+                except RuntimeError:
+                    # Probably cuda died. Unfortunately, we need to hard crash
+                    # here to kick in our self-healing mechanisms.
+                    raise
                 except Exception as e:
                     # propagate any exceptions to the response so we can report it
                     generations = [e] * len(batch)
@@ -259,7 +264,7 @@ def completions(engine=None):
         generation_args["top_p"] = 1.0
     # beam search top n
     if "n" in generation_args:
-        generation_args["n"] = int(generation_args["n"])
+        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
 
