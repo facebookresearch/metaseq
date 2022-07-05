@@ -129,14 +129,15 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         len_prefix = len(prefix)
         len_suffix = len(suffix)
 
-        alt_text = text[len_prefix:src_index]
+        alt_text = text[
+            len_prefix : src_index - 2
+        ]  # -2 for the "_ before the src token
         src_text = text[src_index + len(src) : -len_suffix]
-
         src_text_with_spaces = ""
-        for x in src_text:
+        for x in src_text.strip().split():
             assert (
                 x[0] == IMAGE_PREFIX
-            ), "Expected every image token to contain image prefix."
+            ), f"Expected every image token to contain image prefix instead got {x}"
             src_text_with_spaces += x + " "
 
         alt_text_tensors = torch.LongTensor(self.tokenizer.encode(alt_text).ids)
@@ -165,7 +166,11 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             assert (
                 alt_text_tensors.size(0) == self.args.pad_caption_to
             ), f"Expected text to be padded to {self.args.pad_caption_to} but got {alt_text_tensors.size(0)}"
-        return ret_tensor
+            assert (
+                ret_tensor.size(0)
+                == self.args.pad_caption_to + self.args.image_length + 1
+            )
+        return ret_tensor.contiguous()
 
     def _initialize_gpt2_tokenizer(self, args):
         tokenizer = ByteLevelBPETokenizer.from_file(
