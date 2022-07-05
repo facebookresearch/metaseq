@@ -62,7 +62,10 @@
             url: "/v1/engines/175b/completions",
             type: "POST",
             processData: true,
-            contentType: "application/json",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer Demo",
+            },
             data: JSON.stringify(getFormData($("form"))),
             complete: function () {
                 $("#loader_holder").css("visibility", "hidden");
