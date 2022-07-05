@@ -182,7 +182,7 @@ def _delete_old_checkpoint_files(
 def verify_shards(cfg, dir=None, checkpoint_name=None):
     # verifies that all the shards of the checkpoint are present
     checkpoint_name = checkpoint_name.replace(".pt", "")
-    num_gpus = int(cfg.save_dir[-1:])
+    num_gpus = DistributedTrainingConfig.distributed_world_size
     num_shards = 0
     for file in os.listdir(dir):
         if file.startswith(checkpoint_name):
@@ -242,11 +242,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             # checkpoint_last is corrupted
             best_checkpoint = get_last_good_checkpoint(cfg)
             if best_checkpoint is not None:
-                cfg.restore_file = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + ".pt"
-                )
+                cfg.restore_file = os.path.join(cfg.save_dir, best_checkpoint + ".pt")
                 checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir, get_last_good_checkpoint(cfg) + suffix + ".pt"
+                    cfg.save_dir, best_checkpoint + suffix + ".pt"
                 )
             else:
                 first_launch = True
