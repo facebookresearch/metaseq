@@ -52,10 +52,6 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
 
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
-        if not self.share_input_output_embed:
-            raise NotImplementedError(
-                "Model parallel training currently requires --share-decoder-input-output-embed"
-            )
 
         features = copy_to_tensor_model_parallel_region(features)
 

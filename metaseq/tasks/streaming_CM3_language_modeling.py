@@ -81,7 +81,13 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
     dataset_type: str = field(
         default="all",
         metadata={
-            "help": "what type of dataset to enforce. Useful for doing ablations. Possible values: all|image"
+            "help": "what type of dataset to enforce. Useful for doing ablations. Possible values: all|image|caption_to_image"
+        },
+    )
+    pad_caption_to: int = field(
+        default=-1,
+        metadata={
+            "help": "in the case you're doing caption/image alignment, how much to pad text to."
         },
     )
 
@@ -104,6 +110,62 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             tensor.size(0) == self.args.image_length + 1
         ), f"Expected image size to be {self.args.image_length + 1} but got {tensor.size(0)}"
         return tensor
+
+    def _tokenize_text_image_alignment(self, json):
+        text: str = json["text"]
+        prefix = '<img alt="'
+        suffix = '">'
+
+        src = 'src="'
+        src_index = text.find(src)
+
+        error = (
+            f'Expected value in <img alt="..." src="..."> format, instead got {text}'
+        )
+        assert text.startswith(prefix), error
+        assert text.endswith(suffix), error
+        assert src_index > 0, error
+
+        len_prefix = len(prefix)
+        len_suffix = len(suffix)
+
+        alt_text = text[len_prefix:src_index]
+        src_text = text[src_index + len(src) : -len_suffix]
+
+        src_text_with_spaces = ""
+        for x in src_text:
+            assert (
+                x[0] == IMAGE_PREFIX
+            ), "Expected every image token to contain image prefix."
+            src_text_with_spaces += x + " "
+
+        alt_text_tensors = torch.LongTensor(self.tokenizer.encode(alt_text).ids)
+        src_text_tensors = torch.LongTensor(
+            self.tokenizer.encode(src_text_with_spaces).ids
+        )
+        if self.args.pad_caption_to > 0:
+            alt_text_tensors = alt_text_tensors[: self.args.pad_caption_to]
+            if alt_text_tensors.size(0) != self.args.pad_caption_to:
+                alt_text_tensors = torch.cat(
+                    [
+                        alt_text_tensors,
+                        torch.ones(
+                            self.args.pad_caption_to - alt_text_tensors.size(0)
+                        ).to(alt_text_tensors),
+                    ]
+                )
+        ret_tensor = torch.cat(
+            [alt_text_tensors, src_text_tensors, torch.tensor([self.eod])]
+        )
+        assert (
+            src_text_tensors.size(0) == self.args.image_length
+        ), f"Expected image size to be {self.args.image_length} but got {src_text_tensors.size(0)}"
+
+        if self.args.pad_caption_to > 0:
+            assert (
+                alt_text_tensors.size(0) == self.args.pad_caption_to
+            ), f"Expected text to be padded to {self.args.pad_caption_to} but got {alt_text_tensors.size(0)}"
+        return ret_tensor
 
     def _initialize_gpt2_tokenizer(self, args):
         tokenizer = ByteLevelBPETokenizer.from_file(
@@ -204,6 +266,11 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         self.datasets = {}
         self.dataset_to_epoch_iter = {}
 
+        if self.args.pad_caption_to > 0:
+            assert (
+                self.args.dataset_type == "caption_to_image"
+            ), "padding caption only works in caption_to_image setting"
+
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
@@ -261,8 +328,12 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 tokenizer_func = self._tokenize_one_json
             elif self.args.dataset_type == "image":
                 tokenizer_func = self._tokenize_one_json_imageonly
+            elif self.args.dataset_type == "caption_to_image":
+                tokenizer_func = self._tokenize_text_image_alignment
             else:
-                raise ValueError(f"Expected all|image but got {self.args.dataset_type}")
+                raise ValueError(
+                    f"Expected all|image|caption_to_image but got {self.args.dataset_type}"
+                )
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),

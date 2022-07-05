@@ -492,6 +492,13 @@ class TransformerDecoder(IncrementalDecoder):
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim**-0.5
             )
+            if initialize_params_on_gpu:
+                self.output_projection = utils.floating_point_precision_convertor(
+                    self.output_projection.cuda(),
+                    fp16=getattr(args, "fp16", False),
+                    memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
+                    bf16=getattr(args, "bf16", False),
+                )
 
         if self.use_alibi:
             self.alibi = self._build_alibi_tensor(

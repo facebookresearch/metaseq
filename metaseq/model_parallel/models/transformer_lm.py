@@ -58,6 +58,12 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             embed_tokens,
             no_encoder_attn=True,
         )
+        if not args.share_decoder_input_output_embed:
+            output_projection = cls.build_embedding(
+                args, task.source_dictionary, args.decoder_input_dim
+            )
+            decoder.output_projection.weight = output_projection.weight
+
         return cls(decoder)
 
     @staticmethod
