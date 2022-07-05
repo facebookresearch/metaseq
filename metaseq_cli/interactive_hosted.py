@@ -195,11 +195,14 @@ def handle_exception(e):
 
 
 def _validate_key(key):
+    # denylist a few placeholders various people have used
     if key == "":
         return False
     if "YOUR_NAME_HERE" in key:
         return False
     if "$USER" in key:
+        return False
+    if "your-key-here" in key:
         return False
     return True
 
