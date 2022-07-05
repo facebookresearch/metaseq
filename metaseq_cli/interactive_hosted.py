@@ -223,7 +223,7 @@ def _create_error_response(msg, http_code, **others):
 @app.route("/engines/<engine>/completions", methods=["POST"])
 def completions(engine=None):
     # before anything else, check that we've got a valid API key
-    if not _validate_key(request.headers.get('authorization', '')):
+    if not _validate_key(request.headers.get("authorization", "")):
         return _create_error_response("Invalid API key or API key missing.", 401)
 
     # prompt can be 4 types:
