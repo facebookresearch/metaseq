@@ -187,20 +187,36 @@ def handle_exception(e):
     # pass through HTTP errors
     if isinstance(e, HTTPException):
         return e
-    # now you're handling non-HTTP exceptions only
-    response = jsonify(
-        {
-            "error": {
-                "message": str(e),
-                "type": "oops",
-                "stacktrace": traceback.format_tb(e.__traceback__),
-            }
-        }
+
+    http_code = 400 if isinstance(e, ValueError) else 500
+    return _create_error_response(
+        str(e), http_code, stacktrace=traceback.format_tb(e.__traceback__)
     )
-    if isinstance(e, ValueError):
-        response.status = 400
-    else:
-        response.status = 500
+
+
+def _validate_key(key):
+    # denylist a few placeholders various people have used
+    if key == "":
+        return False
+    if "YOUR_NAME_HERE" in key:
+        return False
+    if "$USER" in key:
+        return False
+    if "your-key-here" in key:
+        return False
+    return True
+
+
+def _create_error_response(msg, http_code, **others):
+    error_dict = {
+        "message": msg,
+        "type": "invalid_request_error",
+        "param": None,
+        "code": None,
+        **others,
+    }
+    response = jsonify({"error": error_dict})
+    response.status = http_code
     return response
 
 
@@ -209,6 +225,10 @@ def handle_exception(e):
 @app.route("/v2/engines/<engine>/completions", methods=["POST"])
 @app.route("/engines/<engine>/completions", methods=["POST"])
 def completions(engine=None):
+    # before anything else, check that we've got a valid API key
+    if not _validate_key(request.headers.get("authorization", "")):
+        return _create_error_response("Invalid API key or API key missing.", 401)
+
     # prompt can be 4 types:
     # - str. Basic case. Return one generation.
     # - list of ints. Pretokenized. Return one generation
