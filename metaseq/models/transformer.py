@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from metaseq import pdb, utils
+from metaseq import utils
 from metaseq.distributed import utils as dist_utils, fsdp_wrap
 from metaseq.models import BaseEncoder, IncrementalDecoder
 from metaseq.modules import (
@@ -497,49 +497,11 @@ class TransformerDecoder(IncrementalDecoder):
             layers.append(
                 self.build_decoder_layer(
                     args,
+                    i,
                     no_encoder_attn=no_encoder_attn,
                 )
             )
-        if getattr(self.args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
-            assert (
-                len(layers) % self.args.fsdp_checkpoint_wrap_layer_frequency == 0
-            ), "num layers should be divisible by checkpoint wrap frequency"
-            for i in range(
-                0, len(layers), self.args.fsdp_checkpoint_wrap_layer_frequency
-            ):
-                layer_block = TransformerDecoderMultiLayerBlockModule(
-                    layers[i : i + self.args.fsdp_checkpoint_wrap_layer_frequency]
-                )
-                checkpoint = getattr(args, "checkpoint_activations", False)
-                if checkpoint:
-                    assert (
-                        getattr(args, "checkpoint_activations_granularity", "full")
-                        == "full"
-                    )
-                    offload_to_cpu = getattr(args, "offload_activations", False)
-                    distribute_checkpointed_activations = getattr(
-                        args, "distribute_checkpointed_activations", False
-                    )
-                    layer_block = checkpoint_wrapper(
-                        layer_block,
-                        offload_to_cpu=offload_to_cpu,
-                        distribute_checkpointed_activations=distribute_checkpointed_activations,
-                    )
-                # if we are checkpointing, enforce that FSDP always wraps the
-                # checkpointed layer, regardless of layer size
-                min_params_to_wrap = (
-                    getattr(args, "min_params_to_wrap", DEFAULT_MIN_PARAMS_TO_WRAP)
-                    if not checkpoint
-                    else 0
-                )
-                layer_block = fsdp_wrap(
-                    layer_block,
-                    min_num_params=min_params_to_wrap,
-                    process_group=dist_utils.get_data_parallel_group(),
-                )
-                self.layers.append(layer_block)
-        else:
-            self.layers = nn.ModuleList(layers)
+        self.layers = nn.ModuleList(layers)
 
         _log_weight_stats(self.embed_tokens.weight, "embed tokens")
 
@@ -625,19 +587,20 @@ class TransformerDecoder(IncrementalDecoder):
     def build_base_decoder_layer(self, args, no_encoder_attn=False, **unused):
         return TransformerDecoderLayer(args, no_encoder_attn=no_encoder_attn)
 
-    def build_decoder_layer(self, args, no_encoder_attn=False):
+    def build_decoder_layer(self, args, layer_num, no_encoder_attn=False):
         layer = self.build_base_decoder_layer(args, no_encoder_attn)
         for name, param in layer.named_parameters():
             _log_weight_stats(param, name)
-        if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
-            return layer
         checkpoint = getattr(args, "checkpoint_activations", False)
         if checkpoint:
             offload_to_cpu = getattr(args, "offload_activations", False)
             distribute_checkpointed_activations = getattr(
                 args, "distribute_checkpointed_activations", False
             )
-            if getattr(args, "checkpoint_activations_granularity", "full") == "full":
+            if (
+                getattr(args, "checkpoint_activations_granularity", "full") == "full"
+                or layer_num < getattr(args, "full_checkpoint_activations_num_layers", 0)
+            ):
                 layer = checkpoint_wrapper(
                     layer,
                     offload_to_cpu=offload_to_cpu,

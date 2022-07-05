@@ -79,6 +79,13 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     checkpoint_activations_granularity: ChoiceEnum(["full", "mha"]) = field(
         default="full", metadata={"help": "checkpoint activations at each layer"}
     )
+    full_checkpoint_activations_num_layers: int = field(
+        default=0, metadata={"help": "num layers to fully checkpoint, overrides --checkpoint_activations_granularity mha "
+        "for first m layers, i.e if --full-checkpoint-activations-num-layers is `m` for an `n` layer transformer,  and "
+        "--checkpoint-activations-granularity is `mha`, then first `m` layers will "
+        "recompute the whole transformer block in backward and rest will recompute just the MHA block in backward"
+        }
+    )
     offload_activations: bool = field(
         default=False,
         metadata={"help": "move checkpointed activations to CPU after they are used."},
@@ -132,12 +139,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={
             "help": "use the ALiBi position method instead of regular position embeddings"
-        },
-    )
-    fsdp_checkpoint_wrap_layer_frequency: int = field(
-        default=1,
-        metadata={
-            "help": "group transformer blocks and wrap the group in checkpoint and FSDP wrapper together"
         },
     )
     distribute_checkpointed_activations: bool = field(
