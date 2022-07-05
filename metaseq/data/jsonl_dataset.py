@@ -8,6 +8,7 @@ import json
 import logging
 import mmap
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
+
+import metaseq.distributed.utils as dist_utils
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +45,17 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{path}.fairseq.idx.npy")
+        # only build the cache in on the primary worker to prevent overloading nfs
+        if dist_utils.get_global_rank() != 0:
+            dist_utils.global_barrier()
         if self.cache.exists() and not recache:
-            self.offsets = np.load(self.cache)
-        else:
+            logger.info(f"Loading up cache: {self.cache}")
+            self.offsets = np.load(self.cache, allow_pickle=True)
+        elif dist_utils.get_global_rank() == 0:
             self.offsets = self._build_index(path)
-            np.save(self.cache, self.offsets)
-        # print(f'n offsets: {len(self.offsets)}')
+            np.save(self.cache, self.offsets, allow_pickle=False)
+        if dist_utils.get_global_rank() == 0:
+            dist_utils.global_barrier()
 
     def _get_mmap(self):
         if not hasattr(self.threadlocal, "handles"):
