@@ -5,13 +5,15 @@
 
 import os
 
-MAX_SEQ_LEN = 2048
-BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
-MAX_BATCH_TOKENS = 3072
-DEFAULT_PORT = 6010
-MODEL_PARALLEL = 8
-TOTAL_WORLD_SIZE = 8
-
+MAX_SEQ_LEN = int(os.getenv("METASEQ_OPT_MAX_SEQ_LEN", "2048"))
+BATCH_SIZE = int(
+    os.getenv("METASEQ_OPT_BATCH_SIZE", "2048")
+)  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
+MAX_BATCH_TOKENS = int(os.getenv("METASEQ_OPT_MAX_BATCH_TOKENS", "3072"))
+DEFAULT_PORT = int(os.getenv("METASEQ_OPT_DEFAULT_PORT", "6010"))
+MODEL_PARALLEL = int(os.getenv("METASEQ_OPT_MODEL_PARALLEL", "8"))
+TOTAL_WORLD_SIZE = int(os.getenv("METASEQ_OPT_TOTAL_WORLD_SIZE", "8"))
+DISTRIBUTED_PORT = int(os.getenv("METASEQ_OPT_DISTRIBUTED_PORT", "13000"))
 
 try:
     # internal logic denoting where checkpoints are in meta infrastructure
@@ -29,11 +31,15 @@ except ImportError:
     # reshard-model_part-5.pt
     # reshard-model_part-6.pt
     # reshard-model_part-7.pt
-    CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
+    CHECKPOINT_FOLDER = os.getenv(
+        "METASEQ_OPT_CHECKPOINT_FOLDER", "/example/175B/reshard_no_os"
+    )
+
 
 # tokenizer files
-BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+BPE_FOLDER = os.getenv("METASEQ_OPT_BPE_FOLDER", CHECKPOINT_FOLDER)
+BPE_MERGES = os.path.join(BPE_FOLDER, "gpt2-merges.txt")
+BPE_VOCAB = os.path.join(BPE_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
 
@@ -48,7 +54,7 @@ LAUNCH_ARGS = [
     f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {CHECKPOINT_FOLDER}/reshard.pt",
     "--beam 1 --nbest 1",
-    "--distributed-port 13000",
+    "--distributed-port {DISTRIBUTED_PORT}",
     "--checkpoint-shard-count 1",
     "--use-sharded-state",
     f"--batch-size {BATCH_SIZE}",
