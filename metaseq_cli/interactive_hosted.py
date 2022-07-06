@@ -16,9 +16,11 @@ import queue
 import pkg_resources
 import random
 import threading
+import traceback
 
 import torch
-from flask import Flask, request
+from flask import Flask, request, jsonify
+from werkzeug.exceptions import HTTPException
 
 from metaseq import options
 from metaseq.dataclass.configs import MetaseqConfig
@@ -125,7 +127,11 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 dist_utils.broadcast_object(
                     request_object, src_rank=0, group=dist_utils.get_global_group()
                 )
-                generations = generator.generate(**request_object)
+                try:
+                    generations = generator.generate(**request_object)
+                except Exception as e:
+                    # propagate any exceptions to the response so we can report it
+                    generations = [e] * len(batch)
                 # broadcast them back
                 for work_item, gen in zip(batch, generations):
                     work_item.return_queue.put((work_item.uid, gen))
@@ -166,10 +172,52 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
         # useful in FSDP setting
         logger.info(f"Looping engaged! {get_my_ip()}:{port}")
         while True:
-            request_object = dist_utils.broadcast_object(
-                None, src_rank=0, group=dist_utils.get_global_group()
-            )
-            _ = generator.generate(**request_object)
+            try:
+                request_object = dist_utils.broadcast_object(
+                    None, src_rank=0, group=dist_utils.get_global_group()
+                )
+                _ = generator.generate(**request_object)
+            except Exception:
+                # continue looping for the next generation so we don't lock up
+                pass
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # pass through HTTP errors
+    if isinstance(e, HTTPException):
+        return e
+
+    http_code = 400 if isinstance(e, ValueError) else 500
+    return _create_error_response(
+        str(e), http_code, stacktrace=traceback.format_tb(e.__traceback__)
+    )
+
+
+def _validate_key(key):
+    # denylist a few placeholders various people have used
+    if key == "":
+        return False
+    if "YOUR_NAME_HERE" in key:
+        return False
+    if "$USER" in key:
+        return False
+    if "your-key-here" in key:
+        return False
+    return True
+
+
+def _create_error_response(msg, http_code, **others):
+    error_dict = {
+        "message": msg,
+        "type": "invalid_request_error",
+        "param": None,
+        "code": None,
+        **others,
+    }
+    response = jsonify({"error": error_dict})
+    response.status = http_code
+    return response
 
 
 @app.route("/completions", methods=["POST"])
@@ -177,6 +225,10 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
 @app.route("/v2/engines/<engine>/completions", methods=["POST"])
 @app.route("/engines/<engine>/completions", methods=["POST"])
 def completions(engine=None):
+    # before anything else, check that we've got a valid API key
+    if not _validate_key(request.headers.get("authorization", "")):
+        return _create_error_response("Invalid API key or API key missing.", 401)
+
     # prompt can be 4 types:
     # - str. Basic case. Return one generation.
     # - list of ints. Pretokenized. Return one generation
@@ -244,6 +296,8 @@ def completions(engine=None):
     reordered = sorted(unordered_results, key=lambda x: x[0])
     results = []
     for prompt, (_, generations) in zip(prompts, reordered):
+        if isinstance(generations, Exception):
+            raise generations
         results += generations
     # transform the result into the openai format
     return OAIResponse(results).__dict__()
