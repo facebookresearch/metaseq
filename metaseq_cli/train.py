@@ -252,6 +252,17 @@ def train(
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
+        aim_repo=(
+            cfg.common.aim_repo
+            if distributed_utils.is_master(cfg.distributed_training)
+            else None
+        ),
+        aim_run_hash=(
+            cfg.common.aim_run_hash
+            if distributed_utils.is_master(cfg.distributed_training)
+            else None
+        ),
+        aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
         wandb_project=(
             cfg.common.wandb_project
             if distributed_utils.is_master(cfg.distributed_training)
@@ -513,6 +524,17 @@ def validate(
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
+                aim_repo=(
+                    cfg.common.aim_repo
+                    if distributed_utils.is_master(cfg.distributed_training)
+                    else None
+                ),
+                aim_run_hash=(
+                    cfg.common.aim_run_hash
+                    if distributed_utils.is_master(cfg.distributed_training)
+                    else None
+                ),
+                aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
                 wandb_project=(
                     cfg.common.wandb_project
                     if distributed_utils.is_master(cfg.distributed_training)
