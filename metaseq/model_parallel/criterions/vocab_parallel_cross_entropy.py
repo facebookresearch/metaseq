@@ -263,7 +263,7 @@ class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
             round=3,
         )
         metrics.log_derived(
-            "ppl_image", lambda meters: utils.get_perplexity(meters["loss_text"].avg)
+            "ppl_text", lambda meters: utils.get_perplexity(meters["loss_text"].avg)
         )
 
     @staticmethod
