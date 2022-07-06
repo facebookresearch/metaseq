@@ -222,6 +222,17 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             # and do not use <s/> (the default) but <EOS>
             self.eod = self.tokenizer.token_to_id("<EOS>")
 
+    def _initialize_boundary_tokens(self, args):
+        self.image_modality_start_token = self.dictionary.index(f"{IMAGE_PREFIX}0 ")
+        self.image_modality_end_token = self.dictionary.index(
+            f"{IMAGE_PREFIX}{args.image_tokens - 1} "
+        )
+
+        self.speech_modality_start_token = self.dictionary.index(f"{SPEECH_PREFIX}0 ")
+        self.speech_modality_end_token = self.dictionary.index(
+            f"{SPEECH_PREFIX}{args.speech_tokens - 1} "
+        )
+
     def _check_tokenizer_dictionary_invariants(self, args):
         assert (
             self.eod is not None
@@ -266,6 +277,24 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 n & (n - 1) == 0
             ), "expect dictionary size for unigram tokenizer to be an exact power of two"
 
+        assert self.image_modality_start_token != self.dictionary.unk_index
+        assert self.image_modality_end_token != self.dictionary.unk_index
+
+        assert self.speech_modality_start_token != self.dictionary.unk_index
+        assert self.speech_modality_end_token != self.dictionary.unk_index
+
+        assert (
+            self.image_modality_start_token < self.image_modality_end_token
+            and self.image_modality_end_token - self.image_modality_start_token
+            == args.image_tokens - 1
+        ), f"IMAGE START: {self.image_modality_start_token}, IMAGE END: {self.image_modality_end_token}"
+
+        assert (
+            self.speech_modality_start_token < self.speech_modality_end_token
+            and self.speech_modality_end_token - self.speech_modality_start_token
+            == args.speech_tokens - 1
+        )
+
     def __init__(self, args):
         self.args = args
         self.datasets = {}
@@ -300,7 +329,10 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
 
         self._initialize_metaseq_dictionary(args)
         self._initialize_eod(args)
+        self._initialize_boundary_tokens(args)
+
         self._check_tokenizer_dictionary_invariants(args)
+
         logger.info(f"Dictionary Size: {len(self.dictionary)}")
         # confirm that metaseq dictionary and BPE have matching special symbols
 
