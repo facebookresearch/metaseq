@@ -38,7 +38,7 @@ from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
-from metaseq.distributed.stitch_fsdp_ckpt import glue_megatron_parts
+from metaseq.distributed.stitch_fsdp_ckpt import reshard_megatron_parts
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -89,10 +89,10 @@ def worker_main(cfg: MetaseqConfig):
             for r, t in enumerate(gathered):
                 model_parts[r][name] = t.cpu()
 
-    glued = glue_megatron_parts(model_parts)
+    glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
 
-    glued["decoder.version"] = model["model"]["decoder.version"].cpu()
+    glued["decoder.version"] = model.state_dict()["decoder.version"].cpu()
 
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
@@ -129,7 +129,11 @@ def main():
         "language_modeling",
         "--bpe-merges",
         BPE_MERGES,
+        "--merges-filename",
+        BPE_MERGES,
         "--bpe-vocab",
+        BPE_VOCAB,
+        "--vocab-filename",
         BPE_VOCAB,
         "--bpe",
         "hf_byte_bpe",
