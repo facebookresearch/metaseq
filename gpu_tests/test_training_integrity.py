@@ -7,6 +7,8 @@ import unittest
 import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
 import subprocess
+import urllib.request
+import tarfile
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
@@ -16,6 +18,13 @@ import subprocess
 )
 class TestTraining(unittest.TestCase):
     def test_training(self):
+        link_to_data = (
+            "https://dl.fbaipublicfiles.com/metaseq-train-integration-test.tar.gz"
+        )
+        urllib.request.urlretrieve(link_to_data, "files.tar.gz")
+        file = tarfile.open("files.tar.gz")
+        file.extractall("./gpu_tests")
+
         command = (
             "python3 metaseq/launcher/opt_baselines.py   "
             "--prefix train.8m --model-size 8m    --checkpoints-dir ./test-checkpoint    "
@@ -29,6 +38,8 @@ class TestTraining(unittest.TestCase):
             universal_newlines=True,
         )
         outs, errs = p.communicate()
+        print(outs)
+        print(errs)
         outs_list = outs.split()
         outs_list.reverse()
         ind = outs_list.index('"loss":')
@@ -36,13 +47,30 @@ class TestTraining(unittest.TestCase):
         ans = float(ans)
         self.assertAlmostEqual(ans, 15.601)  # assertion of loss after 10 iterations
         assert "done training" in outs  # assertion of training completion succesfully
-        r = subprocess.Popen(
+        cleanup_checkpoints = subprocess.Popen(
             "rm -r ./test-checkpoint".split(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,
         )
-        _, _ = r.communicate()
+        _, _ = cleanup_checkpoints.communicate()
+
+        cleanup_tarball = subprocess.Popen(
+            "rm files.tar.gz".split(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        _, _ = cleanup_tarball.communicate()
+
+        cleanup_files = subprocess.Popen(
+            "rm -r ./gpu_tests/circleci".split(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        _, _ = cleanup_files.communicate()
 
 
 if __name__ == "__main__":
