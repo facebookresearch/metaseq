@@ -15,6 +15,7 @@ import os
 import queue
 import pkg_resources
 import random
+import sys
 import threading
 import traceback
 
@@ -130,10 +131,16 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 )
                 try:
                     generations = generator.generate(**request_object)
-                except RuntimeError:
+                except RuntimeError as e:
                     # Probably cuda died. Unfortunately, we need to hard crash
                     # here to kick in our self-healing mechanisms.
-                    raise
+                    logger.error(
+                        "RuntimeError!"
+                        + str(e)
+                        + "\n"
+                        + "".join(traceback.format_tb(e.__traceback__))
+                    )
+                    sys.exit(1)
                 except Exception as e:
                     # propagate any exceptions to the response so we can report it
                     generations = [e] * len(batch)
