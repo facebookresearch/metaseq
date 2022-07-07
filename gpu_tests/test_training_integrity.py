@@ -24,7 +24,7 @@ class TestTraining(unittest.TestCase):
         urllib.request.urlretrieve(link_to_data, "files.tar.gz")
         file = tarfile.open("files.tar.gz")
         file.extractall("./gpu_tests")
-
+        file.close()
         command = (
             "python3 metaseq/launcher/opt_baselines.py   "
             "--prefix train.8m --model-size 8m    --checkpoints-dir ./test-checkpoint    "
