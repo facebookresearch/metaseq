@@ -10,11 +10,12 @@ import string
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-from metaseq import pdb
 from metaseq.data import JsonlDataset
 
 
-def write_one_jsonl_(jsonl_path, num_lines=5, text_len_min=5, text_len_max=50, truncate = False):
+def write_one_jsonl_(
+    jsonl_path, num_lines=5, text_len_min=5, text_len_max=50, truncate=False
+):
     data = []
     with open(jsonl_path, "w") as h:
         for _ in range(num_lines):
@@ -26,7 +27,7 @@ def write_one_jsonl_(jsonl_path, num_lines=5, text_len_min=5, text_len_max=50, t
             if truncate and _ == 0:
                 line = "".join(random.choices(string.ascii_letters, k=text_len))
                 data.append(line)
-                print(line,file=h)
+                print(line, file=h)
     return data
 
 
@@ -75,15 +76,17 @@ class TestJsonlDataset(unittest.TestCase):
 
     def test_non_empty_jsonl(self):
         with tempfile.NamedTemporaryFile() as jsonl_file:
-            orig_data = write_one_jsonl_(jsonl_file.name, num_lines= 0)
+            orig_data = write_one_jsonl_(jsonl_file.name, num_lines=0)
             assert len(orig_data) == 0
-            self.assertRaises(ValueError, JsonlDataset , jsonl_file.name)
+            self.assertRaises(ValueError, JsonlDataset, jsonl_file.name)
 
     def test_formatting_json(self):
         with tempfile.NamedTemporaryFile() as jsonl_file:
-            orig_data = write_one_jsonl_(jsonl_file.name, num_lines= 5, truncate = True)
-            assert len(orig_data) == 6 # it's 6 because we add an extra line of badly formatted json 
-            self.assertRaises(AssertionError, JsonlDataset , jsonl_file.name)
+            orig_data = write_one_jsonl_(jsonl_file.name, num_lines=5, truncate=True)
+            assert (
+                len(orig_data) == 6
+            )  # it's 6 because we add an extra line of badly formatted json
+            self.assertRaises(AssertionError, JsonlDataset, jsonl_file.name)
 
     def _test_jsonl_dataset(self, num_lines, tokenizer=None):
         with tempfile.NamedTemporaryFile() as jsonl_file:

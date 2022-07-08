@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
-from metaseq import pdb
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,12 +88,13 @@ class JsonlDataset(torch.utils.data.Dataset):
         cur = 0
         while True:
             line = f.readline()
-            # pdb.set_trace()
             if line != b"":
                 try:
                     json.loads(line)
                 except json.decoder.JSONDecodeError:
-                    raise AssertionError("Unable to load truncated or corrupted JSON file")
+                    raise AssertionError(
+                        "Unable to load truncated or corrupted JSON file"
+                    )
             if line == b"":
                 break
             offsets.append(cur)
@@ -143,7 +144,6 @@ if __name__ == "__main__":
     from glob import glob
 
     from tqdm import tqdm
-
 
     for f in tqdm(list(glob(args.pattern))):
         JsonlDataset(f, recache=True)
