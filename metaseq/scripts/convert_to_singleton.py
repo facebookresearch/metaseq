@@ -102,6 +102,7 @@ def worker_main(cfg: MetaseqConfig):
     )
     output_sd["model"] = utils.move_to_cpu(glued)
     output_sd["cfg"]["model"].arch = "transformer_lm"
+    output_sd["cfg"]["model"]._name = "transformer_lm"
 
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
