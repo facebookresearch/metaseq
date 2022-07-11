@@ -93,12 +93,23 @@ class JsonlDataset(torch.utils.data.Dataset):
         f.seek(0)
         offsets = []
         cur = 0
+        line_num = 0
         while True:
             line = f.readline()
+            if line != b"":
+                try:
+                    json.loads(line)
+                except json.decoder.JSONDecodeError:
+                    raise json.decoder.JSONDecodeError(
+                        doc=path,
+                        pos=line_num,
+                        msg=f"Error while loading JSONL file {path} at line {line_num + 1}",
+                    )
             if line == b"":
                 break
             offsets.append(cur)
             cur += len(line)
+            line_num += 1
         return offsets
 
     def __setstate__(self, state):
