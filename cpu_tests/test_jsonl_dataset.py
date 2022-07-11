@@ -86,7 +86,9 @@ class TestJsonlDataset(unittest.TestCase):
             assert (
                 len(orig_data) == 6
             )  # it's 6 because we add an extra line of badly formatted json
-            self.assertRaises(AssertionError, JsonlDataset, jsonl_file.name)
+            self.assertRaises(
+                json.decoder.JSONDecodeError, JsonlDataset, jsonl_file.name
+            )
 
     def _test_jsonl_dataset(self, num_lines, tokenizer=None):
         with tempfile.NamedTemporaryFile() as jsonl_file:
