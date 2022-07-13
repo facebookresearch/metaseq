@@ -627,16 +627,24 @@ class GeneratorInterface:
                     tokens = all_tokens[i, j].tolist()
                     scores = all_scores[i, j].tolist()
                     distributions = all_distributions[i, j] if logprobs > 0 else None
+                    from metaseq.utils import print_r0
+
+                    prompt_len = lengths[i]
+                    print_r0("prmopt_len:", prompt_len)
+                    print_r0("scores:", scores)
+                    print_r0("tokens:", tokens)
+
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
-                    prompt_len = lengths[i]
+                    print_r0("prmopt_len2:", prompt_len)
+                    print_r0("scores2:", scores)
+                    print_r0("tokens2:", tokens)
+                    print_r0("")
+
                     if echo:
                         # don't cut off prompt
-                        tokens = tokens[: prompt_len + max_tokens[i]]
-                        scores = scores[: prompt_len + max_tokens[i]]
-                        if logprobs > 0:
-                            distributions = distributions[: prompt_len + max_tokens[i]]
+                        pass
                     else:
                         # cut off prompt
                         tokens = tokens[prompt_len:][: max_tokens[i]]
@@ -650,7 +658,7 @@ class GeneratorInterface:
 
                     result = {
                         "text": self.bpe.bpe.decode(tokens),
-                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
+                        "tokens": [(t, self.bpe.bpe.decode([t])) for t in tokens],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
@@ -701,22 +709,27 @@ class GeneratorInterface:
         # distributions (optional) is a seqlen x vocab_size tensor corresponding to
         # the full distribution of predictions at each timestep
 
+        from metaseq.utils import print_r0
+
+        print_r0("fs tok:", len(tokens))
+        print_r0("fs sco:", len(scores))
+        print_r0("fs dis:", distributions.shape)
+
         output = []
         mask = []
-        for t, s in zip(tokens, scores):
+        for i, (t, s) in enumerate(zip(tokens, scores)):
             if t == pad_token:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t <= 3:
-                # and other special tokens should end things
-                break
+            # if t <= 3 and i > 0:
+            #     # and other special tokens should end things
+            #     break
             mask.append(True)
             output.append((t, s))
         new_tokens, new_scores = zip(*output)
 
         # cut off at stop and drop pads
         if distributions is not None:
-            distributions = distributions[: len(mask)][mask]
-            distributions = distributions[: len(output)]
-        return new_tokens, new_scores, distributions
+            distributions = distributions[mask]
+        return list(new_tokens), list(new_scores), distributions
