@@ -31,9 +31,10 @@ except ImportError:
     # reshard-model_part-7.pt
     CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
 
+TOK_FOLDER = "/data/gpt-z/opt/tokenizers/"
 # tokenizer files
-BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+BPE_MERGES = os.path.join(TOK_FOLDER, "gpt2-merges.txt")
+BPE_VOCAB = os.path.join(TOK_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
 
