@@ -49,6 +49,51 @@ logging.basicConfig(
 logger = logging.getLogger("convert_to_singleton")
 
 
+def create_generation_config_with_defaults(model_path):
+    files = glob.glob(f"{model_path}/reshard*.pt")
+
+    MP = len(files)
+    BPE_MERGES = model_path + "/gpt2-merges.txt"
+    BPE_VOCAB = model_path + "/gpt2-vocab.json"
+
+    # Skeleton out all the annoying command line args we can infer
+    ARGS = [
+        "--model-parallel-size",
+        str(MP),
+        "--distributed-world-size",
+        str(MP),
+        "--task",
+        "language_modeling",
+        "--bpe-merges",
+        BPE_MERGES,
+        "--merges-filename",
+        BPE_MERGES,
+        "--bpe-vocab",
+        BPE_VOCAB,
+        "--vocab-filename",
+        BPE_VOCAB,
+        "--bpe",
+        "hf_byte_bpe",
+        "--path",
+        model_path + "/reshard.pt",
+        "--checkpoint-shard-count",
+        "1",
+        "--use-sharded-state",
+        model_path,
+    ]
+    print(ARGS)
+
+    # build up the config file
+    parser = options.get_generation_parser()
+    # dumb defaults overriding
+    parser.set_defaults(lr_scheduler=None, criterion=None)
+    args = options.parse_args_and_arch(parser, input_args=ARGS)
+    cfg = convert_namespace_to_omegaconf(args)
+    cfg.distributed_training.distributed_world_size = MP
+
+    return cfg
+
+
 def worker_main(cfg: MetaseqConfig):
     """
     Load up the model on all workers for Model Parallelism, then
@@ -102,6 +147,7 @@ def worker_main(cfg: MetaseqConfig):
     )
     output_sd["model"] = utils.move_to_cpu(glued)
     output_sd["cfg"]["model"].arch = "transformer_lm"
+    output_sd["cfg"]["model"]._name = "transformer_lm"
 
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
@@ -113,46 +159,8 @@ def main():
     real_parser = argparse.ArgumentParser()
     real_parser.add_argument("location")
     args = real_parser.parse_args()
-    files = glob.glob(f"{args.location}/reshard*.pt")
 
-    MP = len(files)
-    BPE_MERGES = args.location + "/gpt2-merges.txt"
-    BPE_VOCAB = args.location + "/gpt2-vocab.json"
-
-    # Skeleton out all the annoying command line args we can infer
-    ARGS = [
-        "--model-parallel-size",
-        str(MP),
-        "--distributed-world-size",
-        str(MP),
-        "--task",
-        "language_modeling",
-        "--bpe-merges",
-        BPE_MERGES,
-        "--merges-filename",
-        BPE_MERGES,
-        "--bpe-vocab",
-        BPE_VOCAB,
-        "--vocab-filename",
-        BPE_VOCAB,
-        "--bpe",
-        "hf_byte_bpe",
-        "--path",
-        args.location + "/reshard.pt",
-        "--checkpoint-shard-count",
-        "1",
-        "--use-sharded-state",
-        args.location,
-    ]
-    print(ARGS)
-
-    # build up the config file
-    parser = options.get_generation_parser()
-    # dumb defaults overriding
-    parser.set_defaults(lr_scheduler=None, criterion=None)
-    args = options.parse_args_and_arch(parser, input_args=ARGS)
-    cfg = convert_namespace_to_omegaconf(args)
-    cfg.distributed_training.distributed_world_size = MP
+    cfg = create_generation_config_with_defaults(args.location)
     dist_utils.call_main(cfg, worker_main)
 
 
