@@ -36,15 +36,15 @@ def get_next_token(logits, tokenizer):
 
 
 def setup_vocab_and_merges(model_path):
-        vocab_file = os.path.join(model_path, "gpt2-vocab.json")
-        merges_file = os.path.join(model_path, "gpt2-merges.txt")
-        tokenizer = GPT2Tokenizer(vocab_file, merges_file)
-        tokenizer.save_pretrained(model_path)
-        return vocab_file, merges_file, tokenizer
+    vocab_file = os.path.join(model_path, "gpt2-vocab.json")
+    merges_file = os.path.join(model_path, "gpt2-merges.txt")
+    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
+    tokenizer.save_pretrained(model_path)
+    return vocab_file, merges_file, tokenizer
 
 
 def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
-    vocab_file, merges_file, tokenizer = setup_vocab_and_merges(kwargs['model_path'])
+    vocab_file, merges_file, tokenizer = setup_vocab_and_merges(kwargs["model_path"])
     orig_dims = []
 
     prompt_ids = []
@@ -52,7 +52,9 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
         input_ids = tensorize_input(tokenizer, prompt)
         # Pad sequence to length 32 to avoid Megatron assertion errors
         orig_dims.append(input_ids.shape[1])
-        input_ids = F.pad(input=input_ids, pad=(0, 32-input_ids.shape[1], 0, 0), value=1)
+        input_ids = F.pad(
+            input=input_ids, pad=(0, 32 - input_ids.shape[1], 0, 0), value=1
+        )
         prompt_ids.append(input_ids)
 
     prompt_ids = torch.cat(prompt_ids).cuda()
@@ -86,7 +88,10 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     with torch.no_grad():
         logits = model(prompt_ids)[0]
 
-    gathered_logits = [torch.zeros_like(logits) for _ in range(dist_utils.get_model_parallel_world_size())]
+    gathered_logits = [
+        torch.zeros_like(logits)
+        for _ in range(dist_utils.get_model_parallel_world_size())
+    ]
     torch.distributed.all_gather(
         gathered_logits, logits, group=dist_utils.get_global_group()
     )
@@ -94,10 +99,13 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 
     # Unwrap gathered logits into separate components for each prompt, and
     # trim them to match orig_dims
-    trimmed_logits = [logits[:orig_dim].unsqueeze(0) for logits, orig_dim in zip(gathered_logits, orig_dims)]
+    trimmed_logits = [
+        logits[:orig_dim].unsqueeze(0)
+        for logits, orig_dim in zip(gathered_logits, orig_dims)
+    ]
 
     for index, logits in enumerate(trimmed_logits):
-        torch.save(logits, f'/tmp/test_hf_compatibility_{index}.pt')
+        torch.save(logits, f"/tmp/test_hf_compatibility_{index}.pt")
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
@@ -139,7 +147,7 @@ class TestTraining(unittest.TestCase):
 
             # Assert that HF and metaseq versions of the same model predict the same word
             self.assertEqual(metaseq_next_token, hf_next_token)
-    
+
     def test_model_parallel_metaseq_hf_compatibility(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
@@ -147,7 +155,9 @@ class TestTraining(unittest.TestCase):
         dist_utils.call_main(cfg, load_mp_model_and_run_eval, model_path=model_path)
 
         # Verify that the generated logits match the consolidated model logits
-        mp_logits_list = [torch.load(f'/tmp/test_hf_compatibility_{index}.pt') for index in range(4)]
+        mp_logits_list = [
+            torch.load(f"/tmp/test_hf_compatibility_{index}.pt") for index in range(4)
+        ]
 
         vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
         checkpoint = checkpoint_utils.load_model_ensemble_and_task(
@@ -170,7 +180,9 @@ class TestTraining(unittest.TestCase):
 
             # Assert that MP and metaseq versions of the same model predict the same logits
             self.assertTrue(
-                torch.allclose(logits_metaseq.cpu().float(), logits_mp.cpu().float(), atol=1e-1)
+                torch.allclose(
+                    logits_metaseq.cpu().float(), logits_mp.cpu().float(), atol=1e-1
+                )
             )
 
             # Assert that MP and metaseq versions of the same model predict the same word
