@@ -11,6 +11,7 @@ import os
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional
+from transformers import GPT2Tokenizer
 
 import numpy as np
 import torch
@@ -101,6 +102,28 @@ def from_pretrained(
         "task": task,
         "models": models,
     }
+
+
+def tensorize_input(tokenizer, prompts):
+    input_ids = tokenizer(prompts, return_tensors="pt").input_ids
+    input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
+    input_ids = input_ids
+    return input_ids
+
+
+def get_next_token(logits, tokenizer):
+    pred_next_token = torch.argmax(logits[0, -1], -1)
+    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
+    next_token = next_token[0].replace("Ġ", "")
+    return next_token
+
+
+def setup_vocab_and_merges(model_path):
+    vocab_file = os.path.join(model_path, "gpt2-vocab.json")
+    merges_file = os.path.join(model_path, "gpt2-merges.txt")
+    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
+    tokenizer.save_pretrained(model_path)
+    return vocab_file, merges_file, tokenizer
 
 
 class GeneratorHubInterface(nn.Module):

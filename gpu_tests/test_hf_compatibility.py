@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-from transformers import GPT2Tokenizer
 from metaseq import checkpoint_utils, tasks, utils
 from transformers import OPTForCausalLM
 from packaging import version
@@ -11,6 +10,7 @@ from metaseq.scripts.convert_to_singleton import create_generation_config_with_d
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.dataclass.configs import MetaseqConfig
+from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
 
 
 prompts = [
@@ -19,29 +19,6 @@ prompts = [
     "Paris is the capital of France and",
     "Computers and mobile phones have taken",
 ]
-
-
-# forward passes
-def tensorize_input(tokenizer, prompts):
-    input_ids = tokenizer(prompts, return_tensors="pt").input_ids
-    input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
-    input_ids = input_ids
-    return input_ids
-
-
-def get_next_token(logits, tokenizer):
-    pred_next_token = torch.argmax(logits[0, -1], -1)
-    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
-    next_token = next_token[0].replace("Ġ", "")
-    return next_token
-
-
-def setup_vocab_and_merges(model_path):
-    vocab_file = os.path.join(model_path, "gpt2-vocab.json")
-    merges_file = os.path.join(model_path, "gpt2-merges.txt")
-    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
-    tokenizer.save_pretrained(model_path)
-    return vocab_file, merges_file, tokenizer
 
 
 def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
@@ -114,7 +91,7 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     version.parse(torch.__version__) < version.parse("1.9.1"),
     "test requires a pytorch version of at least 1.9.1",
 )
-class TestTraining(unittest.TestCase):
+class TestHFCompatibility(unittest.TestCase):
     def test_singleton_metaseq_hf_compatibility(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
         vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
