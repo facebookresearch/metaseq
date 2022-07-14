@@ -20,6 +20,7 @@ prompts = [
     "Computers and mobile phones have taken",
 ]
 
+
 # forward passes
 def tensorize_input(tokenizer, prompts):
     input_ids = tokenizer(prompts, return_tensors="pt").input_ids
