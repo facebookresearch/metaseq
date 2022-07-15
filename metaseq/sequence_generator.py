@@ -141,27 +141,23 @@ class SequenceGenerator(nn.Module):
 
         # initialize buffers
         scores = (
-            torch.zeros(bsz * beam_size, max_len + 1).to(src_tokens).float()
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
         )  # +1 for eos; pad is never chosen for scoring
         tokens = (
-            torch.zeros(bsz * beam_size, max_len + 2)
-            .to(src_tokens)
-            .long()
-            .fill_(self.pad)
-        )  # +2 for eos and pad
-        tokens[:, 0] = self.eos if bos_token is None else bos_token
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
+        )  # +1 for final eos
 
         # notes:
-        # - scores \in FloatTensor(bsz * beam_size, max_len + 1)
-        # - tokens \in LongTensor(bsz * beam_size, max_len + 2)
+        # - scores \in FloatTensor(bsz * beam_size, max_len)
+        # - tokens \in LongTensor(bsz * beam_size, max_len)
         # - src_tokens \in LongTensor(bsz, prompt_len)
-        # - all_lprobs \in FloatTensor(bsz * beam_size, max_len + 1, vocab_size)
+        # - all_lprobs \in FloatTensor(bsz * beam_size, max_len, vocab_size)
         #   is the next word distribution at every timestep
 
         if self.need_logprobs:
             # lprobs are costly for memory, so only compute them if we have to
             all_lprobs = (
-                torch.zeros(bsz * beam_size, max_len + 1, self.vocab_size)
+                torch.zeros(bsz * beam_size, max_len, self.vocab_size)
                 .to(src_tokens)
                 .float()
             )
@@ -190,7 +186,7 @@ class SequenceGenerator(nn.Module):
             model_out[0][:, :, stop_token] = -math.inf
 
         if self.need_logprobs:
-            all_lprobs[:, :start_step] = lprobs.type_as(all_lprobs)
+            all_lprobs[:, 1:start_step] = lprobs[:, :-1].type_as(all_lprobs)
         else:
             all_lprobs = None
 
@@ -199,14 +195,14 @@ class SequenceGenerator(nn.Module):
         prompt_tokens = tokens[:, 1:start_step].unsqueeze(-1)
         # look up a specific vocab logprob, and broadcast it into scores
         toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(-1)
-        scores[:, : start_step - 1] = toscores.type_as(scores)
+        scores[:, 1:start_step] = toscores.type_as(scores)
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
         # decisions are only over the most recent token.
         lprobs_cut = []
         for i in range(src_tokens.shape[0]):
             prompt_len = src_lengths[i]
-            scores[i * beam_size : (i + 1) * beam_size, prompt_len:] = 0.0  # reset
+            scores[i * beam_size : (i + 1) * beam_size, prompt_len + 1 :] = 0.0  # reset
             lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
         lprobs = torch.cat(lprobs_cut, dim=0)
 
@@ -232,9 +228,13 @@ class SequenceGenerator(nn.Module):
             lprobs[eos_mask, self.eos + 1 :] = -math.inf
 
             # find our next tokens and record them
+            # protect this step for the last token so we don't overflow
             next_scores, next_toks = self._sample_topp(lprobs)
-            tokens[:, step] = next_toks
-            scores[:, step] = next_scores
+            if step < max_len:
+                tokens[:, step] = next_toks
+                scores[:, step] = next_scores
+                if self.need_logprobs:
+                    all_lprobs[:, step] = lprobs
 
             eos_mask |= next_toks == self.eos
             for stop_token in self.stop:
@@ -254,8 +254,6 @@ class SequenceGenerator(nn.Module):
                 model_out, log_probs=True, sample=None
             )
             lprobs = lprobs[:, -1, :]
-            if self.need_logprobs:
-                all_lprobs[:, step] = lprobs
 
         # we want the highest scoring items to be top ranked
         beamscores = scores.view(bsz, beam_size, -1).cumsum(dim=-1)[:, :, -1]
@@ -268,8 +266,8 @@ class SequenceGenerator(nn.Module):
 
         # prepare the return value
         retval = {
-            "tokens": tokens.view(bsz, beam_size, -1)[:, :, 1:],
-            "scores": scores.view(bsz, beam_size, -1)[:, :, 1:],
+            "tokens": tokens.view(bsz, beam_size, -1),
+            "scores": scores.view(bsz, beam_size, -1),
         }
         if all_lprobs is not None:
             all_lprobs = all_lprobs[sorted_indices]
