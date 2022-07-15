@@ -627,28 +627,18 @@ class GeneratorInterface:
                     tokens = all_tokens[i, j].tolist()
                     scores = all_scores[i, j].tolist()
                     distributions = all_distributions[i, j] if logprobs > 0 else None
-                    from metaseq.utils import print_r0
 
                     prompt_len = lengths[i]
-                    print_r0("prmopt_len:", prompt_len)
-                    print_r0("scores:", scores)
-                    print_r0("tokens:", tokens)
 
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
-                    print_r0("prmopt_len2:", prompt_len)
-                    print_r0("scores2:", scores)
-                    print_r0("tokens2:", tokens)
-                    print_r0("")
 
                     if echo:
                         # don't cut off prompt
                         pass
                     else:
                         # cut off prompt
-                        print_r0("tokens after prompt_len:", tokens[prompt_len + 1 :])
-                        print_r0("scores after prompt_len:", scores[prompt_len + 1 :])
                         tokens = tokens[prompt_len + 1 :][: max_tokens[i]]
                         scores = scores[prompt_len + 1 :][: max_tokens[i]]
                         if logprobs > 0:
@@ -721,13 +711,6 @@ class GeneratorInterface:
         # scores is a 1D list of log-probability scores for those tokens (length seqlen)
         # distributions (optional) is a seqlen x vocab_size tensor corresponding to
         # the full distribution of predictions at each timestep
-
-        from metaseq.utils import print_r0
-
-        print_r0("fs tok:", len(tokens))
-        print_r0("fs sco:", len(scores))
-        print_r0("fs dis:", distributions.shape)
-
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):

@@ -265,12 +265,6 @@ class SequenceGenerator(nn.Module):
         tokens = tokens[sorted_indices]
         scores = scores[sorted_indices]
 
-        from metaseq.utils import print_r0
-
-        print_r0("all_lprobs", all_lprobs.shape)
-        print_r0("tokens", tokens.shape)
-        print_r0("scores", scores.shape)
-
         # prepare the return value
         retval = {
             "tokens": tokens.view(bsz, beam_size, -1),
