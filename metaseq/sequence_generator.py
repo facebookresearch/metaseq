@@ -141,26 +141,23 @@ class SequenceGenerator(nn.Module):
 
         # initialize buffers
         scores = (
-            torch.zeros(bsz * beam_size, max_len + 1).to(src_tokens).float()
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
         )  # +1 for eos; pad is never chosen for scoring
         tokens = (
-            torch.zeros(bsz * beam_size, max_len + 1)
-            .to(src_tokens)
-            .long()
-            .fill_(self.pad)
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
         )  # +1 for final eos
 
         # notes:
-        # - scores \in FloatTensor(bsz * beam_size, max_len + 1)
-        # - tokens \in LongTensor(bsz * beam_size, max_len + 1)
+        # - scores \in FloatTensor(bsz * beam_size, max_len)
+        # - tokens \in LongTensor(bsz * beam_size, max_len)
         # - src_tokens \in LongTensor(bsz, prompt_len)
-        # - all_lprobs \in FloatTensor(bsz * beam_size, max_len + 1, vocab_size)
+        # - all_lprobs \in FloatTensor(bsz * beam_size, max_len, vocab_size)
         #   is the next word distribution at every timestep
 
         if self.need_logprobs:
             # lprobs are costly for memory, so only compute them if we have to
             all_lprobs = (
-                torch.zeros(bsz * beam_size, max_len + 1, self.vocab_size)
+                torch.zeros(bsz * beam_size, max_len, self.vocab_size)
                 .to(src_tokens)
                 .float()
             )
@@ -231,11 +228,13 @@ class SequenceGenerator(nn.Module):
             lprobs[eos_mask, self.eos + 1 :] = -math.inf
 
             # find our next tokens and record them
+            # protect this step for the last token so we don't overflow
             next_scores, next_toks = self._sample_topp(lprobs)
-            tokens[:, step] = next_toks
-            scores[:, step] = next_scores
-            if self.need_logprobs:
-                all_lprobs[:, step] = lprobs
+            if step < max_len:
+                tokens[:, step] = next_toks
+                scores[:, step] = next_scores
+                if self.need_logprobs:
+                    all_lprobs[:, step] = lprobs
 
             eos_mask |= next_toks == self.eos
             for stop_token in self.stop:
