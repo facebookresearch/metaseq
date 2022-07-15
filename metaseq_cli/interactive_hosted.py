@@ -94,7 +94,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
             max_prompt_len = max(x.prompt_len for x in [item] + batch)
             max_gen_len = max(x.gen_len for x in [item] + batch)
             overflow = max_prompt_len + max_gen_len < MAX_SEQ_LEN
-            if batch and batch_cost > max_tokens and overflow:
+            if batch and (batch_cost > max_tokens or overflow):
                 # we're over budget, put it back in the queue
                 target_queue.put(item)
                 raise queue.Empty
