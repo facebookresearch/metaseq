@@ -504,6 +504,16 @@ class GeneratorInterface:
         self.models = models
         self.src_dict = src_dict
         self.tgt_dict = tgt_dict
+
+        # store special token indices for
+        self._pad_token_ind = self.tgt_dict.pad_index
+        self._special_token_inds = {
+            self.tgt_dict.eos_index,
+            self.tgt_dict.pad_index,
+            self.tgt_dict.bos_index,
+            self.tgt_dict.unk_index,
+        }
+
         return models
 
     def generate(
@@ -630,7 +640,7 @@ class GeneratorInterface:
 
                     prompt_len = lengths[i]
 
-                    tokens, scores, distributions = GeneratorInterface._filter_special(
+                    tokens, scores, distributions = self._filter_special(
                         tokens, scores, distributions
                     )
 
@@ -696,12 +706,11 @@ class GeneratorInterface:
         )
         return retval
 
-    @staticmethod
     def _filter_special(
+        self,
         tokens: List[int],
         scores: List[float],
         distributions,
-        pad_token: int = 1,
     ):
         """
         Cut off tokens after finding a special tokens.
@@ -714,12 +723,11 @@ class GeneratorInterface:
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):
-            if t == pad_token:
+            if t == self._pad_token_ind:
                 # simply skip pads
                 mask.append(False)
                 continue
-            # TODO(roller): Don't hardcode the special tokens
-            if t <= 3 and i > 0:
+            if t in self._special_token_inds and i > 0:
                 # and other special tokens should end things
                 mask.append(False)
                 break
