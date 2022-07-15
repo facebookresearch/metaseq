@@ -78,10 +78,12 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
     global BATCH_QUEUE
 
     batch = []
+    target_queue = None
     while True:
         try:
             # for now, we only have 1 worker, so can always index to shard 0
-            target_queue = BATCH_QUEUE.queue_shards[0].get_largest_queue()
+            if target_queue is None:
+                target_queue = BATCH_QUEUE.queue_shards[0].get_largest_queue()
             if not target_queue:
                 continue
             # dynamic batching: group like-sized items to reduce the cost
@@ -99,6 +101,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 batch.append(item)
         except queue.Empty:
             if batch:
+                target_queue = None
                 request_object = {
                     "inputs": [],
                     "min_tokens": [],
