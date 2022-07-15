@@ -132,6 +132,10 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 except Exception as e:
                     # propagate any exceptions to the response so we can report it
                     generations = [e] * len(batch)
+                # force all generation work to be done to prevent us from loading
+                # more generations onto the GPU before we fully finish the last.
+                # helps prevent OOMs
+                torch.cuda.synchronize()
                 # broadcast them back
                 for work_item, gen in zip(batch, generations):
                     work_item.return_queue.put((work_item.uid, gen))
