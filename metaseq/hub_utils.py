@@ -718,6 +718,7 @@ class GeneratorInterface:
                 # simply skip pads
                 mask.append(False)
                 continue
+            # TODO(roller): Don't hardcode the special tokens
             if t <= 3 and i > 0:
                 # and other special tokens should end things
                 mask.append(False)
