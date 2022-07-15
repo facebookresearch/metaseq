@@ -298,16 +298,20 @@ def completions(engine=None):
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):
+        gen_len = generation_args.get("max_tokens", 0)
+        if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
+            # cut off the prompt to always fit with number of generations we need
+            prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
+        prompt = prompt[-(MAX_SEQ_LEN - gen_len) :]
         request_object = {"input": prompt, **generation_args}
-        max_len = generation_args.get("max_tokens", 0)
         BATCH_QUEUE.put(
             WorkItem(
-                cost=len(prompt) + max_len,
+                cost=len(prompt) + gen_len,
                 uid=i,
                 return_queue=ret_queue,
                 data=request_object,
                 prompt_len=len(prompt),
-                gen_len=max_len,
+                gen_len=gen_len,
             )
         )
     unordered_results = []
