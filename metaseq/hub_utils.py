@@ -678,6 +678,7 @@ class GeneratorInterface:
                     beams.append(result)
                 retval.append(beams)
 
+        torch.cuda.synchronize()
         logger.info(
             "Total time: {:.3f} seconds; generation time: {:.3f}".format(
                 time.time() - start_time, total_generation_time
