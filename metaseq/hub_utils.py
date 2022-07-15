@@ -647,22 +647,30 @@ class GeneratorInterface:
                         pass
                     else:
                         # cut off prompt
-                        tokens = tokens[prompt_len:][: max_tokens[i]]
-                        scores = scores[prompt_len:][: max_tokens[i]]
+                        print_r0("tokens after prompt_len:", tokens[prompt_len + 1 :])
+                        print_r0("scores after prompt_len:", scores[prompt_len + 1 :])
+                        tokens = tokens[prompt_len + 1 :][: max_tokens[i]]
+                        scores = scores[prompt_len + 1 :][: max_tokens[i]]
                         if logprobs > 0:
-                            distributions = distributions[prompt_len:][: max_tokens[i]]
+                            distributions = distributions[prompt_len + 1 :][
+                                : max_tokens[i]
+                            ]
+
+                    # cut off the starting token
+                    tokens_no_eos = tokens[1:] if echo else tokens
+                    scores_with_eos = [None] + scores[1:] if echo else scores
                     # turn it into a string
-                    text = self.bpe.bpe.decode(tokens)
+                    text = self.bpe.bpe.decode(tokens_no_eos)
                     # re-encode it so we get offsets
                     token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
 
                     result = {
-                        "text": self.bpe.bpe.decode(tokens),
-                        "tokens": [(t, self.bpe.bpe.decode([t])) for t in tokens],
+                        "text": text,
+                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
-                        "token_scores": scores,
+                        "token_scores": scores_with_eos,
                     }
                     if logprobs > 0:
                         # final result is a List[Dict[str, float]]
@@ -679,7 +687,12 @@ class GeneratorInterface:
                                 for t, s in zip(top_toks, top_scores)
                             }
                             out_logprobs.append(lp)
-                        result["top_logprobs"] = out_logprobs
+                        if echo:
+                            # use null instead of giving bunk probs for EOS token
+                            result["top_logprobs"] = [None] + out_logprobs[1:]
+                        else:
+                            result["top_logprobs"] = out_logprobs
+
                     else:
                         result["top_logprobs"] = None
 
@@ -722,9 +735,10 @@ class GeneratorInterface:
                 # simply skip pads
                 mask.append(False)
                 continue
-            # if t <= 3 and i > 0:
-            #     # and other special tokens should end things
-            #     break
+            if t <= 3 and i > 0:
+                # and other special tokens should end things
+                mask.append(False)
+                break
             mask.append(True)
             output.append((t, s))
         new_tokens, new_scores = zip(*output)
