@@ -722,7 +722,9 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
         merged_state[key] = shards_to_load[0][key]
 
     pad_info = _get_pad_info(shards_to_load[-1])
+    dtype = torch.float16
     for k in shards_to_load[0]["model"]:
+        dtype = shards_to_load[0]["model"][k].dtype
         if "flat_param" in k:
             pad_info_k = pad_info[k]
             catted = torch.cat([x["model"][k] for x in shards_to_load])
@@ -735,6 +737,9 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
 
             merged_state["model"][k] = catted
 
+    # TODO(susanz): Not removing decoder.version due to HF compatibility.
+    if "decoder.version" not in merged_state["model"]:
+        merged_state["model"]["decoder.version"] = torch.tensor([3.0], dtype=dtype)
     if OPT_KEY in merged_state:
         merged_state[OPT_KEY] = _merge_flat_fsdp_opt_state(shards_to_load)
     return merged_state
