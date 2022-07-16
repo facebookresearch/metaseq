@@ -565,10 +565,12 @@ def load_model_ensemble_and_task(
             ):
                 cfg.model.arch = "transformer_lm_gpt"
                 cfg.model._name = "transformer_lm_gpt"
-                oproj_key = "decoder.output_projection.weight"
-                emb_key = "decoder.embed_tokens.weight"
-                if emb_key in state["model"] and oproj_key not in state["model"]:
-                    state["model"][oproj_key] = state["model"][emb_key]
+
+            # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
+            oproj_key = "decoder.output_projection.weight"
+            emb_key = "decoder.embed_tokens.weight"
+            if emb_key in state["model"] and oproj_key not in state["model"]:
+                state["model"][oproj_key] = state["model"][emb_key]
 
             if task is None:
                 task = tasks.setup_task(cfg.task)
