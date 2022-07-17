@@ -169,48 +169,6 @@ class BaseModel(nn.Module):
         self.apply(apply_prepare_for_onnx_export_)
 
     @classmethod
-    def from_pretrained(
-        cls,
-        model_name_or_path,
-        checkpoint_file="model.pt",
-        data_name_or_path=".",
-        skip_prepare_for_inference=False,
-        **kwargs,
-    ):
-        """
-        Load from a pre-trained model file. Downloads and caches the pre-trained
-        model file if needed.
-        The base implementation returns a
-        :class:`~metaseq.hub_utils.GeneratorHubInterface`, which can be used to
-        generate translations or sample from language models.
-        Other models may override this to implement custom hub interfaces.
-        Args:
-            model_name_or_path (str): either the name of a pre-trained model to
-                load or a path/URL to a pre-trained model state dict
-            checkpoint_file (str, optional): colon-separated list of checkpoint
-                files in the model archive to ensemble (default: 'model.pt')
-            data_name_or_path (str, optional): point args.data to the archive
-                at the given path/URL. Can start with '.' or './' to reuse the
-                model archive path.
-        """
-        from metaseq import hub_utils
-
-        x = hub_utils.from_pretrained(
-            model_name_or_path,
-            checkpoint_file,
-            data_name_or_path,
-            archive_map=cls.hub_models(),
-            **kwargs,
-        )
-        logger.info(x["args"])
-        return hub_utils.GeneratorHubInterface(
-            x["args"],
-            x["task"],
-            x["models"],
-            skip_prepare_for_inference=skip_prepare_for_inference,
-        )
-
-    @classmethod
     def hub_models(cls):
         return {}
 
