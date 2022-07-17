@@ -143,9 +143,7 @@ class TransformerEncoder(BaseEncoder):
                 - **encoder_embedding** (Tensor): the (scaled) embedding lookup
                   of shape `(batch, src_len, embed_dim)`
         """
-        return self.forward_scriptable(
-            src_tokens, src_lengths, token_embeddings
-        )
+        return self.forward_scriptable(src_tokens, src_lengths, token_embeddings)
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
     # can't access the base class model in Torchscript.
