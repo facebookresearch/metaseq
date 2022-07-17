@@ -41,14 +41,16 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
         # here, we do the bias computation outside fc1 and fc2 to take advantage of fused_bias_gelu
         # assert fc1.skip_bias_add
 
-        x, bias_fc1 = fc1(x)
+        x, _ = fc1(x)
         # x = fused_bias_gelu(x, bias_fc1)
         # if ffn_ln is not None:
         #     x = ffn_ln(x)
 
-        # GELU is applied inside ColumnParallelLinear
+        # GELU is applied inside ColumnParallelLinear for saving GPU memory needed
+        # by activations of GeLU
         x, bias_fc2 = fc2(x)
-        x = x + bias_fc2
+        if bias_fc2 is not None:
+            x = x + bias_fc2
     elif model_parallel:
         # here, we do the bias computation inside fc1 and fc2 AND gather_output
         x, _ = fc1(x)
@@ -147,9 +149,6 @@ class TransformerEncoderLayer(nn.Module):
             self_attention=True,
         )
 
-    def residual_connection(self, x, residual):
-        return residual + x
-
     def upgrade_state_dict_named(self, state_dict, name):
         """
         Rename layer norm states from `...layer_norms.0.weight` to
@@ -206,7 +205,7 @@ class TransformerEncoderLayer(nn.Module):
         )
 
         x = self.dropout_module(x)
-        x = self.residual_connection(x, residual)
+        x = x + residual
         if not self.normalize_before:
             x = self.self_attn_layer_norm(x)
 
@@ -222,7 +221,7 @@ class TransformerEncoderLayer(nn.Module):
             ffn_ln=self.ffn_layernorm,
         )
         l_aux = None
-        x = self.residual_connection(x, residual)
+        x = x + residual
         if not self.normalize_before:
             x = self.final_layer_norm(x)
         return x, l_aux
@@ -258,8 +257,10 @@ class TransformerDecoderLayer(nn.Module):
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
+
+        affine_ln = not getattr(args, "disable_affine_ln", False)
         self.attn_ln = (
-            LayerNorm(self.embed_dim) if getattr(args, "scale_attn", False) else None
+            LayerNorm(self.embed_dim, elementwise_affine=affine_ln) if getattr(args, "scale_attn", False) else None
         )
 
         self.self_attn = self.build_self_attention(
@@ -297,7 +298,7 @@ class TransformerDecoderLayer(nn.Module):
             else:
                 self.c_attn = nn.Parameter(torch.ones((self.nh,)), requires_grad=True)
 
-        self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export, elementwise_affine=affine_ln)
 
         if initialize_params_on_gpu:
             self.self_attn_layer_norm = utils.floating_point_precision_convertor(
@@ -312,7 +313,7 @@ class TransformerDecoderLayer(nn.Module):
             self.encoder_attn_layer_norm = None
         else:
             self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
-            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export, elementwise_affine=affine_ln)
             if initialize_params_on_gpu:
                 self.encoder_attn_layer_norm = utils.floating_point_precision_convertor(
                     self.encoder_attn_layer_norm.cuda(),
@@ -338,7 +339,7 @@ class TransformerDecoderLayer(nn.Module):
         if getattr(args, "scale_fc", False):
             if args.model_parallel_size > 1:
                 if not getattr(args, "sync_ln_variance", False):
-                    self.ffn_layernorm = LayerNorm(ffn_dim // args.model_parallel_size)
+                    self.ffn_layernorm = LayerNorm(ffn_dim // args.model_parallel_size,)
                 else:
                     self.ffn_layernorm = SyncedModelParallelFusedLayerNorm(
                         ffn_dim,
@@ -366,6 +367,7 @@ class TransformerDecoderLayer(nn.Module):
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             dtype=self._get_model_init_dtype(),
             sequence_parallel=getattr(args, "sequence_parallel", False),
+            disable_bias=getattr(args, "disable_bias", False),
         )
 
         self.fc2 = self.build_fc2(
@@ -377,9 +379,10 @@ class TransformerDecoderLayer(nn.Module):
             num_layers=args.decoder_layers,
             dtype=self._get_model_init_dtype(),
             sequence_parallel=getattr(args, "sequence_parallel", False),
+            disable_bias=getattr(args, "disable_bias", False),
         )
 
-        self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.final_layer_norm = LayerNorm(self.embed_dim, export=export, elementwise_affine=affine_ln)
         if initialize_params_on_gpu:
             self.final_layer_norm = utils.floating_point_precision_convertor(
                 self.final_layer_norm.cuda(),
@@ -399,17 +402,17 @@ class TransformerDecoderLayer(nn.Module):
         return torch.float32
 
     def build_fc1(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
+        self, input_dim, output_dim, initialize_params_on_gpu=False, disable_bias=False, **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu
+            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu, bias=not disable_bias,
         )
 
     def build_fc2(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
+        self, input_dim, output_dim, initialize_params_on_gpu=False, disable_bias=False, **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu
+            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu, bias=not disable_bias,
         )
 
     def build_self_attention(
@@ -425,6 +428,9 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            bias=not getattr(
+                args, "disable_bias", False,
+            )
         )
 
     def build_encoder_attention(self, embed_dim, args):
@@ -443,9 +449,6 @@ class TransformerDecoderLayer(nn.Module):
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
-
-    def residual_connection(self, x, residual):
-        return residual + x
 
     def forward_attention(
         self,
@@ -475,7 +478,8 @@ class TransformerDecoderLayer(nn.Module):
         x = self.dropout_module(x)
         if self.attn_ln is not None:
             x = self.attn_ln(x)
-        return self.residual_connection(x, residual), attn
+        x = x + residual
+        return x, attn
 
     def forward(
         self,
@@ -586,7 +590,7 @@ class TransformerDecoderLayer(nn.Module):
                 need_head_weights=need_head_weights,
             )
             x = self.dropout_module(x)
-            x = self.residual_connection(x, residual)
+            x = x + residual
             if not self.normalize_before:
                 x = self.encoder_attn_layer_norm(x)
         residual = x
@@ -601,7 +605,7 @@ class TransformerDecoderLayer(nn.Module):
             dropout_module=self.dropout_module,
         )
         l_aux = None
-        x = self.residual_connection(x, residual)
+        x = x + residual
         if not self.normalize_before:
             x = self.final_layer_norm(x)
         if self.onnx_trace and incremental_state is not None:

@@ -333,7 +333,7 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
 
 
 def _log_weight_stats(tensor, name):
-    logger.debug(
+    logger.info(
         f"{name}, mean: {tensor.mean():.5f}, std: {tensor.std():.5f}, min: {tensor.min():.5f}, max: {tensor.max():.5f}"
     )
 
@@ -508,7 +508,7 @@ class TransformerDecoder(IncrementalDecoder):
         self.num_layers = len(self.layers)
 
         if args.decoder_normalize_before:
-            self.layer_norm = LayerNorm(embed_dim)
+            self.layer_norm = LayerNorm(embed_dim, elementwise_affine=not getattr(args, "disable_affine_ln", False))
             if initialize_params_on_gpu:
                 self.layer_norm = utils.floating_point_precision_convertor(
                     self.layer_norm.cuda(),
@@ -519,7 +519,6 @@ class TransformerDecoder(IncrementalDecoder):
 
         else:
             self.layer_norm = None
-
         self.project_out_dim = (
             Linear(embed_dim, self.output_embed_dim, bias=False)
             if embed_dim != self.output_embed_dim
