@@ -16,7 +16,7 @@ from omegaconf import DictConfig
 from torch import Tensor
 
 from metaseq.dataclass.utils import gen_parser_from_dataclass
-from metaseq.models import BaseDecoder, BaseEncoder
+from metaseq.models import BaseDecoder
 
 logger = logging.getLogger(__name__)
 
