@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 import metaseq.distributed.utils as distributed_utils
-from metaseq import options, utils
+from metaseq import options
 from metaseq.data import Dictionary, data_utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.models import (
