@@ -424,26 +424,13 @@ class TestIncrementalDecoder(IncrementalDecoder):
         args.max_decoder_positions = getattr(args, "max_decoder_positions", 100)
         self.args = args
 
-    def forward(
-        self, prev_output_tokens, encoder_out=None, incremental_state=None, **kwargs
-    ):
-        if incremental_state is not None:
-            prev_output_tokens = prev_output_tokens[:, -1:]
+    def forward(self, src_tokens, src_lengths, prev_output_tokens):
         bbsz = prev_output_tokens.size(0)
         vocab = len(self.dictionary)
-        src_len = encoder_out.encoder_out.size(1)
+        src_len = src_tokens.size(1)
         tgt_len = prev_output_tokens.size(1)
 
-        # determine number of steps
-        if incremental_state is not None:
-            # cache step number
-            step = utils.get_incremental_state(self, incremental_state, "step")
-            if step is None:
-                step = 0
-            utils.set_incremental_state(self, incremental_state, "step", step + 1)
-            steps = [step]
-        else:
-            steps = list(range(tgt_len))
+        steps = list(range(tgt_len))
 
         # define output in terms of raw probs
         if hasattr(self.args, "probs"):
