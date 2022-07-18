@@ -14,6 +14,10 @@ The OPT 125M--66B models are now available in [HuggingFace Transformers](https:/
 The OPT 125M--175B models are now supported in the [Alpa project](https://alpa-projects.github.io/tutorials/opt_serving.html), which 
 enables serving OPT-175B with more flexible parallelisms on older generations of GPUs, such as 40GB A100, V100, T4, M60, etc.
 
+### Using OPT with Colossal-AI
+
+The OPT models are now supported in the [Colossal-AI](https://github.com/hpcaitech/ColossalAI), which helps users to efficiently and quickly deploy OPT models training and inference, reducing large AI model budgets and scaling down the labor cost of learning and deployment.
+
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
 
