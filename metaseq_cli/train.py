@@ -327,16 +327,15 @@ def train(
             ) as prof:
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
-            sourceFile = open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "w"
-            )
-            print(
-                prof.key_averages(group_by_stack_n=5).table(
-                    sort_by="self_cuda_memory_usage", row_limit=10
-                ),
-                file=sourceFile,
-            )
-            sourceFile.close()
+            with open(
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+            ) as sourceFile:
+                print(
+                    prof.key_averages(group_by_stack_n=5).table(
+                        sort_by="self_cuda_memory_usage", row_limit=10
+                    ),
+                    file=sourceFile,
+                )
             prof.export_chrome_trace(
                 os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
             )
