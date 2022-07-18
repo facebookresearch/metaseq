@@ -99,7 +99,7 @@ class TestDatasetLoading(unittest.TestCase):
                 jsonl_data["shard_01_json_2"].append(self.task._tokenize_one_json(elem))
 
             # Iterate over epochs 1 to 3
-            # After these epochs, we should have iterated over shard 00, which consists of 
+            # After these epochs, we should have iterated over shard 00, which consists of
             # jsonl_data["shard_00_json_1"] and jsonl_data["shard_00_json_2"]
             self.ensure_epoch_iteration_is_consistent(
                 jsonl_data["shard_00_json_1"],
@@ -110,7 +110,7 @@ class TestDatasetLoading(unittest.TestCase):
             )
 
             # Iterate over epochs 4 to 6
-            # After these epochs, we should have iterated over shard 01, which consists of 
+            # After these epochs, we should have iterated over shard 01, which consists of
             # jsonl_data["shard_01_json_1"] and jsonl_data["shard_01_json_2"]
             self.ensure_epoch_iteration_is_consistent(
                 jsonl_data["shard_01_json_1"],
