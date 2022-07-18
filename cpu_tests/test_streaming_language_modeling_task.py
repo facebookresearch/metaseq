@@ -3,23 +3,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import json
 import os
-import random
-import string
 import tempfile
 import unittest
 
 import torch
 from metaseq import options
 
-from metaseq.tasks.streaming_language_modeling import (
-    StreamingLanguageModelingTask,
-    StreamingLanguageModelingConfig,
-)
+from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
 from cpu_tests.test_utils import (
     write_one_jsonl,
-    write_dummy_jsonl_data_dir,
     write_dummy_bpe,
 )
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
@@ -158,7 +151,7 @@ class TestDatasetLoading(unittest.TestCase):
         Helper function to iterate over a single epoch, and ensure that the iterated documents
         match our expectation from the shard/subshard standpoint.
         """
-        dataset = self.task.load_dataset("train", epoch=epoch)
+        self.task.load_dataset("train", epoch=epoch)
         iterated_data = [doc for doc in self.task.dataset("train").dataset.dataset]
 
         # For a given epoch, the start offset would be

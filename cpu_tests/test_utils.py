@@ -9,6 +9,7 @@ import torch
 import random
 import string
 import json
+import os
 from metaseq import utils
 
 
@@ -30,7 +31,7 @@ def write_dummy_jsonl_data_dir(data_dir, num_lines=500):
             shard_dir = os.path.join(data_dir, subset, f"{shard:02}")
             os.makedirs(shard_dir)
             for dataset in ["a", "b"]:
-                write_one_jsonl_(
+                write_one_jsonl(
                     os.path.join(shard_dir, f"dataset_{dataset}.jsonl"),
                     num_lines=num_lines,
                 )
