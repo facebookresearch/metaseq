@@ -100,3 +100,71 @@ class TestJsonlDataset(unittest.TestCase):
                 assert orig_json.keys() == read_json.keys()
                 for k in orig_json.keys():
                     assert orig_json[k] == read_json[k]
+
+    def _iterate_over_dataset(self, dataset: JsonlDataset):
+        iterated_documents = []
+        for idx in range(len(dataset)):
+            iterated_documents.append(dataset[idx]["text"])
+
+        return iterated_documents
+
+    def test_dataset_with_subshards(self):
+        with tempfile.NamedTemporaryFile() as jsonl_file:
+            documents_as_dict = write_one_jsonl_(jsonl_file.name, num_lines=11)
+            documents = [elem["text"] for elem in documents_as_dict]
+
+            dataset = JsonlDataset(jsonl_file.name, epoch=1, data_subshard_count=3)
+            # The 4 documents would be 0, 3, 6 and 9 (0 based indexing)
+            self.assertEqual(
+                set([documents[idx] for idx in [0, 3, 6, 9]]),
+                set(self._iterate_over_dataset(dataset)),
+            )
+
+            dataset = JsonlDataset(jsonl_file.name, epoch=3, data_subshard_count=3)
+            # The 3 documents would be 2, 5 and 8 (0 based indexing)
+            self.assertEqual(
+                set([documents[idx] for idx in [2, 5, 8]]),
+                set(self._iterate_over_dataset(dataset)),
+            )
+
+            dataset = JsonlDataset(jsonl_file.name, epoch=4, data_subshard_count=3)
+            # If epoch > data_subshard_count , we wrap around. So epoch=4 behaves like epoch=1
+            self.assertEqual(
+                set([documents[idx] for idx in [0, 3, 6, 9]]),
+                set(self._iterate_over_dataset(dataset)),
+            )
+
+        # Confirm that iterating on the dataset works as expected
+        with tempfile.NamedTemporaryFile() as jsonl_file:
+            documents_as_dict = write_one_jsonl_(jsonl_file.name, num_lines=11)
+            documents = [elem["text"] for elem in documents_as_dict]
+
+            # Assuming a data_subshard_count of 3, in 3 epochs we should have iterated
+            # over the whole dataset
+            iterated_documents = []
+            for epoch in range(1, 4):
+                dataset = JsonlDataset(
+                    jsonl_file.name, epoch=epoch, data_subshard_count=3
+                )
+                iterated_documents.extend(self._iterate_over_dataset(dataset))
+
+            # Ensure that all 11 documents have been iterated through
+            self.assertEqual(set(iterated_documents), set(documents))
+
+            # Now, let's try iterating for a total of 9 epochs, and assert that the entire data
+            # was iterated over thrice
+            iterated_documents = []
+            for epoch in range(1, 10):
+                dataset = JsonlDataset(
+                    jsonl_file.name, epoch=epoch, data_subshard_count=3
+                )
+                iterated_documents.extend(self._iterate_over_dataset(dataset))
+
+            assert len(iterated_documents) == 33  # 11*3
+
+            # We iterated over the same data thrice, so deduplicated documents should still match
+            self.assertEqual(set(documents), set(iterated_documents))
+
+
+if __name__ == "__main__":
+    unittest.main()

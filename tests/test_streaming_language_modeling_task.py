@@ -5,14 +5,13 @@
 
 import json
 import os
-import random
-import string
 import tempfile
 import unittest
 
 import torch
 
 from tests.utils import train_language_model
+from cpu_tests.test_utils import write_dummy_jsonl_data_dir, write_dummy_bpe
 
 try:
     import tokenizers  # noqa
@@ -20,44 +19,6 @@ try:
     has_hf_tokenizers = True
 except ImportError:
     has_hf_tokenizers = False
-
-
-def write_one_jsonl_(jsonl_path, num_lines=5, text_len_min=5, text_len_max=50):
-    data = []
-    with open(jsonl_path, "w") as h:
-        for _ in range(num_lines):
-            text_len = random.choice(range(text_len_min, text_len_max))
-            data.append(
-                {"text": "".join(random.choices(string.ascii_letters, k=text_len))}
-            )
-            print(json.dumps(data[-1]), file=h)
-    return
-
-
-def write_dummy_jsonl_data_dir_(data_dir, num_lines=500):
-    for subset in ["train", "valid"]:
-        for shard in range(2):
-            shard_dir = os.path.join(data_dir, subset, f"{shard:02}")
-            os.makedirs(shard_dir)
-            for dataset in ["a", "b"]:
-                write_one_jsonl_(
-                    os.path.join(shard_dir, f"dataset_{dataset}.jsonl"),
-                    num_lines=num_lines,
-                )
-
-
-def write_dummy_bpe_(data_dir):
-    from tokenizers import ByteLevelBPETokenizer
-
-    tokenizer = ByteLevelBPETokenizer(add_prefix_space=True)
-    tokenizer.train(
-        [],
-        vocab_size=500,
-        special_tokens=["<s>", "<pad>", "</s>", "<unk>"],
-        show_progress=False,
-    )
-    vocab, merges = tokenizer.save_model(data_dir)
-    return vocab, merges
 
 
 class TestReproducibility(unittest.TestCase):
@@ -79,8 +40,8 @@ class TestReproducibility(unittest.TestCase):
             extra_flags = []
 
         with tempfile.TemporaryDirectory(name) as data_dir:
-            write_dummy_jsonl_data_dir_(data_dir)
-            vocab, merges = write_dummy_bpe_(data_dir)
+            write_dummy_jsonl_data_dir(data_dir)
+            vocab, merges = write_dummy_bpe(data_dir)
 
             # train epochs 1 and 2 together
             with self.assertLogs() as logs:
