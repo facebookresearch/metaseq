@@ -90,7 +90,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
-    data_subshards: int = field(
+    data_subshard_count: int = field(
         default=1,
         metadata={
             "help": "Number of data subshards to use while training."
@@ -272,7 +272,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert min(shards.keys()) == 0
         assert max(shards.keys()) == len(shards) - 1
 
-        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        shard_idx = ((epoch - 1) // self.args.data_subshard_count) % len(shards)
+        cur_shard_str = shards[shard_idx]
         return cur_shard_str
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
@@ -313,7 +314,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
                     epoch=epoch,
-                    data_subshard_count=self.args.data_subshards,
+                    data_subshard_count=self.args.data_subshard_count,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
