@@ -77,14 +77,6 @@ install_dep_pt19: &install_dep_pt19
         pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
-install_dep_pt18: &install_dep_pt18
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
 
 install_pytorch_dep: &install_pytorch_dep
   - parameters:
@@ -186,15 +178,6 @@ commands:
 # -------------------------------------------------------------------------------------
 
 jobs:
-  gpu_tests_pt18:
-    <<: *gpu
-
-    working_directory: ~/metaseq
-
-    steps:
-      - gpu_pre
-      - <<: *install_dep_pt18
-      - gpu_post
 
   gpu_tests_pt19:
     <<: *gpu
@@ -211,5 +194,4 @@ workflows:
   version: 2
   build:
     jobs:
-      - gpu_tests_pt18
       - gpu_tests_pt19
