@@ -133,12 +133,10 @@ download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_w
       working_directory: ~/metaseq/gpu_tests
       command: |
         source activate metaseq
-        if [[ $(python -c "import torch; print(torch.__version__)") = "1.9.1+cu111" ]]; then
-          wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
-          tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
-          python -m metaseq.scripts.convert_to_singleton ./125m
-          python -m transformers.models.opt.convert_opt_original_pytorch_checkpoint_to_pytorch --pytorch_dump_folder_path ./125m/ --hf_config ./125m/config.json --fairseq_path ./125m/restored.pt 
-        fi
+        wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
+        tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
+        python -m metaseq.scripts.convert_to_singleton ./125m
+        python -m transformers.models.opt.convert_opt_original_pytorch_checkpoint_to_pytorch --pytorch_dump_folder_path ./125m/ --hf_config ./125m/config.json --fairseq_path ./125m/restored.pt 
 
 commands:
 
