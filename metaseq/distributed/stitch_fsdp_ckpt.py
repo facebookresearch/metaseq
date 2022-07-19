@@ -305,10 +305,16 @@ def reshard_megatron_parts(model_parts, new_model_part_count=1):
                     model_parts, key, new_model_part_count
                 )
 
-            for i in range(new_model_part_count):
-                new_model_parts[i][key] = torch.cat(
-                    (resharded_ks[i], resharded_vs[i], resharded_qs[i]), dim=0
-                )
+            # Handle the special case when new_model_part_count = 1 (converting to a singleton checkpoint)
+            if new_model_part_count == 1:
+                new_model_parts[0][key.replace("qkv", "k")] = resharded_ks[0]
+                new_model_parts[0][key.replace("qkv", "v")] = resharded_vs[0]
+                new_model_parts[0][key.replace("qkv", "q")] = resharded_qs[0]
+            else:
+                for i in range(new_model_part_count):
+                    new_model_parts[i][key] = torch.cat(
+                        (resharded_ks[i], resharded_vs[i], resharded_qs[i]), dim=0
+                    )
 
         elif "ffn_layernorm" in key:
             _conslidate_and_redshard(key, dim=0)

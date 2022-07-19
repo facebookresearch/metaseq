@@ -11,7 +11,7 @@ MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 8
 TOTAL_WORLD_SIZE = 8
-
+MAX_BEAM = 16
 
 try:
     # internal logic denoting where checkpoints are in meta infrastructure

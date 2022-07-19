@@ -16,6 +16,8 @@ from typing import Callable, Optional
 import numpy as np
 import torch
 
+import metaseq.distributed.utils as dist_utils
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,19 +37,34 @@ class JsonlDataset(torch.utils.data.Dataset):
     Note that only the "text" key is used.
     """
 
-    def __init__(self, path: str, tokenizer: Optional[Callable] = None, recache=False):
+    def __init__(
+        self,
+        path: str,
+        tokenizer: Optional[Callable] = None,
+        recache=False,
+        epoch=1,
+        data_subshard_count=1,
+    ):
         self.path = path
         self.tokenizer = tokenizer
 
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{path}.fairseq.idx.npy")
+        # only build the cache in on the primary worker to prevent overloading nfs
+        if dist_utils.get_global_rank() != 0:
+            dist_utils.global_barrier()
         if self.cache.exists() and not recache:
-            self.offsets = np.load(self.cache)
-        else:
+            logger.info(f"Loading up cache: {self.cache}")
+            self.offsets = np.load(self.cache, allow_pickle=True)
+        elif dist_utils.get_global_rank() == 0:
             self.offsets = self._build_index(path)
-            np.save(self.cache, self.offsets)
-        # print(f'n offsets: {len(self.offsets)}')
+            np.save(self.cache, self.offsets, allow_pickle=False)
+        if dist_utils.get_global_rank() == 0:
+            dist_utils.global_barrier()
+
+        self.epoch = epoch
+        self.data_subshard_count = data_subshard_count
 
     def _get_mmap(self):
         if not hasattr(self.threadlocal, "handles"):
@@ -66,10 +83,15 @@ class JsonlDataset(torch.utils.data.Dataset):
         return self.threadlocal.handles[-1]
 
     def __getitem__(self, idx):
-        if idx < 0 or idx >= len(self):
+        # Convert 0 based idx to subshard based idx
+        # For instance, for a data_subshard_count of 3 and epoch number of 1,
+        # subshard_idx goes like 0, 3, 6, 9 ...
+        # For more details, see https://github.com/facebookresearch/metaseq/issues/166
+        subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
+        if subshard_idx < 0 or subshard_idx >= len(self.offsets):
             raise IndexError
         f = self._get_mmap()
-        f.seek(self.offsets[idx])
+        f.seek(self.offsets[subshard_idx])
         item = f.readline().decode("utf-8")
         item = json.loads(item)
         if self.tokenizer is not None:
@@ -77,7 +99,24 @@ class JsonlDataset(torch.utils.data.Dataset):
         return item
 
     def __len__(self):
-        return len(self.offsets)
+        # Virtual length of the dataset depends on the epoch number if the number of documents
+        # is not perfectly divisible by the data_subshard_count
+        if len(self.offsets) % self.data_subshard_count == 0:
+            return len(self.offsets) // self.data_subshard_count
+        else:
+            # We are left with len(self.offsets) % self.data_subshard_count extra documents at the end
+            extra_document_count = len(self.offsets) % self.data_subshard_count
+
+            # Depending on the subshard id, these extra documents would be included or not
+            if self._get_subshard_id() + 1 <= extra_document_count:
+                return (len(self.offsets) // self.data_subshard_count) + 1
+            else:
+                return len(self.offsets) // self.data_subshard_count
+
+    def _get_subshard_id(self):
+        # Returns the subshard_id, which goes from 0 to self.data_subshard_count - 1 (0 indexed)
+        # and then wraps around if the epoch id goes beyond the data_subshard_count
+        return (self.epoch - 1) % self.data_subshard_count
 
     def _build_index(self, path: str):
         """Build index of start positions of each line."""
@@ -86,12 +125,23 @@ class JsonlDataset(torch.utils.data.Dataset):
         f.seek(0)
         offsets = []
         cur = 0
+        line_num = 0
         while True:
             line = f.readline()
+            if line != b"":
+                try:
+                    json.loads(line)
+                except json.decoder.JSONDecodeError:
+                    raise json.decoder.JSONDecodeError(
+                        doc=path,
+                        pos=line_num,
+                        msg=f"Error while loading JSONL file {path} at line {line_num + 1}",
+                    )
             if line == b"":
                 break
             offsets.append(cur)
             cur += len(line)
+            line_num += 1
         return offsets
 
     def __setstate__(self, state):

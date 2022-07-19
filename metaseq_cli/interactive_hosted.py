@@ -32,6 +32,7 @@ from metaseq.service.workers import WorkItem
 from metaseq.service.constants import (
     MAX_SEQ_LEN,
     MAX_BATCH_TOKENS,
+    MAX_BEAM,
     DEFAULT_PORT,
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
@@ -77,10 +78,12 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
     global BATCH_QUEUE
 
     batch = []
+    target_queue = None
     while True:
         try:
             # for now, we only have 1 worker, so can always index to shard 0
-            target_queue = BATCH_QUEUE.queue_shards[0].get_largest_queue()
+            if target_queue is None:
+                target_queue = BATCH_QUEUE.queue_shards[0].get_largest_queue()
             if not target_queue:
                 continue
             # dynamic batching: group like-sized items to reduce the cost
@@ -89,7 +92,12 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
             # accumulate the batch until it gets too big
             longest = max([item] + batch).cost
             batch_cost = longest * (len(batch) + 1)
-            if batch and batch_cost > max_tokens:
+            # overflow corresponds to whether max(prompt_len) + gen_len will
+            # fit the max sequence length
+            max_prompt_len = max(x.prompt_len for x in [item] + batch)
+            max_gen_len = max(x.gen_len for x in [item] + batch)
+            overflow = max_prompt_len + max_gen_len < MAX_SEQ_LEN
+            if batch and (batch_cost > max_tokens or overflow):
                 # we're over budget, put it back in the queue
                 target_queue.put(item)
                 raise queue.Empty
@@ -98,6 +106,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 batch.append(item)
         except queue.Empty:
             if batch:
+                target_queue = None
                 request_object = {
                     "inputs": [],
                     "min_tokens": [],
@@ -129,6 +138,10 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 )
                 try:
                     generations = generator.generate(**request_object)
+                except RuntimeError:
+                    # Probably cuda died. Unfortunately, we need to hard crash
+                    # here to kick in our self-healing mechanisms.
+                    raise
                 except Exception as e:
                     # propagate any exceptions to the response so we can report it
                     generations = [e] * len(batch)
@@ -187,20 +200,36 @@ def handle_exception(e):
     # pass through HTTP errors
     if isinstance(e, HTTPException):
         return e
-    # now you're handling non-HTTP exceptions only
-    response = jsonify(
-        {
-            "error": {
-                "message": str(e),
-                "type": "oops",
-                "stacktrace": traceback.format_tb(e.__traceback__),
-            }
-        }
+
+    http_code = 400 if isinstance(e, ValueError) else 500
+    return _create_error_response(
+        str(e), http_code, stacktrace=traceback.format_tb(e.__traceback__)
     )
-    if isinstance(e, ValueError):
-        response.status = 400
-    else:
-        response.status = 500
+
+
+def _validate_key(key):
+    # denylist a few placeholders various people have used
+    if key == "":
+        return False
+    if "YOUR_NAME_HERE" in key:
+        return False
+    if "$USER" in key:
+        return False
+    if "your-key-here" in key:
+        return False
+    return True
+
+
+def _create_error_response(msg, http_code, **others):
+    error_dict = {
+        "message": msg,
+        "type": "invalid_request_error",
+        "param": None,
+        "code": None,
+        **others,
+    }
+    response = jsonify({"error": error_dict})
+    response.status = http_code
     return response
 
 
@@ -209,6 +238,10 @@ def handle_exception(e):
 @app.route("/v2/engines/<engine>/completions", methods=["POST"])
 @app.route("/engines/<engine>/completions", methods=["POST"])
 def completions(engine=None):
+    # before anything else, check that we've got a valid API key
+    if not _validate_key(request.headers.get("authorization", "")):
+        return _create_error_response("Invalid API key or API key missing.", 401)
+
     # prompt can be 4 types:
     # - str. Basic case. Return one generation.
     # - list of ints. Pretokenized. Return one generation
@@ -259,7 +292,7 @@ def completions(engine=None):
         generation_args["top_p"] = 1.0
     # beam search top n
     if "n" in generation_args:
-        generation_args["n"] = int(generation_args["n"])
+        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
 
@@ -267,7 +300,16 @@ def completions(engine=None):
     for i, prompt in enumerate(prompts):
         request_object = {"input": prompt, **generation_args}
         max_len = generation_args.get("max_tokens", 0)
-        BATCH_QUEUE.put(WorkItem(len(prompt) + max_len, i, ret_queue, request_object))
+        BATCH_QUEUE.put(
+            WorkItem(
+                cost=len(prompt) + max_len,
+                uid=i,
+                return_queue=ret_queue,
+                data=request_object,
+                prompt_len=len(prompt),
+                gen_len=max_len,
+            )
+        )
     unordered_results = []
     for _ in prompts:
         unordered_results.append(ret_queue.get())

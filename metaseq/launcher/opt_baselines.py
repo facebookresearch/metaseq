@@ -62,6 +62,13 @@ def add_extra_options_func(parser):
         action="store_true",
     )
     parser.add_argument("--max-update", "--mu", type=int, default=None)
+    parser.add_argument("--max-epoch", "--me", type=int, default=None)
+    parser.add_argument(
+        "--disable-validation", action="store_true", help="skip doing validation"
+    )
+    parser.add_argument(
+        "--circleci", action="store_true", help="running a baseline test on circleci"
+    )
 
 
 def get_grid(args):
@@ -69,11 +76,14 @@ def get_grid(args):
     DATA_ROOT = ""
     if args.data is None and not args.benchmark:
         cluster_env = get_env_from_args(args)
-        args.data = os.path.join(
-            DATA_LOCATIONS[cluster_env], "corpus_dedup_10_10_1_0.05_exp29"
-        )
+        data_loc_by_env = DATA_LOCATIONS[cluster_env]
+        valid_subsets = VALID_SUBSETS
+        if args.circleci:
+            data_loc_by_env = "./gpu_tests/circleci"
+            valid_subsets = ["BookCorpusFair"]
+        args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
         if os.path.exists(args.data):
-            DATA_ROOT = DATA_LOCATIONS[cluster_env]
+            DATA_ROOT = data_loc_by_env
         else:
             raise RuntimeError("Where are you running this?! Check DATA_LOCATIONS.")
 
@@ -98,6 +108,7 @@ def get_grid(args):
     total_gpus = (args.num_gpus * args.num_nodes) // size.model_parallel
     ddp_bsz = (size.batch_size // total_gpus) // SEQ_LEN
     total_updates = args.max_update
+    total_epochs = args.max_epoch
     if total_updates is None:
         total_updates = int(TOTAL_TRAIN_TOKENS) // size.batch_size
     warmup_updates = int(TOTAL_WARMUP_TOKENS) // size.batch_size
@@ -146,7 +157,7 @@ def get_grid(args):
     args.snapshot_code = True
     grid += [
         hyperparam("--train-subset", "train"),
-        hyperparam("--valid-subset", ",".join(f"valid/{ss}" for ss in VALID_SUBSETS)),
+        hyperparam("--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets)),
         hyperparam("--ignore-unused-valid-subsets"),
         hyperparam("--num-workers", 8),
         hyperparam("--num-workers-valid", 1),
@@ -301,6 +312,18 @@ def get_grid(args):
         grid += [hyperparam("--restore-file", args.restore_file)]
     if args.reset_dataloader:
         grid += [hyperparam("--reset-dataloader")]
+
+    if args.disable_validation:
+        grid += [hyperparam("--disable-validation")]
+
+    if args.max_epoch is not None:
+        grid += [
+            hyperparam(
+                "--max-epoch",
+                total_epochs,
+                save_dir_key=lambda val: f"me{val}" if not no_save_params else "",
+            )
+        ]
 
     return grid
 

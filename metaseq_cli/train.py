@@ -322,9 +322,20 @@ def train(
             and i == 5
         ):
             logger.info("STARTING PROFILER")
-            with profiler.profile() as prof:
+            with profiler.profile(
+                profile_memory=True, with_stack=True, record_shapes=True
+            ) as prof:
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
+            with open(
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+            ) as sourceFile:
+                print(
+                    prof.key_averages(group_by_stack_n=5).table(
+                        sort_by="self_cuda_memory_usage", row_limit=10
+                    ),
+                    file=sourceFile,
+                )
             prof.export_chrome_trace(
                 os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
             )

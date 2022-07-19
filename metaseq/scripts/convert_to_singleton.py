@@ -38,7 +38,7 @@ from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
-from metaseq.distributed.stitch_fsdp_ckpt import glue_megatron_parts
+from metaseq.distributed.stitch_fsdp_ckpt import reshard_megatron_parts
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -47,6 +47,51 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger("convert_to_singleton")
+
+
+def create_generation_config_with_defaults(model_path):
+    files = glob.glob(f"{model_path}/reshard*.pt")
+
+    MP = len(files)
+    BPE_MERGES = model_path + "/gpt2-merges.txt"
+    BPE_VOCAB = model_path + "/gpt2-vocab.json"
+
+    # Skeleton out all the annoying command line args we can infer
+    ARGS = [
+        "--model-parallel-size",
+        str(MP),
+        "--distributed-world-size",
+        str(MP),
+        "--task",
+        "language_modeling",
+        "--bpe-merges",
+        BPE_MERGES,
+        "--merges-filename",
+        BPE_MERGES,
+        "--bpe-vocab",
+        BPE_VOCAB,
+        "--vocab-filename",
+        BPE_VOCAB,
+        "--bpe",
+        "hf_byte_bpe",
+        "--path",
+        model_path + "/reshard.pt",
+        "--checkpoint-shard-count",
+        "1",
+        "--use-sharded-state",
+        model_path,
+    ]
+    print(ARGS)
+
+    # build up the config file
+    parser = options.get_generation_parser()
+    # dumb defaults overriding
+    parser.set_defaults(lr_scheduler=None, criterion=None)
+    args = options.parse_args_and_arch(parser, input_args=ARGS)
+    cfg = convert_namespace_to_omegaconf(args)
+    cfg.distributed_training.distributed_world_size = MP
+
+    return cfg
 
 
 def worker_main(cfg: MetaseqConfig):
@@ -89,10 +134,10 @@ def worker_main(cfg: MetaseqConfig):
             for r, t in enumerate(gathered):
                 model_parts[r][name] = t.cpu()
 
-    glued = glue_megatron_parts(model_parts)
+    glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
 
-    glued["decoder.version"] = model["model"]["decoder.version"].cpu()
+    glued["decoder.version"] = model.state_dict()["decoder.version"].cpu()
 
     if "decoder.output_projection.weight" in glued:
         del glued["decoder.output_projection.weight"]
@@ -102,6 +147,7 @@ def worker_main(cfg: MetaseqConfig):
     )
     output_sd["model"] = utils.move_to_cpu(glued)
     output_sd["cfg"]["model"].arch = "transformer_lm"
+    output_sd["cfg"]["model"]._name = "transformer_lm"
 
     if dist_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
@@ -113,42 +159,8 @@ def main():
     real_parser = argparse.ArgumentParser()
     real_parser.add_argument("location")
     args = real_parser.parse_args()
-    files = glob.glob(f"{args.location}/reshard*.pt")
 
-    MP = len(files)
-    BPE_MERGES = args.location + "/gpt2-merges.txt"
-    BPE_VOCAB = args.location + "/gpt2-vocab.json"
-
-    # Skeleton out all the annoying command line args we can infer
-    ARGS = [
-        "--model-parallel-size",
-        str(MP),
-        "--distributed-world-size",
-        str(MP),
-        "--task",
-        "language_modeling",
-        "--bpe-merges",
-        BPE_MERGES,
-        "--bpe-vocab",
-        BPE_VOCAB,
-        "--bpe",
-        "hf_byte_bpe",
-        "--path",
-        args.location + "/reshard.pt",
-        "--checkpoint-shard-count",
-        "1",
-        "--use-sharded-state",
-        args.location,
-    ]
-    print(ARGS)
-
-    # build up the config file
-    parser = options.get_generation_parser()
-    # dumb defaults overriding
-    parser.set_defaults(lr_scheduler=None, criterion=None)
-    args = options.parse_args_and_arch(parser, input_args=ARGS)
-    cfg = convert_namespace_to_omegaconf(args)
-    cfg.distributed_training.distributed_world_size = MP
+    cfg = create_generation_config_with_defaults(args.location)
     dist_utils.call_main(cfg, worker_main)
 
 

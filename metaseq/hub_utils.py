@@ -11,6 +11,7 @@ import os
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional
+from transformers import GPT2Tokenizer
 
 import numpy as np
 import torch
@@ -101,6 +102,28 @@ def from_pretrained(
         "task": task,
         "models": models,
     }
+
+
+def tensorize_input(tokenizer, prompts):
+    input_ids = tokenizer(prompts, return_tensors="pt").input_ids
+    input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
+    input_ids = input_ids
+    return input_ids
+
+
+def get_next_token(logits, tokenizer):
+    pred_next_token = torch.argmax(logits[0, -1], -1)
+    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
+    next_token = next_token[0].replace("Ġ", "")
+    return next_token
+
+
+def setup_vocab_and_merges(model_path):
+    vocab_file = os.path.join(model_path, "gpt2-vocab.json")
+    merges_file = os.path.join(model_path, "gpt2-merges.txt")
+    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
+    tokenizer.save_pretrained(model_path)
+    return vocab_file, merges_file, tokenizer
 
 
 class GeneratorHubInterface(nn.Module):
@@ -609,25 +632,24 @@ class GeneratorInterface:
 
             translate_start_time = time.time()
             translations = self.task.inference_step(generator, self.models, batch)
-
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
 
-            # possibly cut off any bsz padding we did
-            translations = translations[: len(inputs)]
-            # actually turn everything into strings
-            for i in range(len(translations)):
-                decoding = translations[i]
-                beams = []
-                for beam in decoding:
-                    # first beam is always the highest scoring
-                    tokens = beam["tokens"].tolist()  # implicit move to cpu
-                    scores = beam["positional_scores"].tolist()
-                    if logprobs > 0:
-                        distributions = beam["distributions"].cpu()
-                    else:
-                        distributions = None
+            all_tokens = translations["tokens"].cpu()[: len(inputs)]
+            all_scores = translations["scores"].cpu()[: len(inputs)]
+            if logprobs > 0:
+                all_distributions = translations["distributions"].cpu()[: len(inputs)]
+            else:
+                all_distributions = None
 
+            # actually turn everything into strings
+            for i in range(all_tokens.size(0)):
+                beams = []
+                for j in range(best_of):
+                    # first beam is always the highest scoring
+                    tokens = all_tokens[i, j].tolist()
+                    scores = all_scores[i, j].tolist()
+                    distributions = all_distributions[i, j] if logprobs > 0 else None
                     tokens, scores, distributions = GeneratorInterface._filter_special(
                         tokens, scores, distributions
                     )
