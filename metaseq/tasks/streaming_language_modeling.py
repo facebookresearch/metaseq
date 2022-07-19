@@ -193,9 +193,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             smoothed_prob = prob**self.args.multicorpus_sampling_alpha
             smoothed_prob = smoothed_prob / smoothed_prob.sum()
         else:
-            dataset_lens = [
-                min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens
-            ]
+            dataset_lens = np.array(
+                [min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens]
+            )
             smoothed_prob = dataset_lens / sum(dataset_lens)
         return smoothed_prob
 
