@@ -89,6 +89,8 @@ def from_pretrained(
         else:
             return task.build_model(train_cfg.model)
 
+    # print("model path",model_path)
+    # print("task: ",cfg)
     models, args, task = checkpoint_utils.load_model_ensemble_and_task(
         [os.path.join(model_path, cpt) for cpt in checkpoint_file.split(os.pathsep)],
         arg_overrides=kwargs,
