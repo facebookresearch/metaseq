@@ -16,7 +16,7 @@ enables serving OPT-175B with more flexible parallelisms on older generations of
 
 ### Using OPT with Colossal-AI
 
-The OPT models are now supported in the [Colossal-AI](https://github.com/hpcaitech/ColossalAI), which helps users to efficiently and quickly deploy OPT models training and inference, reducing large AI model budgets and scaling down the labor cost of learning and deployment.
+The OPT models are now supported in the [Colossal-AI](https://github.com/hpcaitech/ColossalAI#OPT), which helps users to efficiently and quickly deploy OPT models training and inference, reducing large AI model budgets and scaling down the labor cost of learning and deployment.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
