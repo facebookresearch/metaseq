@@ -6,13 +6,11 @@ from metaseq import checkpoint_utils, tasks, utils
 from transformers import OPTForCausalLM
 from packaging import version
 import torch
-import unittest
 import torch.nn.functional as F
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
 from metaseq.distributed import utils as dist_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.dataclass.configs import MetaseqConfig
-from metaseq import pdb
 import argparse
 import urllib.request
 import tarfile
@@ -152,7 +150,7 @@ def generation_statistics_single(
     total_gen_time = end - begin
 
     print("Total generation time " + str(total_gen_time))
-    print("Words per second : " + str((len(prompts) * padding_size)/ total_gen_time))
+    print("Words per second : " + str((len(prompts) * padding_size) / total_gen_time))
 
 
 def generation_statistics(prompt_path, model_path, padding_size):
@@ -171,7 +169,7 @@ def generation_statistics(prompt_path, model_path, padding_size):
     total_gen_time = end - begin
 
     print("Total generation time " + str(total_gen_time))
-    print("Words per second : " + str((len(prompts) * padding_size)/ total_gen_time))
+    print("Words per second : " + str((len(prompts) * padding_size) / total_gen_time))
 
     mp_logits_list = [
         torch.load(f"/tmp/test_hf_compatibility_{index}.pt") for index in range(4)
@@ -257,7 +255,7 @@ def download_prompts():
 
 def cleanup(prompts):
     shutil.rmtree("./dependencies")
-    os.remove('./dependencies.tar.gz')
+    os.remove("./dependencies.tar.gz")
     os.remove(prompts)
 
 
@@ -265,7 +263,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", nargs="+")
     parser.add_argument("--prompt_path", nargs="?")
-    parser.add_argument("--padding_size",nargs ="?",default = "512")
+    parser.add_argument("--padding_size", nargs="?", default="512")
     args = parser.parse_args()
 
     if args.prompt_path is None:
@@ -281,11 +279,13 @@ if __name__ == "__main__":
             generation_statistics_single(
                 prompt_path=args.prompt_path,
                 model_path="./dependencies",
-                padding_size= int(args.padding_size),
-                item_name="reshard.pt"
+                padding_size=int(args.padding_size),
+                item_name="reshard.pt",
             )
         else:
             generation_statistics(
-                prompt_path=args.prompt_path, model_path="./dependencies", padding_size = int(args.padding_size)
+                prompt_path=args.prompt_path,
+                model_path="./dependencies",
+                padding_size=int(args.padding_size),
             )
         cleanup(args.prompt_path)
