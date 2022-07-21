@@ -3,8 +3,6 @@ import json
 import time
 from transformers import GPT2Tokenizer
 from metaseq import checkpoint_utils, tasks, utils
-from transformers import OPTForCausalLM
-from packaging import version
 import torch
 import torch.nn.functional as F
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
@@ -39,20 +37,24 @@ def setup_vocab_and_merges(model_path):
 
 def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     _, _, tokenizer = setup_vocab_and_merges(kwargs["model_path"])
-    orig_dims = []
     load_prompts(kwargs["prompt_path"])
     prompt_ids = []
+    thread_times = [
+        torch.zeros(1).cuda() for _ in range(dist_utils.get_model_parallel_world_size())
+    ]
+    begin = time.time()
     for prompt in prompts:
         input_ids = tensorize_input(tokenizer, prompt)
-        orig_dims.append(input_ids.shape[1])
         input_ids = F.pad(
             input=input_ids,
             pad=(0, kwargs["padding_size"] - input_ids.shape[1], 0, 0),
             value=1,
         )
         prompt_ids.append(input_ids)
+    end = time.time()
 
     prompt_ids = torch.cat(prompt_ids).cuda()
+    prompt_loading = end - begin
 
     task = tasks.setup_task(cfg.task)
 
@@ -81,26 +83,17 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     model.summon_full_params()
     model = model.eval()
 
+    begin = time.time()
     with torch.no_grad():
-        logits = model(prompt_ids)[0]
+        model(prompt_ids)[0]
 
-    gathered_logits = [
-        torch.zeros_like(logits)
-        for _ in range(dist_utils.get_model_parallel_world_size())
-    ]
+    end = time.time()
+    times_list = torch.tensor(end - begin + prompt_loading).cuda()
+
     torch.distributed.all_gather(
-        gathered_logits, logits, group=dist_utils.get_global_group()
+        thread_times, times_list, group=dist_utils.get_global_group()
     )
-    gathered_logits = torch.cat(gathered_logits, dim=2)
-    # Unwrap gathered logits into separate components for each prompt, and
-    # trim them to match orig_dims
-    trimmed_logits = [
-        logits[:orig_dim].unsqueeze(0)
-        for logits, orig_dim in zip(gathered_logits, orig_dims)
-    ]
-
-    for index, logits in enumerate(trimmed_logits):
-        torch.save(logits, f"/tmp/test_hf_compatibility_{index}.pt")
+    torch.save(thread_times, "./dependencies/times.pt")
 
 
 def tensorize_input(tokenizer, prompts):
@@ -110,18 +103,12 @@ def tensorize_input(tokenizer, prompts):
     return input_ids
 
 
-def get_next_token(logits, tokenizer):
-    pred_next_token = torch.argmax(logits[0, -1], -1)
-    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
-    next_token = next_token[0].replace("Ġ", "")
-    return next_token
-
-
 def generation_statistics_single(
     prompt_path, model_path, padding_size, item_name="restored.pt"
 ):
     vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
     load_prompts(prompt_path)
+
     checkpoint = checkpoint_utils.load_model_ensemble_and_task(
         [os.path.join(model_path, item_name)],
         arg_overrides={
@@ -131,20 +118,20 @@ def generation_statistics_single(
     )
 
     model = checkpoint[0][0].eval()
-
-    hf_model = OPTForCausalLM.from_pretrained(model_path)
+    model = model.cuda()
+    prompt_ids = []
     begin = time.time()
     for prompt in prompts:
         input_ids = tensorize_input(tokenizer, prompt)
         input_ids = F.pad(
             input=input_ids, pad=(0, padding_size - input_ids.shape[1], 0, 0), value=1
         )
-        with torch.no_grad():
-            logits_metaseq = model(input_ids)[0]
-            logits_hf = hf_model(input_ids)[0]
+        prompt_ids.append(input_ids)
 
-        metaseq_next_token = get_next_token(logits_metaseq, tokenizer)
-        hf_next_token = get_next_token(logits_hf, tokenizer)
+    prompt_ids = torch.cat(prompt_ids).cuda()
+
+    with torch.no_grad():
+        model(prompt_ids)[0]
 
     end = time.time()
     total_gen_time = end - begin
@@ -156,7 +143,6 @@ def generation_statistics_single(
 def generation_statistics(prompt_path, model_path, padding_size):
 
     cfg = create_generation_config_with_defaults(model_path)
-    begin = time.time()
     dist_utils.call_main(
         cfg,
         load_mp_model_and_run_eval,
@@ -165,20 +151,14 @@ def generation_statistics(prompt_path, model_path, padding_size):
         prompt_path=prompt_path,
         repeat=20,
     )
-    end = time.time()
-    total_gen_time = end - begin
 
-    print("Total generation time " + str(total_gen_time))
-    print("Words per second : " + str((len(prompts) * padding_size) / total_gen_time))
+    thread_times = torch.load("./dependencies/times.pt")
+    avg_total_gen_time = sum(thread_times).item() / len(thread_times)
 
-    mp_logits_list = [
-        torch.load(f"/tmp/test_hf_compatibility_{index}.pt") for index in range(4)
-    ]
-    _, _, tokenizer = setup_vocab_and_merges(model_path)
-    for prompt, logits_mp in zip(prompts, mp_logits_list):
-
-        mp_next_token = get_next_token(logits_mp, tokenizer)
-        break
+    print("Total generation time " + str(avg_total_gen_time))
+    print(
+        "Words per second : " + str((len(prompts) * padding_size) / avg_total_gen_time)
+    )
 
 
 def download_data(key):
