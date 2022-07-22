@@ -233,10 +233,13 @@ def download_prompts():
     pass
 
 
-def cleanup(prompts):
+def cleanup_data():
     shutil.rmtree("./dependencies")
     os.remove("./dependencies.tar.gz")
-    os.remove(prompts)
+
+def cleanup_prompts(prompt_path):
+    os.remove(prompt_path)
+
 
 
 if __name__ == "__main__":
@@ -245,6 +248,9 @@ if __name__ == "__main__":
     parser.add_argument("--prompt_path", nargs="?")
     parser.add_argument("--padding_size", nargs="?", default="512")
     args = parser.parse_args()
+
+    if args.model_name is None:
+        raise AssertionError("Please pass at least one model name as argument")
 
     if args.prompt_path is None:
         # using default prompts
@@ -268,4 +274,6 @@ if __name__ == "__main__":
                 model_path="./dependencies",
                 padding_size=int(args.padding_size),
             )
-        cleanup(args.prompt_path)
+        cleanup_data()
+
+    cleanup_prompts(prompt_path = args.prompt_path)
