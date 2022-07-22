@@ -7,7 +7,6 @@ Base classes for various metaseq models.
 """
 
 import logging
-from argparse import Namespace
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -51,18 +50,17 @@ class BaseModel(nn.Module):
         """Build a new model instance."""
         raise NotImplementedError("Model must implement the build_model method")
 
-    def get_targets(self, sample, net_output):
-        """Get targets from either the sample or the net's output."""
+    def get_targets(self, sample):
+        """Get targets from sample."""
         return sample["target"]
 
     def get_normalized_probs(
         self,
         net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
         log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
     ):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+        return self.get_normalized_probs_scriptable(net_output, log_probs)
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
     # can't access the base class model in Torchscript.
@@ -72,11 +70,10 @@ class BaseModel(nn.Module):
         self,
         net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
         log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
     ):
         """Scriptable helper function for get_normalized_probs in ~BaseModel"""
         if hasattr(self, "decoder"):
-            return self.decoder.get_normalized_probs(net_output, log_probs, sample)
+            return self.decoder.get_normalized_probs(net_output, log_probs)
         elif torch.is_tensor(net_output):
             # syntactic sugar for simple models which don't have a decoder
             # (e.g., the classification tutorial)
@@ -94,21 +91,6 @@ class BaseModel(nn.Module):
     def max_positions(self):
         """Maximum length supported by the model."""
         return None
-
-    def load_state_dict(
-        self,
-        state_dict,
-        strict=True,
-        model_cfg: Optional[DictConfig] = None,
-        args: Optional[Namespace] = None,
-    ):
-        """Copies parameters and buffers from *state_dict* into this module and
-        its descendants.
-
-        Overrides the method in :class:`nn.Module`. Compared with that method
-        this additionally "upgrades" *state_dicts* from old checkpoints.
-        """
-        return super().load_state_dict(state_dict, strict)
 
     def set_num_updates(self, num_updates):
         """State from trainer to pass along to model at every update."""

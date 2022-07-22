@@ -221,28 +221,6 @@ def _handle_one(parts, is_weight):
     return ret_val
 
 
-def handle_legacy_ln_(glued_model, n_parts):
-    """Consolidate ffn_layernorm.lns.weight.{part_id} -> ffn_layernorm.weight"""
-    if "decoder.layers.0.ffn_layernorm.lns.0.weight" not in glued_model:
-        return
-    n_layers = get_n_layers(glued_model)
-    for i in range(n_layers):
-        layer_weights = [
-            glued_model.pop(f"decoder.layers.{i}.ffn_layernorm.lns.{p}.weight")
-            for p in range(n_parts)
-        ]
-        layer_biases = [
-            glued_model.pop(f"decoder.layers.{i}.ffn_layernorm.lns.{p}.bias")
-            for p in range(n_parts)
-        ]
-        glued_model[f"decoder.layers.{i}.ffn_layernorm.weight"] = _handle_one(
-            layer_weights, True
-        )
-        glued_model[f"decoder.layers.{i}.ffn_layernorm.bias"] = _handle_one(
-            layer_biases, False
-        )
-
-
 def get_n_layers(glued_model):
     n_layers = 0
     while True:
@@ -359,8 +337,7 @@ def reshard_megatron_parts(model_parts, new_model_part_count=1):
     for new_model_part in new_model_parts:
         assert len(new_model_part.keys()) >= len(model_parts[0].keys())
         assert "decoder.layers.0.ffn_layernorm.lns.0.weight" not in new_model_part
-    # Consolidate ffn_layernorm.lns.weight.{part_id} -> ffn_layernorm.weight
-    # handle_legacy_ln_(glued_model, len(model_parts))
+
     return new_model_parts
 
 

@@ -436,16 +436,6 @@ class TestEncoder(BaseEncoder):
             src_lengths=None,
         )
 
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
 
 class TestIncrementalDecoder(IncrementalDecoder):
     def __init__(self, args, dictionary):
@@ -495,7 +485,7 @@ class TestIncrementalDecoder(IncrementalDecoder):
         dev = prev_output_tokens.device
         return probs.to(dev), {"attn": [attn.to(dev)]}
 
-    def get_normalized_probs(self, net_output, log_probs, _):
+    def get_normalized_probs(self, net_output, log_probs):
         # the decoder returns probabilities directly
         probs = net_output[0]
         if log_probs:
@@ -529,16 +519,6 @@ class TestReshapingEncoder(BaseEncoder):
             src_lengths=None,
         )
 
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
 
 class TestReshapingModel(EncoderDecoderModel):
     def __init__(self, encoder, decoder):
@@ -561,16 +541,6 @@ class TestAdditionalInputEncoder(BaseEncoder):
         assert kwargs["fancy_other_input"] is not None
         return EncoderOut(
             encoder_out=src_tokens,
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
             encoder_padding_mask=None,
             encoder_embedding=None,
             encoder_states=None,

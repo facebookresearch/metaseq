@@ -233,59 +233,6 @@ class TransformerEncoder(BaseEncoder):
             "l_aux": l_aux,
         }
 
-    @torch.jit.export
-    def reorder_encoder_out(self, encoder_out: Dict[str, List[Tensor]], new_order):
-        """
-        Reorder encoder output according to *new_order*.
-
-        Args:
-            encoder_out: output from the ``forward()`` method
-            new_order (LongTensor): desired order
-
-        Returns:
-            *encoder_out* rearranged according to *new_order*
-        """
-        if len(encoder_out["encoder_out"]) == 0:
-            new_encoder_out = []
-        else:
-            new_encoder_out = [encoder_out["encoder_out"][0].index_select(1, new_order)]
-        if len(encoder_out["encoder_padding_mask"]) == 0:
-            new_encoder_padding_mask = []
-        else:
-            new_encoder_padding_mask = [
-                encoder_out["encoder_padding_mask"][0].index_select(0, new_order)
-            ]
-        if len(encoder_out["encoder_embedding"]) == 0:
-            new_encoder_embedding = []
-        else:
-            new_encoder_embedding = [
-                encoder_out["encoder_embedding"][0].index_select(0, new_order)
-            ]
-
-        if len(encoder_out["src_tokens"]) == 0:
-            src_tokens = []
-        else:
-            src_tokens = [(encoder_out["src_tokens"][0]).index_select(0, new_order)]
-
-        if len(encoder_out["src_lengths"]) == 0:
-            src_lengths = []
-        else:
-            src_lengths = [(encoder_out["src_lengths"][0]).index_select(0, new_order)]
-
-        encoder_states = encoder_out["encoder_states"]
-        if len(encoder_states) > 0:
-            for idx, state in enumerate(encoder_states):
-                encoder_states[idx] = state.index_select(1, new_order)
-
-        return {
-            "encoder_out": new_encoder_out,  # T x B x C
-            "encoder_padding_mask": new_encoder_padding_mask,  # B x T
-            "encoder_embedding": new_encoder_embedding,  # B x T x C
-            "encoder_states": encoder_states,  # List[T x B x C]
-            "src_tokens": src_tokens,  # B x T
-            "src_lengths": src_lengths,  # B x 1
-        }
-
     def max_positions(self):
         """Maximum input length supported by the encoder."""
         if self.embed_positions is None:
@@ -627,6 +574,7 @@ class TransformerDecoder(IncrementalDecoder):
 
         return x, embed, positions
 
+    # forward for TransformerDecoder
     def forward(
         self,
         prev_output_tokens,

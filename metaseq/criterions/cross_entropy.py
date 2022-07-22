@@ -88,7 +88,7 @@ class CrossEntropyCriterion(BaseCriterion):
     def compute_loss(self, model, net_output, sample, reduce=True):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
         lprobs = lprobs.view(-1, lprobs.size(-1))
-        target = model.get_targets(sample, net_output).view(-1)
+        target = model.get_targets(sample).view(-1)
         loss = nll_loss(
             lprobs,
             target,
