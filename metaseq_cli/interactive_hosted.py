@@ -290,6 +290,10 @@ def completions(engine=None):
         generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
     else:
         generation_args["top_p"] = 1.0
+    if "echo" in generation_args:
+        generation_args["echo"] = bool(generation_args["echo"])
+    else:
+        generation_args["echo"] = False
     # beam search top n
     if "n" in generation_args:
         generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
