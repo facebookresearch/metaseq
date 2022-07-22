@@ -72,7 +72,7 @@ class SequenceScorer(object):
             for bd, tgt, is_single in batched:
                 sample["target"] = tgt
                 curr_prob = model.get_normalized_probs(
-                    bd, log_probs=len(models) == 1, sample=sample
+                    bd, log_probs=len(models) == 1
                 ).data
                 if is_single:
                     probs = gather_target_probs(curr_prob, orig_target)

@@ -60,10 +60,9 @@ class BaseDecoder(nn.Module):
         self,
         net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
         log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
     ):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+        return self.get_normalized_probs_scriptable(net_output, log_probs)
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
     # can't access the base class model in Torchscript.
@@ -73,7 +72,6 @@ class BaseDecoder(nn.Module):
         self,
         net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
         log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
     ):
         """Get normalized probabilities (or log probs) from a net's output."""
         logits = net_output[0]

@@ -182,7 +182,7 @@ class SequenceGenerator(nn.Module):
         model_predictions.div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
-        lprobs = self.model.get_normalized_probs(model_out, log_probs=True, sample=None)
+        lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
 
         # don't allow generation of eos/pad
         model_predictions[:, :, self.eos] = -math.inf
@@ -252,9 +252,7 @@ class SequenceGenerator(nn.Module):
             )
             model_predictions = model_out[0].float()
             model_predictions.div_(self.temperature)
-            lprobs = self.model.get_normalized_probs(
-                model_out, log_probs=True, sample=None
-            )
+            lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
             lprobs = lprobs[:, -1, :]
             if self.need_logprobs:
                 all_lprobs[:, step] = lprobs
