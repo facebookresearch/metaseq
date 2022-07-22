@@ -30,14 +30,14 @@ TOTAL_TRAIN_TOKENS = 300e9
 TOTAL_WARMUP_TOKENS = 375e6
 M = 1024 * 1024  # 1 million
 MODEL_SIZES = {
-    "8m": Size(4, 128, 2, 64, int(0.5 * M), 1.0e-3, 2),  # tiny
+    "8m": Size(1, 128, 2, 64, int(0.5 * M), 1.0e-3, 2),  # tiny
     "125m": Size(12, 768, 12, 64, int(0.25 * M), 6.0e-4, 2),  # small
     # TODO: Need to remove 125md since it's only for debugging purpose.
     "125md": Size(1, 768, 12, 64, int(0.125 * M), 6.0e-4, 2),  # small
     "350m": Size(24, 1024, 16, 64, int(0.5 * M), 3.0e-4, 2),  # medium
     "760m": Size(24, 1536, 16, 96, int(0.5 * M), 2.5e-4, 2),  # large
-    "1.3b": Size(24, 2048, 32, 64, int(1.0 * M), 2.0e-4, 2),  # xl
-    "2.7b": Size(32, 2560, 32, 80, int(1.0 * M), 1.6e-4, 4),
+    "1.3b": Size(24, 2048, 32, 64, int(0.5 * M), 2.0e-4, 2),  # xl
+    "2.7b": Size(32, 2560, 32, 80, int(0.5 * M), 1.6e-4, 4),
     "6.7b": Size(32, 4096, 32, 128, int(2.0 * M), 1.2e-4, 2),
     "13b": Size(40, 5120, 40, 128, int(4.0 * M), 1.0e-4, 2),
     "30b": Size(48, 7168, 56, 128, int(4.0 * M), 1.0e-4, 2),

@@ -295,14 +295,6 @@ class Trainer(object):
             )
         )
 
-        if self.is_fsdp and self.cfg.distributed_training.tp_enabled:
-            # TODO: We need to figure out whehter MemoryEfficientFP16Optimizer
-            # or FP16Optimizer can work with TP.
-            sharded_model_params = list(dict(named_params_with_sharded_tensor(self.model)).values())
-            sharded_criterion_params = list(dict(named_params_with_sharded_tensor(self.criterion)).values())
-            sharded_full_params = sharded_model_params + sharded_criterion_params
-            params = extract_sharded_tensor_local_tensors(sharded_full_params)
-
         if self.is_fsdp and self.cfg.common.fp16:
             # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
             # mostly for the grad scaling. But if we don't have the
@@ -643,6 +635,7 @@ class Trainer(object):
             combine=combine,
             data_selector=data_selector,
         )
+        logger.info("shard batch flag and size {}, {}".format(shard_batch_itr, self.data_parallel_world_size))
         batch_iterator = self.task.get_batch_iterator(
             dataset=self.task.dataset(self.cfg.dataset.train_subset),
             max_tokens=self.cfg.dataset.max_tokens,
@@ -656,8 +649,10 @@ class Trainer(object):
             required_batch_size_multiple=self.cfg.dataset.required_batch_size_multiple,
             seed=self.cfg.common.seed,
             # Make each rank use different data so we are running TP is a SPMD style.
-            num_shards=distributed_utils.get_global_world_size(),
-            shard_id=distributed_utils.get_global_rank(),            
+            num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
+            shard_id=self.data_parallel_rank if shard_batch_itr else 0,
+            # num_shards=distributed_utils.get_global_world_size(),
+            # shard_id=distributed_utils.get_global_rank(),            
             num_workers=self.cfg.dataset.num_workers,
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
@@ -772,7 +767,7 @@ class Trainer(object):
                 # reduce the chance of OOM
                 if self.cuda and self.get_num_updates() == 0:
                     torch.cuda.empty_cache()
-            except RuntimeError as e:
+            except Exception as e:
                 print("Run time error ", str(e), file=sys.stderr)
                 import traceback
                 traceback.print_exception(*sys.exc_info(), file=sys.stderr)
@@ -850,7 +845,6 @@ class Trainer(object):
                 )
 
             # check that grad norms are consistent across workers
-            print("grad_norm ", grad_norm, file=sys.stderr)
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector

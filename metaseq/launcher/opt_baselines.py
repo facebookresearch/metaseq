@@ -99,7 +99,6 @@ def get_grid(args):
     # Divide batch size by model parallel world_size for ShardedTensor based
     # TP implementation since unlike Megatron-LM it receives unique data on
     # each rank.
-    ddp_bsz //= size.model_parallel
 
     total_updates = args.max_update
     if total_updates is None:
@@ -180,7 +179,7 @@ def get_grid(args):
         hyperparam("--model-parallel-size", size.model_parallel),
         hyperparam("--criterion", "vocab_parallel_cross_entropy"),
         # This is Megatron Specific and TP does not need it since TP already assume FSDP style.
-        #hyperparam("--distribute-checkpointed-activations"),
+        hyperparam("--distribute-checkpointed-activations"),
         hyperparam("--tensor-parallel-init-model-on-gpu"),
         # Flags to match exact same initialization of Megatron code for exp 12.00
         hyperparam("--full-megatron-init"),

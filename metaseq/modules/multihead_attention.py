@@ -272,15 +272,14 @@ class MultiheadAttention(nn.Module):
         # Originally, tgt_len, bsz, embed_dim = query.size()
         # After transpose and TP Linear, bsz * tp_world_size, tgt_len, embed_dim = q.size()
         query = query.transpose(0, 1).contiguous()
-        key = key.transpose(0, 1).contiguous() if key is not None else key
-        value = value.transpose(0, 1).contiguous() if value is not None else value
+        if not self.self_attention:
+            key = key.transpose(0, 1).contiguous() if key is not None else key
+            value = value.transpose(0, 1).contiguous() if value is not None else value
 
-        tp_world_size = distributed_utils.get_model_parallel_world_size()
         if self.self_attention:
             # For TP, batch size needs to be dimension 0 and gets expanded 
             # due to all_gather of inputs.
-            bsz *= tp_world_size
-
+            query = query.view(-1, embed_dim)
             q = self.q_proj(query)
             k = self.k_proj(query)
             v = self.v_proj(query)

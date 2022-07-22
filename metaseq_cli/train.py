@@ -301,6 +301,7 @@ def train(
             valid_subsets,
             end_of_epoch,
             log_output is not None,
+            i,
         )
 
         return valid_losses, should_stop
@@ -312,11 +313,10 @@ def train(
             and i == 5
         ):
             logger.info("STARTING PROFILER")
-            with profiler.profile() as prof:
+            with profiler.profile(activities=[profiler.ProfilerActivity.CUDA, profiler.ProfilerActivity.CPU], profile_memory=True, record_shapes=True) as prof:
                 valid_losses, should_stop = train(i, samples)
-            torch.cuda.synchronize()
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+                os.path.join(cfg.checkpoint.save_dir, "ptd_tp_profiler_trace.json")
             )
         else:
             valid_losses, should_stop = train(i, samples)
@@ -354,8 +354,8 @@ def validate_and_save(
     valid_subsets: List[str],
     end_of_epoch: bool,
     was_successful_step: bool,
+    num_updates: int, 
 ) -> Tuple[List[Optional[float]], bool]:
-    num_updates = trainer.get_num_updates()
     max_update = cfg.optimization.max_update or math.inf
 
     # was_successful_step is necessary since we don't increment step counters

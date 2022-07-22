@@ -5,7 +5,9 @@
 
 
 import logging
-
+import torch
+import torch.nn as nn
+from megatron.mpu import VocabParallelEmbedding
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -189,6 +191,8 @@ class TransformerLanguageModel(LanguageModel):
             args.max_target_positions = getattr(
                 args, "tokens_per_sample", DEFAULT_MAX_TARGET_POSITIONS
             )
+        task.source_dictionary.pad_to_multiple_(8)
+        task.target_dictionary.pad_to_multiple_(8)
 
         embed_tokens = cls.build_embedding(
             args, task.source_dictionary, args.decoder_input_dim
@@ -203,24 +207,50 @@ class TransformerLanguageModel(LanguageModel):
 
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
-        if getattr(args, "use_stable_embedding", False):
-            import bitsandbytes as bnb
+        def _vocab_init(tensor, **kwargs):
+            nn.init.normal_(tensor, mean=0, std=embed_dim**-0.5)
+            nn.init.constant_(tensor[1], 0)
 
-            if not args.no_scale_embedding:
-                logger.warning(
-                    "It is recommended to pass --no-scale-embedding with --use-stable-embedding"
-                )
-            return bnb.nn.StableEmbedding(len(dictionary), embed_dim, dictionary.pad())
-
-        else:
-            return Embedding(
-                len(dictionary),
-                embed_dim,
-                dictionary.pad(),
-                initialize_params_on_gpu=getattr(
-                    args, "tensor_parallel_init_model_on_gpu", False
-                ),
+        def _vocab_init_megatron(tensor, **kwargs):
+            nn.init.normal_(
+                tensor, mean=0, std=getattr(args, "megatron_init_sigma", 0.006)
             )
+            nn.init.constant_(tensor[1], 0)
+
+        if getattr(args, "memory_efficient_fp16", False):
+            dtype = torch.bfloat16 if getattr(args, "bf16", False) else torch.half
+        else:
+            dtype = torch.float32
+
+        embed_tokens = VocabParallelEmbedding(
+            len(dictionary),
+            embed_dim,
+            1,
+            init_method=_vocab_init_megatron,
+            use_cpu_initialization=False,
+            dtype=dtype,
+        )
+        return embed_tokens    
+
+    # def build_embedding(cls, args, dictionary, embed_dim, path=None):
+    #     if getattr(args, "use_stable_embedding", False):
+    #         import bitsandbytes as bnb
+
+    #         if not args.no_scale_embedding:
+    #             logger.warning(
+    #                 "It is recommended to pass --no-scale-embedding with --use-stable-embedding"
+    #             )
+    #         return bnb.nn.StableEmbedding(len(dictionary), embed_dim, dictionary.pad())
+
+    #     else:
+    #         return Embedding(
+    #             len(dictionary),
+    #             embed_dim,
+    #             dictionary.pad(),
+    #             initialize_params_on_gpu=getattr(
+    #                 args, "tensor_parallel_init_model_on_gpu", False
+    #             ),
+    #         )
 
 
 def base_lm_architecture(args):
