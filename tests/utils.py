@@ -431,6 +431,7 @@ class TestEncoder(BaseEncoder):
             encoder_out=src_tokens,
             encoder_padding_mask=None,
             encoder_embedding=None,
+            encoder_states=None,
             src_tokens=None,
             src_lengths=None,
         )
@@ -513,6 +514,7 @@ class TestReshapingEncoder(BaseEncoder):
             encoder_out=x.view(b_sz, -1, 2),
             encoder_padding_mask=None,
             encoder_embedding=None,
+            encoder_states=None,
             src_tokens=None,
             src_lengths=None,
         )
@@ -541,6 +543,7 @@ class TestAdditionalInputEncoder(BaseEncoder):
             encoder_out=src_tokens,
             encoder_padding_mask=None,
             encoder_embedding=None,
+            encoder_states=None,
             src_tokens=None,
             src_lengths=None,
         )
