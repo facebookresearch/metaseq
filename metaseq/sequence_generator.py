@@ -144,7 +144,7 @@ class SequenceGenerator(nn.Module):
             torch.zeros(bsz * beam_size, max_len + 1).to(src_tokens).float()
         )  # +1 for eos; pad is never chosen for scoring
         tokens = (
-            torch.zeros(bsz * beam_size, max_len + 2)
+            torch.zeros(bsz * beam_size, max_len + 1)
             .to(src_tokens)
             .long()
             .fill_(self.pad)
@@ -179,7 +179,9 @@ class SequenceGenerator(nn.Module):
             incremental_state=incremental_states,
         )
         # normalize
-        model_out[0].div_(self.temperature, rounding_mode="trunc")
+        model_out[0].div_(self.temperature)
+
+        # model_out[0].div_(self.temperature, rounding_mode="trunc")
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
         lprobs = self.model.get_normalized_probs(model_out, log_probs=True, sample=None)
