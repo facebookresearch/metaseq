@@ -11,7 +11,7 @@ import os
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional
-from transformers import GPT2Tokenizer
+from tokenizers import ByteLevelBPETokenizer
 
 import numpy as np
 import torch
@@ -49,8 +49,9 @@ def get_next_token(logits, tokenizer):
 def setup_vocab_and_merges(model_path):
     vocab_file = os.path.join(model_path, "gpt2-vocab.json")
     merges_file = os.path.join(model_path, "gpt2-merges.txt")
-    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
-    tokenizer.save_pretrained(model_path)
+    tokenizer = ByteLevelBPETokenizer.from_file(
+        vocab_file, merges_file
+    )
     return vocab_file, merges_file, tokenizer
 
 
