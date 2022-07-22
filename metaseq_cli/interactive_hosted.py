@@ -104,8 +104,8 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 # batch is empty or under budget
                 batch.append(item)
         except queue.Empty:
+            target_queue = None
             if batch:
-                target_queue = None
                 request_object = {
                     "inputs": [],
                     "min_tokens": [],
