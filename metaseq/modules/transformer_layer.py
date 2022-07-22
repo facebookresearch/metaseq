@@ -498,7 +498,7 @@ class TransformerDecoderLayer(nn.Module):
         """
         if need_head_weights:
             need_attn = True
-
+        x = x.half()
         residual = x
 
         if self.normalize_before:

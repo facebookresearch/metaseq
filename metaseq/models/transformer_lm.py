@@ -25,6 +25,10 @@ from metaseq.models.transformer import (
     Embedding,
     TransformerDecoder,
 )
+from metaseq.distributed import utils as dist_utils
+from torch.distributed._shard import shard_parameter
+from torch.distributed._shard.sharding_spec import ChunkShardingSpec
+import torch.distributed.distributed_c10d as distributed_c10d
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -176,7 +180,15 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     batch_size_valid: Optional[int] = II("dataset.batch_size_valid")
     model_parallel_size: int = II("common.model_parallel_size")
     tp_enabled: bool = II("distributed_training.tp_enaled")
+    criterion: str = II("criterion") 
 
+def _generate_embedding_sharding_spec(world_size):
+    mp_group = dist_utils.get_model_parallel_group()
+    placements = [f"rank:{idx}/cuda:{distributed_c10d._get_global_rank(mp_group, idx) % torch.cuda.device_count()}" for idx in range(world_size)]
+    return ChunkShardingSpec(
+        dim=0,
+        placements=placements,
+    )
 
 @register_model("transformer_lm", dataclass=TransformerLanguageModelConfig)
 class TransformerLanguageModel(LanguageModel):
@@ -197,6 +209,9 @@ class TransformerLanguageModel(LanguageModel):
         embed_tokens = cls.build_embedding(
             args, task.source_dictionary, args.decoder_input_dim
         )
+        tp_pg = dist_utils.get_model_parallel_group()
+        sharding_spec = _generate_embedding_sharding_spec(tp_pg.size())
+        shard_parameter(embed_tokens, "weight", sharding_spec, process_group=tp_pg)
         decoder = TransformerDecoder(
             args,
             task.target_dictionary,
@@ -205,52 +220,34 @@ class TransformerLanguageModel(LanguageModel):
         )
         return cls(decoder)
 
+
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
-        def _vocab_init(tensor, **kwargs):
-            nn.init.normal_(tensor, mean=0, std=embed_dim**-0.5)
-            nn.init.constant_(tensor[1], 0)
+        if getattr(args, "use_stable_embedding", False):
+            import bitsandbytes as bnb
 
-        def _vocab_init_megatron(tensor, **kwargs):
-            nn.init.normal_(
-                tensor, mean=0, std=getattr(args, "megatron_init_sigma", 0.006)
-            )
-            nn.init.constant_(tensor[1], 0)
+            if not args.no_scale_embedding:
+                logger.warning(
+                    "It is recommended to pass --no-scale-embedding with --use-stable-embedding"
+                )
+            return bnb.nn.StableEmbedding(len(dictionary), embed_dim, dictionary.pad())
 
-        if getattr(args, "memory_efficient_fp16", False):
-            dtype = torch.bfloat16 if getattr(args, "bf16", False) else torch.half
         else:
-            dtype = torch.float32
+            if getattr(args, "memory_efficient_fp16", False):
+                dtype = torch.bfloat16 if getattr(args, "bf16", False) else torch.half
+            else:
+                dtype = torch.float32
 
-        embed_tokens = VocabParallelEmbedding(
-            len(dictionary),
-            embed_dim,
-            1,
-            init_method=_vocab_init_megatron,
-            use_cpu_initialization=False,
-            dtype=dtype,
-        )
-        return embed_tokens    
-
-    # def build_embedding(cls, args, dictionary, embed_dim, path=None):
-    #     if getattr(args, "use_stable_embedding", False):
-    #         import bitsandbytes as bnb
-
-    #         if not args.no_scale_embedding:
-    #             logger.warning(
-    #                 "It is recommended to pass --no-scale-embedding with --use-stable-embedding"
-    #             )
-    #         return bnb.nn.StableEmbedding(len(dictionary), embed_dim, dictionary.pad())
-
-    #     else:
-    #         return Embedding(
-    #             len(dictionary),
-    #             embed_dim,
-    #             dictionary.pad(),
-    #             initialize_params_on_gpu=getattr(
-    #                 args, "tensor_parallel_init_model_on_gpu", False
-    #             ),
-    #         )
+            embedding = Embedding(
+                len(dictionary),
+                embed_dim,
+                dictionary.pad(),
+                initialize_params_on_gpu=getattr(
+                    args, "tensor_parallel_init_model_on_gpu", False
+                ),
+            )
+            embedding.weight = torch.nn.Parameter(embedding.weight.to(dtype)) 
+            return embedding
 
 
 def base_lm_architecture(args):
@@ -282,6 +279,7 @@ def base_lm_architecture(args):
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)
     args.tp_enabled = getattr(args, "tp_enabled", True)
+    args.criterion = getattr(args, "criterion", "vocab_parallel_cross_entropy")
     if args.offload_activations:
         args.checkpoint_activations = True
 

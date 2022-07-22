@@ -495,7 +495,7 @@ class TransformerDecoder(IncrementalDecoder):
         else:
             self.layers = nn.ModuleList(layers)
 
-        _log_weight_stats(self.embed_tokens.weight, "embed tokens")
+        _log_weight_stats(self.embed_tokens.weight.local_tensor(), "embed tokens")
 
         self.num_layers = len(self.layers)
 
@@ -521,11 +521,11 @@ class TransformerDecoder(IncrementalDecoder):
         self.output_projection = None
         if self.share_input_output_embed:
             self.output_projection = nn.Linear(
-                self.embed_tokens.weight.shape[1],
-                self.embed_tokens.weight.shape[0],
+                self.embed_tokens.weight.local_tensor().shape[1],
+                self.embed_tokens.weight.local_tensor().shape[0],
                 bias=False,
             )
-            self.output_projection.weight = self.embed_tokens.weight
+            self.output_projection.weight = torch.nn.Parameter(self.embed_tokens.weight.local_tensor())
         else:
             self.output_projection = nn.Linear(
                 self.output_embed_dim, len(dictionary), bias=False
@@ -828,7 +828,17 @@ class TransformerDecoder(IncrementalDecoder):
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
-        return self.output_projection(features)
+        from megatron.mpu import (
+            copy_to_tensor_model_parallel_region,
+            gather_from_tensor_model_parallel_region,
+        )
+        features = copy_to_tensor_model_parallel_region(features)
+        x = self.output_projection(features)
+        if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
+            self, "inference", False
+        ):
+            x = gather_from_tensor_model_parallel_region(x).contiguous()
+        return x
 
     def max_positions(self):
         """Maximum output length supported by the decoder."""
