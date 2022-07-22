@@ -179,7 +179,8 @@ class SequenceGenerator(nn.Module):
         )
         # normalize
         model_predictions = model_out[0].float()
-        model_predictions.div_(self.temperature)
+        if self.temperature > 0 and self.temperature != 1.0:
+            model_predictions.div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
         lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
@@ -251,7 +252,8 @@ class SequenceGenerator(nn.Module):
                 incremental_state=incremental_states,
             )
             model_predictions = model_out[0].float()
-            model_predictions.div_(self.temperature)
+            if self.temperature > 0 and self.temperature != 1.0:
+                model_predictions.div_(self.temperature)
             lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
             lprobs = lprobs[:, -1, :]
             if self.need_logprobs:
