@@ -114,6 +114,11 @@ class BaseOptimizer(object):
             self.params, max_norm, norm_type, aggregate_norm_fn
         )
 
+    def grad_sim(self, max_norm, norm_type="l2", aggregate_norm_fn=None):
+        return utils.grad_sim_(
+            self.params, max_norm, norm_type, aggregate_norm_fn
+        )
+
     def step(self, closure=None, scale=1.0, groups=None):
         """Performs a single optimization step."""
         if self.supports_step_with_scale:

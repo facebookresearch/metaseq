@@ -430,6 +430,29 @@ class _MemoryEfficientFP16OptimizerMixin(object):
 
         return grad_norm
 
+    def grad_sim(
+        self,
+        max_norm,
+        norm_type="l2",
+        aggregate_norm_fn=None,
+    ):
+        """Clips gradient norm and updates dynamic loss scaler."""
+        max_norm = float(max_norm)
+        grad_norm = self._multiply_factor * self.wrapped_optimizer.grad_sim(
+            0, norm_type, aggregate_norm_fn
+        )
+        if self.scaler is not None:
+            grad_norm_cpu = float(grad_norm)
+            if grad_norm_cpu > max_norm > 0.0:
+                self._multiply_factor *= max_norm / grad_norm_cpu
+            # detect overflow and adjust loss scale
+            self.scaler.check_overflow(grad_norm_cpu)
+        elif max_norm > 0.0:
+            clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
+            self._multiply_factor *= clip_coef
+
+        return grad_norm
+
     def step(self, closure=None, groups=None):
         """Performs a single optimization step."""
         if getattr(self, "supports_step_with_scale", False):

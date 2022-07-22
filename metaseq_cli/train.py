@@ -134,6 +134,7 @@ def main(cfg: DictConfig) -> None:
 
     # Build trainer
     if cfg.common.model_parallel_size == 1:
+        raise ValueError("Han: for now model_parallel_size must be > 1")
         trainer = Trainer(cfg, task, model, criterion)
     else:
         trainer = MegatronTrainer(cfg, task, model, criterion)

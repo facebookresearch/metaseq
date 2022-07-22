@@ -344,6 +344,100 @@ def clip_grad_norm_(
     return total_norm
 
 
+@torch.no_grad()
+def grad_sim_(
+    params, max_norm, norm_type="l2", aggregate_norm_fn=None, device=None
+) -> torch.Tensor:
+    def grad_exists(p):
+        return p is not None and getattr(p, "grad", None) is not None
+
+    if isinstance(params, torch.Tensor):
+        params = [params]
+    params = list(params)
+    params = list(filter(grad_exists, params))
+    grads, sharded_grads = [], []
+
+    if device is None:
+        if torch.cuda.is_available():
+            # param/grads could be on CPU if using CPU offloading, but we want
+            # everything on GPU if possible
+            device = torch.device("cuda:{}".format(torch.cuda.current_device()))
+        elif len(params) > 0:
+            device = params[0].device  # could be "xla"
+        else:
+            device = torch.device("cpu")
+
+    # def norm(t, n_type):
+    #     if n_type == "l2":
+    #         return torch.norm(t, p=2, dtype=torch.float32)
+    #     elif n_type == "inf":
+    #         return torch.norm(t, p=float("inf"), dtype=torch.float32)
+    #     else:
+    #         raise ValueError(
+    #             f"Invalid clip_norm_type: {n_type}! Please pass either 'l2' or 'inf'!"
+    #         )
+
+    for p in params:
+        if hasattr(p, "_is_sharded"):
+            sharded_grads.append(p.grad.detach())
+        else:
+            grads.append(p.grad.detach())
+
+    # for p in params[:3]: # Han: debug, try to see whether the params mostly match across data parallel group (note the fwd and bwd pass would affect the FSDP model)
+    #     print(torch.distributed.get_rank(), p.shape, p)
+
+    from metaseq import checkpoint_utils, utils
+    test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{distributed_utils.get_model_parallel_rank()}.pt"
+    # Han: a casual saving
+    tbs_sharded_grads = utils.move_to_cpu(
+        sharded_grads,
+        # keep params in FP16 when training with --memory-efficient-fp16
+        cast_to_fp32=False,
+    )
+    checkpoint_utils.torch_persistent_save(
+        tbs_sharded_grads,
+        test_sharded_grads_fn,
+    )
+    print("saving, one example: ", tbs_sharded_grads[2])
+
+    # Han: loading the saved sharded grads
+    loaded_sharded_grads = torch.load(test_sharded_grads_fn, map_location=device)
+    for shared_grads_tensor in loaded_sharded_grads:
+        shared_grads_tensor.half() # Han: default in using FP16 for now
+    print("loading, one example: ", loaded_sharded_grads[2])
+
+    assert len(grads) == 0 # Han: only consider shared model for now
+
+    # calculate split_norm and all_reduce with other workers
+    prods = []
+    for split_grads in [sharded_grads]:
+        if len(split_grads) == 0:
+            continue
+        # Han: first calculate on the local device?
+        grad_prod = torch.cat([torch.matmul(g.view(1, -1), lg.view(-1)) for g, lg in zip(split_grads, loaded_sharded_grads)], 0).sum(dim=0)
+
+        if dist.is_initialized():
+            # Han: when norm_type is l2, dist.ReduceOp.SUM is used, an alternative is dist.ReduceOp.MAX
+            reduce_op = norm_type2_reduce_op[norm_type]
+            # Han: reduce operation for the data parallel group
+            dist.all_reduce(
+                grad_prod,
+                group=distributed_utils.get_data_parallel_group(),
+                op=reduce_op,
+            )
+        prods.append(grad_prod)
+
+    assert len(prods) == 1
+    grad_prod = prods[0]
+    print(distributed_utils.get_global_rank(), grad_prod)
+
+    if aggregate_norm_fn is not None: # Han: handles model parallel?
+        grad_prod = aggregate_norm_fn(grad_prod)
+
+    print(distributed_utils.get_global_rank(), grad_prod)
+    return grad_prod
+
+
 def fill_with_neg_inf(t):
     """FP16-compatible function that fills a tensor with -inf."""
     return t.float().fill_(float("-inf")).type_as(t)

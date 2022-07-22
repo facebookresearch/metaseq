@@ -61,6 +61,28 @@ class MegatronTrainer(Trainer):
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
+    def grad_sim(
+        self, clip_norm, norm_type="l2"
+    ):
+        def _aggregate_model_parallel_grad_norm(norm_type, total_norm):
+            norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
+            reduce_op = norm_type2_reduce_op[norm_type]
+            # Han: reduce operation for model parallel
+            dist.all_reduce(
+                total_norm,
+                group=distributed_utils.get_model_parallel_group(),
+                op=reduce_op,
+            )
+            return total_norm
+
+        return self.optimizer.grad_sim(
+            clip_norm,
+            norm_type,
+            aggregate_norm_fn=functools.partial(
+                _aggregate_model_parallel_grad_norm, norm_type
+            ),
+        )
+
     def save_checkpoint(self, filename, extra_state, **kwargs):
         """Save all training state in a checkpoint file."""
         extra_state["rng_tracker_states"] = get_cuda_rng_tracker().get_states()
