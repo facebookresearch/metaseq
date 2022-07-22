@@ -140,12 +140,10 @@ class SequenceGenerator(nn.Module):
         new_order = new_order.to(src_tokens.device).long()
 
         # initialize buffers
-        scores = (
-            torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
-        )  # +1 for eos; pad is never chosen for scoring
+        scores = torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
         tokens = (
             torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
-        )  # +1 for final eos
+        )
 
         # notes:
         # - scores \in FloatTensor(bsz * beam_size, max_len)
