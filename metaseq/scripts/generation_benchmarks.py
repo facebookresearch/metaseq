@@ -237,9 +237,9 @@ def cleanup_data():
     shutil.rmtree("./dependencies")
     os.remove("./dependencies.tar.gz")
 
+
 def cleanup_prompts(prompt_path):
     os.remove(prompt_path)
-
 
 
 if __name__ == "__main__":
@@ -276,4 +276,4 @@ if __name__ == "__main__":
             )
         cleanup_data()
 
-    cleanup_prompts(prompt_path = args.prompt_path)
+    cleanup_prompts(prompt_path=args.prompt_path)
