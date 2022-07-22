@@ -32,78 +32,6 @@ from metaseq.distributed.utils import (
 logger = logging.getLogger(__name__)
 
 
-def from_pretrained(
-    model_name_or_path,
-    checkpoint_file="model.pt",
-    data_name_or_path=".",
-    archive_map=None,
-    **kwargs,
-):
-    post_build_model_hook = kwargs.get("post_build_model_hook", None)
-
-    from metaseq import checkpoint_utils, file_utils
-
-    if archive_map is not None:
-        if model_name_or_path in archive_map:
-            model_name_or_path = archive_map[model_name_or_path]
-        if data_name_or_path is not None and data_name_or_path in archive_map:
-            data_name_or_path = archive_map[data_name_or_path]
-
-        # allow archive_map to set default arg_overrides (e.g., tokenizer, bpe)
-        # for each model
-        if isinstance(model_name_or_path, dict):
-            for k, v in model_name_or_path.items():
-                if k == "checkpoint_file":
-                    checkpoint_file = v
-                elif (
-                    k != "path"
-                    # only set kwargs that don't already have overrides
-                    and k not in kwargs
-                ):
-                    kwargs[k] = v
-            model_name_or_path = model_name_or_path["path"]
-
-    model_path = file_utils.load_archive_file(model_name_or_path)
-
-    # convenience hack for loading data and BPE codes from model archive
-    if data_name_or_path.startswith("."):
-        kwargs["data"] = os.path.abspath(os.path.join(model_path, data_name_or_path))
-    else:
-        kwargs["data"] = file_utils.load_archive_file(data_name_or_path)
-    for file, arg in {
-        "code": "bpe_codes",
-        "bpecodes": "bpe_codes",
-        "sentencepiece.bpe.model": "sentencepiece_model",
-        "merges.txt": "bpe_merges",
-        "vocab.json": "bpe_vocab",
-    }.items():
-        path = os.path.join(model_path, file)
-        if os.path.exists(path):
-            kwargs[arg] = path
-
-    if "user_dir" in kwargs:
-        utils.import_user_module(argparse.Namespace(user_dir=kwargs["user_dir"]))
-
-    def _build_fn(train_cfg, task):
-        if post_build_model_hook:
-            return post_build_model_hook(task.build_model(train_cfg.model), task)
-        else:
-            return task.build_model(train_cfg.model)
-
-    models, args, task = checkpoint_utils.load_model_ensemble_and_task(
-        [os.path.join(model_path, cpt) for cpt in checkpoint_file.split(os.pathsep)],
-        arg_overrides=kwargs,
-        suffix=kwargs.get("suffix", ""),
-        build_model_hook=lambda cfg, task: _build_fn(cfg, task),
-    )
-
-    return {
-        "args": args,
-        "task": task,
-        "models": models,
-    }
-
-
 def tensorize_input(tokenizer, prompts):
     input_ids = tokenizer(prompts, return_tensors="pt").input_ids
     input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
@@ -168,7 +96,6 @@ class GeneratorHubInterface(nn.Module):
         cfg,
         task,
         models,
-        moe_disable_padding=True,
         skip_prepare_for_inference=False,
     ):
         super().__init__()
