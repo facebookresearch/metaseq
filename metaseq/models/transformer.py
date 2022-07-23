@@ -330,6 +330,7 @@ class TransformerDecoder(IncrementalDecoder):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
+                inference=getattr(args, "inference", False)
             )
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
@@ -393,6 +394,7 @@ class TransformerDecoder(IncrementalDecoder):
                     fp16=getattr(args, "fp16", False),
                     memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                     bf16=getattr(args, "bf16", False),
+                    inference=getattr(args, "inference", False)
                 )
 
         else:

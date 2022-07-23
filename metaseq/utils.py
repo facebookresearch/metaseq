@@ -616,7 +616,7 @@ def get_random_port():
 
 
 def floating_point_precision_convertor(
-    x, fp16: bool, memory_efficient_fp16: bool, bf16: bool
+    x, fp16: bool, memory_efficient_fp16: bool, bf16: bool, inference: bool
 ):
     """
     Convert a tensor x into the desired dtype.
@@ -629,7 +629,7 @@ def floating_point_precision_convertor(
         assert fp16, "Setting --bf16 requires also setting --fp16 for legacy reasons."
     if not fp16 and not bf16:
         return x
-    if not memory_efficient_fp16:
+    if not memory_efficient_fp16 and not inference:
         # original parameters stay in fp32 and are converted by fairscale
         return x
     elif bf16:

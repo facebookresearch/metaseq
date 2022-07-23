@@ -261,6 +261,7 @@ class TransformerDecoderLayer(nn.Module):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
+                inference=getattr(args, "inference", False)
             )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
@@ -283,6 +284,7 @@ class TransformerDecoderLayer(nn.Module):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
+                inference=getattr(args, "inference", False)
             )
 
         if no_encoder_attn:
@@ -297,6 +299,7 @@ class TransformerDecoderLayer(nn.Module):
                     fp16=getattr(args, "fp16", False),
                     memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                     bf16=getattr(args, "bf16", False),
+                    inference=getattr(args, "inference", False)
                 )
 
         ffn_dim = args.decoder_ffn_embed_dim
@@ -334,6 +337,7 @@ class TransformerDecoderLayer(nn.Module):
                             args, "memory_efficient_fp16", False
                         ),
                         bf16=getattr(args, "bf16", False),
+                        inference=getattr(args, "inference", False)
                     )
         self.skip_bias_add = (self.activation_fn == gelu) and has_fused_bias_gelu
         self.fc1 = self.build_fc1(
@@ -362,6 +366,7 @@ class TransformerDecoderLayer(nn.Module):
                 fp16=getattr(args, "fp16", False),
                 memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
                 bf16=getattr(args, "bf16", False),
+                inference=getattr(args, "inference", False)
             )
         self.need_attn = True
 
