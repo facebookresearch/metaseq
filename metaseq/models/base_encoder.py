@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
@@ -15,7 +15,6 @@ EncoderOut = NamedTuple(
         ("encoder_out", Tensor),  # T x B x C
         ("encoder_padding_mask", Optional[Tensor]),  # B x T
         ("encoder_embedding", Optional[Tensor]),  # B x T x C
-        ("encoder_states", Optional[List[Tensor]]),  # List[T x B x C]
         ("src_tokens", Optional[Tensor]),  # B x T
         ("src_lengths", Optional[Tensor]),  # B x 1
     ],
