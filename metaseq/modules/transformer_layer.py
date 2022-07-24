@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from metaseq import distributed_utils as dist_utils, utils
+from metaseq import utils
 from metaseq.modules import gelu, MultiheadAttention
 from metaseq.modules.dropout import Dropout
 from metaseq.modules.fused_bias_gelu import (
@@ -18,7 +18,7 @@ from metaseq.modules.fused_bias_gelu import (
     has_fused_bias_gelu,
     load_megatron_fused_kernel,
 )
-from metaseq.modules.layer_norm import LayerNorm, SyncedModelParallelFusedLayerNorm
+from metaseq.modules.layer_norm import LayerNorm
 from metaseq.modules.linear import Linear
 
 
@@ -26,7 +26,7 @@ def _linear(x, weight, bias=None):
     return F.linear(x, weight, bias)
 
 
-def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
+def _ffn(x, fc1, activation_fn, fc2, dropout_module):
     x_shape = x.shape
     x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
@@ -37,28 +37,20 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module, ffn_ln=None):
         assert fc1.skip_bias_add
         x, bias_fc1 = fc1(x)
         x = fused_bias_gelu(x, bias_fc1)
-        if ffn_ln is not None:
-            x = ffn_ln(x)
         x, bias_fc2 = fc2(x)
         x = x + bias_fc2
     elif model_parallel:
         # here, we do the bias computation inside fc1 and fc2 AND gather_output
         x, _ = fc1(x)
         x = activation_fn(x)
-        if ffn_ln is not None:
-            x = ffn_ln(x)
         x, _ = fc2(x)
     elif has_fused_bias_gelu and activation_fn == gelu:
         x = _linear(x, fc1.weight)
         x = fused_bias_gelu(x, fc1.bias)
-        if ffn_ln is not None:
-            x = ffn_ln(x)
         x = _linear(x, fc2.weight, fc2.bias)
     else:
         x = fc1(x)
         x = activation_fn(x)
-        if ffn_ln is not None:
-            x = ffn_ln(x)
         x = fc2(x)
     x = x.view(x_shape)
     x = dropout_module(x)
@@ -120,10 +112,6 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.encoder_normalize_before
         ffn_dim = args.encoder_ffn_embed_dim
-        self.attn_ln = (
-            LayerNorm(self.embed_dim) if getattr(args, "scale_attn", False) else None
-        )
-
         self.activation_fn = utils.get_activation_fn(
             activation=getattr(args, "activation_fn", "relu") or "relu"
         )
@@ -197,7 +185,6 @@ class TransformerEncoderLayer(nn.Module):
             self.activation_fn,
             self.fc2,
             self.dropout_module,
-            ffn_ln=self.ffn_layernorm,
         )
         l_aux = None
         x = self.residual_connection(x, residual)
@@ -236,10 +223,6 @@ class TransformerDecoderLayer(nn.Module):
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
-        self.attn_ln = (
-            LayerNorm(self.embed_dim) if getattr(args, "scale_attn", False) else None
-        )
-
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
@@ -251,26 +234,8 @@ class TransformerDecoderLayer(nn.Module):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
-        if initialize_params_on_gpu and self.attn_ln is not None:
-            self.attn_ln = utils.floating_point_precision_convertor(
-                self.attn_ln.cuda(),
-                fp16=getattr(args, "fp16", False),
-                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                bf16=getattr(args, "bf16", False),
-            )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
-        scale_heads = getattr(args, "scale_heads", False)
-        self.c_attn = None
-        if scale_heads:
-            if initialize_params_on_gpu:
-                self.c_attn = nn.Parameter(
-                    torch.ones((self.nh,), dtype=torch.float16).cuda(),
-                    requires_grad=True,
-                )
-            else:
-                self.c_attn = nn.Parameter(torch.ones((self.nh,)), requires_grad=True)
-
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         if initialize_params_on_gpu:
@@ -302,35 +267,6 @@ class TransformerDecoderLayer(nn.Module):
             if getattr(args, "activation_fn", None) is not None
             else "relu"
         )
-        # separate ffn_ln args.model_parallel_size
-        mp_rank = (
-            dist_utils.get_model_parallel_rank()
-            if torch.distributed.is_initialized()
-            else None
-        )
-        self.ffn_layernorm = None
-        if getattr(args, "scale_fc", False):
-            if args.model_parallel_size > 1:
-                if not getattr(args, "sync_ln_variance", False):
-                    self.ffn_layernorm = LayerNorm(ffn_dim // args.model_parallel_size)
-                else:
-                    self.ffn_layernorm = SyncedModelParallelFusedLayerNorm(
-                        ffn_dim,
-                        args.model_parallel_size,
-                        mp_rank=mp_rank,
-                        initialize_params_on_gpu=initialize_params_on_gpu,
-                    )
-            else:
-                self.ffn_layernorm = LayerNorm(ffn_dim)
-                if initialize_params_on_gpu:
-                    self.ffn_layernorm = utils.floating_point_precision_convertor(
-                        self.ffn_layernorm.cuda(),
-                        fp16=getattr(args, "fp16", False),
-                        memory_efficient_fp16=getattr(
-                            args, "memory_efficient_fp16", False
-                        ),
-                        bf16=getattr(args, "bf16", False),
-                    )
         self.skip_bias_add = (self.activation_fn == gelu) and has_fused_bias_gelu
         self.fc1 = self.build_fc1(
             self.embed_dim,
@@ -441,14 +377,7 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=need_weights,
             attn_mask=attn_mask,
         )
-        if self.c_attn is not None:
-            tgt_len, bsz = x.size(0), x.size(1)
-            x = x.view(tgt_len, bsz, self.nh, self.head_dim)
-            x = torch.einsum("tbhd,h->tbhd", x, self.c_attn)
-            x = x.reshape(tgt_len, bsz, self.embed_dim)
         x = self.dropout_module(x)
-        if self.attn_ln is not None:
-            x = self.attn_ln(x)
         return self.residual_connection(x, residual), attn
 
     def forward(
@@ -568,7 +497,6 @@ class TransformerDecoderLayer(nn.Module):
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,
-            ffn_ln=self.ffn_layernorm,
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
