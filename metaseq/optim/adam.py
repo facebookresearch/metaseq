@@ -37,10 +37,6 @@ class MetaseqAdamConfig(MetaseqDataclass):
     )
     # TODO common vars below in parent
     lr: List[float] = II("optimization.lr")
-    block_wise: bool = field(
-        default=False,
-        metadata={"help": "Enables block-wise optimization for 8-bit Adam"},
-    )
 
 
 @register_optimizer("adam", dataclass=MetaseqAdamConfig)
