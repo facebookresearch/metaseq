@@ -160,8 +160,10 @@ class SequenceGenerator(nn.Module):
 
         if self.need_logprobs:
             # lprobs are costly for memory, so only compute them if we have to
-            all_lprobs = torch.zeros(bsz * beam_size, max_len, self.vocab_size).to(
-                src_tokens
+            all_lprobs = (
+                torch.zeros(bsz * beam_size, max_len, self.vocab_size)
+                .to(src_tokens)
+                .float()
             )
 
         # first forward through all the fixed tokens with forced decoding we'll
