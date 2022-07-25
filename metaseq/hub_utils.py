@@ -494,6 +494,7 @@ class GeneratorInterface:
         task = tasks.setup_task(self.cfg.task)
 
         def _build_model(cfg, task):
+            cfg.model.tensor_parallel_init_model_on_gpu = True
             model = task.build_model(cfg.model).half().cuda()
             model.make_generation_fast_()
             return fsdp_wrap(model)
@@ -501,11 +502,8 @@ class GeneratorInterface:
         # Load the model
         overrides = ast.literal_eval(self.cfg.common_eval.model_overrides)
         logger.info("loading model(s) from {}".format(self.cfg.common_eval.path))
-        with fsdp_enable_wrap(
-            self.cfg.distributed_training,
-            use_sharded_state=self.cfg.distributed_training.use_sharded_state,
-        ):
-            models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
+        def _load_checkpoint():
+            return checkpoint_utils.load_model_ensemble_and_task(
                 utils.split_paths(self.cfg.common_eval.path),
                 arg_overrides=overrides,
                 task=task,
@@ -514,6 +512,14 @@ class GeneratorInterface:
                 num_shards=self.cfg.checkpoint.checkpoint_shard_count,
                 build_model_hook=_build_model,
             )
+        if self.cfg.distributed_training.ddp_backend == 'fully_sharded':
+            with fsdp_enable_wrap(
+                self.cfg.distributed_training,
+                use_sharded_state=self.cfg.distributed_training.use_sharded_state,
+            ):
+                models, _model_args, _task = _load_checkpoint()
+        else:
+                models, _model_args, _task = _load_checkpoint()
         # Set dictionaries
         src_dict = task.source_dictionary
         tgt_dict = task.target_dictionary
@@ -527,6 +533,7 @@ class GeneratorInterface:
         self.models = models
         self.src_dict = src_dict
         self.tgt_dict = tgt_dict
+
         return models
 
     def generate(
@@ -586,7 +593,6 @@ class GeneratorInterface:
         MAX_SEQ_LEN = utils.resolve_max_positions(
             self.task.max_positions(), *[model.max_positions() for model in self.models]
         )
-
         # TODO(roller): simplify
         retval = []
         tokens = [torch.LongTensor(t) for t in inputs]
@@ -624,7 +630,6 @@ class GeneratorInterface:
                 self.cfg.generation,
                 extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
             )
-
             # okay actually generate
             logger.info(f"Executing generation on input tensor size {src_tokens.shape}")
             if use_cuda:

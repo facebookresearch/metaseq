@@ -15,7 +15,9 @@ from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.distributed import utils as dist_utils, fsdp_wrap
-from metaseq.models import BaseEncoder, IncrementalDecoder
+from metaseq.models import BaseEncoder, BaseDecoder
+# ,
+# IncrementalDecoder
 from metaseq.modules import (
     Dropout,
     LayerNorm,
@@ -313,7 +315,7 @@ def _log_weight_stats(tensor, name):
     )
 
 
-class TransformerDecoder(IncrementalDecoder):
+class TransformerDecoder(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`TransformerDecoderLayer`.
@@ -363,7 +365,6 @@ class TransformerDecoder(IncrementalDecoder):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
-
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_target_positions,
@@ -551,6 +552,7 @@ class TransformerDecoder(IncrementalDecoder):
         tokens,
         token_embedding: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        static_masked_tokens=None,
     ):
         # embed tokens and positions
         if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
@@ -606,10 +608,16 @@ class TransformerDecoder(IncrementalDecoder):
 
         # see IncrementalDecoder for important information about
         # incremental state
-        if incremental_state:
-            tokens = tokens[:, -1:]
-            if positions is not None:
-                positions = positions[:, -1:]
+        # if incremental_state:
+        #     # tokens = tokens[:, -1:]
+        #     # if torch.distributed.get_rank() == 0:
+        #     #     from metaseq.pdb import set_trace; set_trace()
+        #     # else:
+        #     #     from time import sleep; sleep(10000)
+        #     tokens = tokens.masked_select(static_masked_tokens)
+        #     if positions is not None:
+        #         positions = positions.masked_select(static_masked_tokens)
+        #     #     positions = positions[:, -1:]
 
         if token_embedding is None:
             token_embedding = self.embed_tokens(tokens)
@@ -640,6 +648,7 @@ class TransformerDecoder(IncrementalDecoder):
         return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
+        static_masked_tokens=None
     ):
         """
         Includes several features from "Jointly Learning to Align and
@@ -673,7 +682,7 @@ class TransformerDecoder(IncrementalDecoder):
 
         # see IncrementalDecoder for important information about
         # incremental state
-        x, extra = self.extract_features(
+        x, extra, incremental_state = self.extract_features(
             prev_output_tokens,
             encoder_out=encoder_out,
             incremental_state=incremental_state,
@@ -682,10 +691,11 @@ class TransformerDecoder(IncrementalDecoder):
             alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
+            static_masked_tokens=static_masked_tokens
         )
         if not features_only:
             x = self.output_layer(x)
-        return x, extra
+        return x, extra, incremental_state
 
     def extract_features(
         self,
@@ -697,6 +707,7 @@ class TransformerDecoder(IncrementalDecoder):
         alignment_heads: Optional[int] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
+        static_masked_tokens=None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -707,6 +718,7 @@ class TransformerDecoder(IncrementalDecoder):
             alignment_heads=alignment_heads,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
+            static_masked_tokens=static_masked_tokens,
         )
 
     def extract_features_scriptable(
@@ -719,6 +731,7 @@ class TransformerDecoder(IncrementalDecoder):
         alignment_heads: Optional[int] = None,
         token_embeddings: Optional[Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
+        static_masked_tokens=None,
     ):
         """
         A scriptable subclass of this class has an extract_features method and calls
@@ -730,23 +743,31 @@ class TransformerDecoder(IncrementalDecoder):
 
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
-        if self_attn_padding_mask is None and (
-            self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any()
-        ):
-            self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
+        # if self_attn_padding_mask is None and (
+        #     self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any()
+        # ):
+        #     self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
         x, tok, pos = self.forward_embedding(
-            prev_output_tokens, token_embeddings, incremental_state
+            prev_output_tokens, token_embeddings, incremental_state, static_masked_tokens
         )
 
-        # see IncrementalDecoder for important information about
-        # incremental state. Note that it may be an empty dictionary.
         if not incremental_state and not full_context_alignment:
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
         else:
             self_attn_mask = None
+        return self.forward_transformer_layers(x, incremental_state, self_attn_mask, encoder_out, self_attn_padding_mask, static_masked_tokens)
 
+    def forward_transformer_layers(
+        self,
+        x,
+        incremental_state=None,
+        self_attn_mask=None,
+        encoder_out=None,
+        self_attn_padding_mask=None,
+        static_masked_tokens=None,
+    ):
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
@@ -756,13 +777,15 @@ class TransformerDecoder(IncrementalDecoder):
         # Note: we are only storing the embeddings output and output of final transformer block
         # instead of all inner representations, as thats the only thing being logged and storing
         # all intermediate representation causes OOM for large models during validation.
-        inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
+        inner_states: List[Optional[Tensor]] = [{"emb": x}]
         if encoder_out is None:
             l_aux = []
         else:
             l_aux = encoder_out["l_aux"] if "l_aux" in encoder_out else []
+
+        new_attention_states = []
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _, l_aux_i = layer(
+            x, layer_attn, _, l_aux_i, (prev_k, prev_v) = layer(
                 x,
                 encoder_out=encoder_out["encoder_out"][0]
                 if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
@@ -773,21 +796,23 @@ class TransformerDecoder(IncrementalDecoder):
                     and len(encoder_out["encoder_padding_mask"]) > 0
                 )
                 else None,
-                incremental_state=incremental_state,
+                incremental_state=incremental_state[idx] if incremental_state is not None else None,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == alignment_layer)),
-                need_head_weights=bool((idx == alignment_layer)),
+                static_masked_tokens=static_masked_tokens,
             )
             l_aux.append(l_aux_i)
-            if layer_attn is not None and idx == alignment_layer:
-                attn = layer_attn.float().to(x)
+            new_attention_states.append({
+                'prev_key': prev_k,
+                'prev_value': prev_v,
+            })
+            # if layer_attn is not None and idx == alignment_layer:
+            #     attn = layer_attn.float().to(x)
 
         inner_states.append(x)
         if attn is not None:
-            if alignment_heads is not None:
-                attn = attn[:alignment_heads]
-
+            # if alignment_heads is not None:
+            #     attn = attn[:alignment_heads]
             # average probabilities over heads
             attn = attn.mean(dim=0)
 
@@ -800,7 +825,7 @@ class TransformerDecoder(IncrementalDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states, "l_aux": l_aux}
+        return x, {"attn": [attn], "inner_states": inner_states, "l_aux": l_aux}, new_attention_states
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""

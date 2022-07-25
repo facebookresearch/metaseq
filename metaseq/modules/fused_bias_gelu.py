@@ -29,12 +29,12 @@ def load_megatron_fused_kernel():
     from argparse import Namespace
 
     if not torch.distributed.is_initialized():
-        args = Namespace(rank=0, masked_softmax_fusion=True)
+        args = Namespace(rank=0, masked_softmax_fusion=True, gradient_accumulation_fusion=False)
         fused_kernels.load(args)
         return
 
     global_rank = torch.distributed.get_rank()
-    args = Namespace(rank=global_rank, masked_softmax_fusion=True)
+    args = Namespace(rank=global_rank, masked_softmax_fusion=True, gradient_accumulation_fusion=False)
 
     # Always build on rank zero first.
     if global_rank == 0:

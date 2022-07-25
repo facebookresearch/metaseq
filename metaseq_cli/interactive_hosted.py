@@ -292,7 +292,7 @@ def completions(engine=None):
         generation_args["top_p"] = 1.0
     # beam search top n
     if "n" in generation_args:
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
+        generation_args["n"] = min(5, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
 
@@ -337,6 +337,7 @@ def cli_main():
     """
     Hosted version of the web UI for generation.
     """
+    # _copy_checkpoint_cache()
 
     global port, MODE, cfg
     parser = options.get_generation_parser()

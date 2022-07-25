@@ -15,7 +15,7 @@ from hydra.core.config_store import ConfigStore
 from .distributed_model import DistributedModel
 from .base_decoder import BaseDecoder
 from .base_encoder import BaseEncoder
-from .incremental_decoder import IncrementalDecoder
+# from .incremental_decoder import IncrementalDecoder
 from .base_model import (
     BaseModel,
     EncoderDecoderModel,
@@ -37,7 +37,7 @@ __all__ = [
     "BaseDecoder",
     "BaseEncoder",
     "EncoderDecoderModel",
-    "IncrementalDecoder",
+    # "IncrementalDecoder",
     "LanguageModel",
     "register_model",
 ]

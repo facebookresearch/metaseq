@@ -69,6 +69,108 @@ class SequenceGenerator(nn.Module):
         self.model.eval()
         self.profile = profile
 
+
+        self.max_bsz = 5
+        self.max_len = 128
+
+        decoder = self.model.decoder
+        dtype = next(decoder.parameters()).dtype
+        self.static_single_input_embedding = torch.zeros(
+            (self.max_bsz, 1, decoder.embed_dim),
+            device='cuda',
+            dtype=dtype,
+        )
+        self.static_masked_tokens = torch.zeros((
+            self.max_bsz * decoder.layers[0].self_attn.num_heads_partition,
+            self.max_len,
+            decoder.layers[0].head_dim
+        ), dtype=torch.bool, device='cuda')
+        self.static_self_attn_padding_mask = torch.ones(
+            (self.max_bsz, self.max_len),
+            dtype=torch.bool, device='cuda'
+        )
+        self.static_incremental_states = []
+        for _ in range(len(decoder.layers)):
+            prev_key = torch.zeros((self.max_bsz * decoder.layers[0].self_attn.num_heads_partition, self.max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
+            prev_value = torch.zeros((self.max_bsz * decoder.layers[0].self_attn.num_heads_partition, self.max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
+            self.static_incremental_states.append({
+                'prev_key': prev_key,
+                'prev_value': prev_value,
+            })
+        self._warmup()
+        self._record_graph()
+        self._run_recorded_graph()
+
+    def _warmup(self):
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for i in range(10):
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                _ = self.model.decoder.forward_transformer_layers(
+                    self.static_single_input_embedding,
+                    incremental_state=self.static_incremental_states,
+                    self_attn_mask=None,
+                    encoder_out=None,
+                    self_attn_padding_mask=self.static_self_attn_padding_mask,
+                    static_masked_tokens=self.static_masked_tokens
+                )
+                end.record()
+                torch.cuda.synchronize()
+
+                time = start.elapsed_time(end)
+                # Params have been updated. static_y_pred, static_loss, and .grad
+                # attributes hold values from computing on this iteration's data.
+                logger.info(f"warmup time for one iteration: {time}")
+        torch.cuda.current_stream().wait_stream(s)
+
+    def _record_graph(self):
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+
+        self.recorded_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.recorded_graph):
+            self.static_output = self.model.decoder.forward_transformer_layers(
+                self.static_single_input_embedding,
+                incremental_state=self.static_incremental_states,
+                self_attn_mask=None,
+                encoder_out=None,
+                self_attn_padding_mask=self.static_self_attn_padding_mask,
+                static_masked_tokens=self.static_masked_tokens
+            )
+        end.record()
+        torch.cuda.synchronize()
+
+        time = start.elapsed_time(end)
+        # Params have been updated. static_y_pred, static_loss, and .grad
+        # attributes hold values from computing on this iteration's data.
+        logger.info(f"time taken in recoding graph: {time}")
+
+
+    def _run_recorded_graph(self):
+        for i in range(10):
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            self.recorded_graph.replay()
+            end.record()
+            torch.cuda.synchronize()
+
+            time = start.elapsed_time(end)
+        # Params have been updated. static_y_pred, static_loss, and .grad
+        # attributes hold values from computing on this iteration's data.
+            logger.info(f"time for replaying recorded graph: {time}")
+
+
+    def _copy_incremental_state_to_static_ones(self, new_incremental_states, offset=0):
+        for new_incremental_state, current_incremental_state in zip(new_incremental_states, self.static_incremental_states):
+            current_incremental_state['prev_key'][:, offset:offset+new_incremental_state['prev_key'].size(1),:].copy_(new_incremental_state['prev_key'])
+            current_incremental_state['prev_value'][:, offset:offset+new_incremental_state['prev_value'].size(1),:].copy_(new_incremental_state['prev_value'])
+
+
     def cuda(self):
         self.model.cuda()
         return self
@@ -102,9 +204,9 @@ class SequenceGenerator(nn.Module):
             bos_token (int, optional): beginning of sentence token
                 (default: self.eos)
         """
-        incremental_states = torch.jit.annotate(
-            Dict[str, Dict[str, Optional[Tensor]]], {}
-        )
+        # incremental_states = torch.jit.annotate(
+        #     Dict[str, Dict[str, Optional[Tensor]]], {}
+        # )
         net_input = sample["net_input"]
 
         if "src_tokens" in net_input:
@@ -173,10 +275,23 @@ class SequenceGenerator(nn.Module):
         # set all the forced tokens
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
+
+        self.static_masked_tokens.fill_(False)
+        self.static_masked_tokens[:, :start_step, :] = True
+        self.static_self_attn_padding_mask.fill_(True)
+        self.static_self_attn_padding_mask[:, :start_step] = False
         model_out = self.model.decoder(
             tokens[:, :start_step],
-            incremental_state=incremental_states,
+            incremental_state=self.static_incremental_states,
+            self_attn_padding_mask=self.static_self_attn_padding_mask,
+            static_masked_tokens=self.static_masked_tokens
+
         )
+        self._copy_incremental_state_to_static_ones(model_out[2], offset=0)
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq.pdb import set_trace; set_trace()
+
+
         # normalize
         model_out[0].div_(self.temperature, rounding_mode="trunc")
         # lprobs is the log probability of each possible token in every position
@@ -244,11 +359,25 @@ class SequenceGenerator(nn.Module):
             if torch.all(eos_mask):
                 break
 
+            x, tok, pos = self.model.decoder.forward_embedding(tokens[:, : step + 1], None)
             # forward through the next pass
-            model_out = self.model.decoder(
-                tokens[:, : step + 1],
-                incremental_state=incremental_states,
-            )
+            self.static_masked_tokens.fill_(False)
+            self.static_masked_tokens[:, step: step+1, :] = True
+            self.static_self_attn_padding_mask.fill_(True)
+            self.static_self_attn_padding_mask[:, :step+1].fill_(False)
+            self.static_single_input_embedding.copy_(x[:, -1:, :])
+            self.recorded_graph.replay()
+            # model_out = self.model.decoder(
+            #     tokens[:, : step + 1],
+            #     incremental_state=incremental_states,
+            # )
+            model_out = (self.static_output[0], self.static_output[1])
+
+            # if torch.distributed.get_rank() == 0:
+            #     from metaseq.pdb import set_trace; set_trace()
+            # else:
+            #     from time import sleep; sleep(10000)
+            # self._copy_incremental_state_to_static_ones(self.static_output[2], offset=step+1)
             model_out[0].div_(self.temperature)
             lprobs = self.model.get_normalized_probs(
                 model_out, log_probs=True, sample=None

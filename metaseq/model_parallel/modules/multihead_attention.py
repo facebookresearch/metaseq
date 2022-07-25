@@ -37,7 +37,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@with_incremental_state
+# @with_incremental_state
 class ModelParallelMultiheadAttention(nn.Module):
     """Model parallel Multi-headed attention.
     This performs the Multi-headed attention over multiple gpus.
@@ -272,6 +272,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
+        static_masked_tokens=None,
         **unused_kwargs,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
@@ -294,16 +295,16 @@ class ModelParallelMultiheadAttention(nn.Module):
                 assert value is not None
                 assert src_len, bsz == value.shape[:2]
 
-        if incremental_state is not None:
-            saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_kv:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    key = value = None
-        else:
-            saved_state = None
+        # if incremental_state is not None:
+        #     saved_state = self._get_input_buffer(incremental_state)
+        #     if saved_state is not None and "prev_key" in saved_state:
+        #         # previous time steps are cached - no need to recompute
+        #         # key and value if they are static
+        #         if static_kv:
+        #             assert self.encoder_decoder_attention and not self.self_attention
+        #             key = value = None
+        # else:
+        #     saved_state = None
 
         # logger.info("query:" + str(query.float().norm().item()))
         if self.self_attention:
@@ -416,11 +417,12 @@ class ModelParallelMultiheadAttention(nn.Module):
                     .view(-1, bsz * self.num_heads_partition, self.head_dim)
                     .transpose(0, 1)
                 )
-
-            if saved_state is not None:
+            new_k, new_v = k, v
+            if incremental_state is not None:
                 # saved states are stored with shape (bsz, num_heads_partition, seq_len, head_dim)
-                if "prev_key" in saved_state:
-                    _prev_key = saved_state["prev_key"]
+
+                if "prev_key" in incremental_state:
+                    _prev_key = incremental_state["prev_key"]
                     assert _prev_key is not None
                     prev_key = _prev_key.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
@@ -429,10 +431,13 @@ class ModelParallelMultiheadAttention(nn.Module):
                         k = prev_key
                     else:
                         assert k is not None
-                        k = torch.cat([prev_key, k], dim=1)
+                        # k = torch.cat([prev_key, k], dim=1)
+                        prev_key.masked_scatter_(static_masked_tokens, k)
+                        k = prev_key
+
                     src_len = k.size(1)
-                if "prev_value" in saved_state:
-                    _prev_value = saved_state["prev_value"]
+                if "prev_value" in incremental_state:
+                    _prev_value = incremental_state["prev_value"]
                     assert _prev_value is not None
                     prev_value = _prev_value.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
@@ -441,19 +446,21 @@ class ModelParallelMultiheadAttention(nn.Module):
                         v = prev_value
                     else:
                         assert v is not None
-                        v = torch.cat([prev_value, v], dim=1)
-                saved_state["prev_key"] = k.view(
-                    bsz, self.num_heads_partition, -1, self.head_dim
-                )
-                saved_state["prev_value"] = v.view(
-                    bsz, self.num_heads_partition, -1, self.head_dim
-                )
-                saved_state["prev_key_padding_mask"] = key_padding_mask
+                        # v = torch.cat([prev_value, v], dim=1)
+                        prev_value.masked_scatter_(static_masked_tokens, v)
+                        v = prev_value
+                # incremental_state["prev_key"] = k.view(
+                #     bsz, self.num_heads_partition, -1, self.head_dim
+                # )
+                # saved_state["prev_value"] = v.view(
+                #     bsz, self.num_heads_partition, -1, self.head_dim
+                # )
+                # saved_state["prev_key_padding_mask"] = key_padding_mask
                 # In this branch incremental_state is never None
-                assert incremental_state is not None
-                incremental_state = self._set_input_buffer(
-                    incremental_state, saved_state
-                )
+                # assert incremental_state is not None
+                # incremental_state = self._set_input_buffer(
+                #     incremental_state, saved_state
+                # )
             assert k is not None
             assert k.size(1) == src_len
 
@@ -510,8 +517,9 @@ class ModelParallelMultiheadAttention(nn.Module):
             attn_weights_float = utils.softmax(attn_weights, dim=-1)
             attn_weights = attn_weights_float.type_as(attn_weights)
 
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_weights)
+            attn_probs = self.dropout_module(attn_weights)
+            # with get_cuda_rng_tracker().fork():
+            #     attn_probs = self.dropout_module(attn_weights)
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
@@ -529,73 +537,73 @@ class ModelParallelMultiheadAttention(nn.Module):
         # This will be deprecated.
         attn_weights: Optional[Tensor] = None
         # logger.info("output:" + str(attn.float().norm().item()))
-        return (attn, attn_bias), attn_weights
+        return (attn, attn_bias), attn_weights, (new_k, new_v)
 
-    @staticmethod
-    def _append_prev_key_padding_mask(
-        key_padding_mask: Optional[Tensor],
-        prev_key_padding_mask: Optional[Tensor],
-        batch_size: int,
-        src_len: int,
-        static_kv: bool,
-    ) -> Optional[Tensor]:
-        # saved key padding masks have shape (bsz, seq_len)
-        if prev_key_padding_mask is not None and static_kv:
-            new_key_padding_mask = prev_key_padding_mask
-        elif prev_key_padding_mask is not None and key_padding_mask is not None:
-            new_key_padding_mask = torch.cat(
-                [prev_key_padding_mask.float(), key_padding_mask.float()], dim=1
-            )
-        # During incremental decoding, as the padding token enters and
-        # leaves the frame, there will be a time when prev or current
-        # is None
-        elif prev_key_padding_mask is not None:
+    # @staticmethod
+    # def _append_prev_key_padding_mask(
+    #     key_padding_mask: Optional[Tensor],
+    #     prev_key_padding_mask: Optional[Tensor],
+    #     batch_size: int,
+    #     src_len: int,
+    #     static_kv: bool,
+    # ) -> Optional[Tensor]:
+    #     # saved key padding masks have shape (bsz, seq_len)
+    #     if prev_key_padding_mask is not None and static_kv:
+    #         new_key_padding_mask = prev_key_padding_mask
+    #     elif prev_key_padding_mask is not None and key_padding_mask is not None:
+    #         new_key_padding_mask = torch.cat(
+    #             [prev_key_padding_mask.float(), key_padding_mask.float()], dim=1
+    #         )
+    #     # During incremental decoding, as the padding token enters and
+    #     # leaves the frame, there will be a time when prev or current
+    #     # is None
+    #     elif prev_key_padding_mask is not None:
 
-            filler = torch.zeros(batch_size, src_len - prev_key_padding_mask.size(1))
-            if prev_key_padding_mask.is_cuda:
-                filler = filler.cuda()
-            new_key_padding_mask = torch.cat(
-                [prev_key_padding_mask.float(), filler.float()], dim=1
-            )
-        elif key_padding_mask is not None:
-            filler = torch.zeros(batch_size, src_len - key_padding_mask.size(1))
-            if key_padding_mask.is_cuda:
-                filler = filler.cuda()
-            new_key_padding_mask = torch.cat(
-                [filler.float(), key_padding_mask.float()], dim=1
-            )
-        else:
-            new_key_padding_mask = prev_key_padding_mask
-        return new_key_padding_mask
+    #         filler = torch.zeros(batch_size, src_len - prev_key_padding_mask.size(1))
+    #         if prev_key_padding_mask.is_cuda:
+    #             filler = filler.cuda()
+    #         new_key_padding_mask = torch.cat(
+    #             [prev_key_padding_mask.float(), filler.float()], dim=1
+    #         )
+    #     elif key_padding_mask is not None:
+    #         filler = torch.zeros(batch_size, src_len - key_padding_mask.size(1))
+    #         if key_padding_mask.is_cuda:
+    #             filler = filler.cuda()
+    #         new_key_padding_mask = torch.cat(
+    #             [filler.float(), key_padding_mask.float()], dim=1
+    #         )
+    #     else:
+    #         new_key_padding_mask = prev_key_padding_mask
+    #     return new_key_padding_mask
 
-    def reorder_incremental_state(
-        self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], new_order
-    ):
-        """Reorder buffered internal state (for incremental generation)."""
-        input_buffer = self._get_input_buffer(incremental_state)
-        if input_buffer is not None:
-            for k in input_buffer.keys():
-                if input_buffer[k] is not None:
-                    input_buffer[k] = input_buffer[k].index_select(0, new_order)
-            incremental_state = self._set_input_buffer(incremental_state, input_buffer)
-        return incremental_state
+    # def reorder_incremental_state(
+    #     self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], new_order
+    # ):
+    #     """Reorder buffered internal state (for incremental generation)."""
+    #     input_buffer = self._get_input_buffer(incremental_state)
+    #     if input_buffer is not None:
+    #         for k in input_buffer.keys():
+    #             if input_buffer[k] is not None:
+    #                 input_buffer[k] = input_buffer[k].index_select(0, new_order)
+    #         incremental_state = self._set_input_buffer(incremental_state, input_buffer)
+    #     return incremental_state
 
-    def _get_input_buffer(
-        self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
-    ) -> Dict[str, Optional[Tensor]]:
-        result = self.get_incremental_state(incremental_state, "attn_state")
-        if result is not None:
-            return result
-        else:
-            empty_result: Dict[str, Optional[Tensor]] = {}
-            return empty_result
+    # def _get_input_buffer(
+    #     self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
+    # ) -> Dict[str, Optional[Tensor]]:
+    #     result = self.get_incremental_state(incremental_state, "attn_state")
+    #     if result is not None:
+    #         return result
+    #     else:
+    #         empty_result: Dict[str, Optional[Tensor]] = {}
+    #         return empty_result
 
-    def _set_input_buffer(
-        self,
-        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
-        buffer: Dict[str, Optional[Tensor]],
-    ):
-        return self.set_incremental_state(incremental_state, "attn_state", buffer)
+    # def _set_input_buffer(
+    #     self,
+    #     incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+    #     buffer: Dict[str, Optional[Tensor]],
+    # ):
+    #     return self.set_incremental_state(incremental_state, "attn_state", buffer)
 
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):

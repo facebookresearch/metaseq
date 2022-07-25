@@ -165,8 +165,9 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         incremental_state=None,
         need_weights=False,
         attn_mask=None,
+        static_masked_tokens=None
     ):
-        (attn_output, attn_bias), attn_weights = self.self_attn(
+        (attn_output, attn_bias), attn_weights, (prev_k, prev_v) = self.self_attn(
             query=query,
             key=key,
             value=value,
@@ -174,6 +175,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             incremental_state=incremental_state,
             need_weights=need_weights,
             attn_mask=attn_mask,
+            static_masked_tokens=static_masked_tokens,
         )
         if self.training:
             bias_dropout_add_func = bias_dropout_add_fused_train
@@ -197,7 +199,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             )
             x = self.attn_ln(x)
             x = residual + x
-        return x, attn_weights
+        return x, attn_weights, (prev_k, prev_v)
 
 
 def bias_dropout_add(x, bias, residual, prob, training):
