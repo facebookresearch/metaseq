@@ -301,8 +301,8 @@ def completions(engine=None):
         gen_len = generation_args.get("max_tokens", 0)
         if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
             # cut off the prompt to always fit with number of generations we need
+            # +1 to always have the EOS token
             prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
-        prompt = prompt[-(MAX_SEQ_LEN - gen_len) :]
         request_object = {"input": prompt, **generation_args}
         BATCH_QUEUE.put(
             WorkItem(
