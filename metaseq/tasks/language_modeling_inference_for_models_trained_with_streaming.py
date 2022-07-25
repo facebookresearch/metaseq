@@ -344,9 +344,9 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                 # but it seems they work with eos as well so we will keep this way in this experimental task until figure a better flexible soluton.
             ),
         )
-        # src_dataset = MultiplePadDataset(
-        #     src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-        # )
+        src_dataset = MultiplePadDataset(
+            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+        )
         tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
         return NestedDictionaryDataset(
             {
@@ -355,10 +355,10 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "src_tokens": src_dataset,
                     "src_lengths": NumelDataset(src_dataset, reduce=False),
                 },
-                "target": tgt_dataset,
-                # "target": MultiplePadDataset(
-                #     tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-                # ), 
+                # "target": tgt_dataset,
+                "target": MultiplePadDataset(
+                    tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+                ), 
             },
             sizes=[np.array(src_lengths)],
         )
