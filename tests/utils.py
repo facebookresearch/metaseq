@@ -485,13 +485,12 @@ class TestIncrementalDecoder(IncrementalDecoder):
         dev = prev_output_tokens.device
         return probs.to(dev), {"attn": [attn.to(dev)]}
 
-    def get_normalized_probs(self, net_output, log_probs):
+    def get_normalized_probs(self, logits, log_probs):
         # the decoder returns probabilities directly
-        probs = net_output[0]
         if log_probs:
-            return probs.log()
+            return logits.log()
         else:
-            return probs
+            return logits
 
     def max_positions(self):
         return self.args.max_decoder_positions
