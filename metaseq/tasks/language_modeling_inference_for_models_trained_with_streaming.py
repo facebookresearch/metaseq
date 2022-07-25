@@ -355,10 +355,10 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "src_tokens": src_dataset,
                     "src_lengths": NumelDataset(src_dataset, reduce=False),
                 },
-                "target": tgt_dataset, 
-                #MultiplePadDataset(
-                #    tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-                #),
+                "target": tgt_dataset,
+                # "target": MultiplePadDataset(
+                #     tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+                # ), 
             },
             sizes=[np.array(src_lengths)],
         )

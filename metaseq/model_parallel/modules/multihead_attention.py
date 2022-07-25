@@ -326,6 +326,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
         # we have seq_lens not power of 2.
         CHANGES = False # not getattr(self, "inference", False)
+        # CHANGES = not getattr(self, "inference", False)
 
         if CHANGES:
             output_size = (
