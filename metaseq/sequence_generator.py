@@ -177,7 +177,10 @@ class SequenceGenerator(nn.Module):
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
-        # normalize
+        # temperature and normalization
+        # convert to float before the temparture divide to ensure good precision.
+        # Avoid dividing by 1.0 to prevent unnecessary numerical instability
+        # and always log in float
         model_predictions = model_out[0].float()
         if self.temperature > 0 and self.temperature != 1.0:
             model_predictions.div_(self.temperature)
@@ -251,6 +254,7 @@ class SequenceGenerator(nn.Module):
                 tokens[:, : step + 1],
                 incremental_state=incremental_states,
             )
+            # see above for why this must remain float
             model_predictions = model_out[0].float()
             if self.temperature > 0 and self.temperature != 1.0:
                 model_predictions.div_(self.temperature)
