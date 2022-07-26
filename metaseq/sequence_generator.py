@@ -223,7 +223,10 @@ class SequenceGenerator(nn.Module):
             incremental_state=incremental_states,
         )
         # normalize
-        model_out[0].div_(self.temperature, rounding_mode="trunc")
+        # print("model out: ",model_out[0])
+        # print("model out size: ",model_out[0].size())
+        # model_out[0].div_(self.temperature, rounding_mode="trunc")
+        model_out[0].div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
         lprobs = self.model.get_normalized_probs(model_out, log_probs=True, sample=None)
