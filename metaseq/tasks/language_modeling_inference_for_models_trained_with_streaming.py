@@ -24,7 +24,7 @@ from metaseq.data import (
     PrependTokenDataset,
     StripTokenDataset,
     TokenBlockDataset,
-    MultiplePadDataset,
+    PadDataset,
     data_utils,
 )
 from metaseq.data.indexed_dataset import get_available_dataset_impl
@@ -288,9 +288,9 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                 # flexible soluton.
             ),
         )
-        # src_dataset = MultiplePadDataset(
-            # src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-        # )
+        src_dataset = PadDataset(
+            src_dataset, pad_idx=self.source_dictionary.pad(), left_pad=False
+        )
         tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
         return NestedDictionaryDataset(
             {
@@ -299,10 +299,9 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "src_tokens": src_dataset,
                     "src_lengths": NumelDataset(src_dataset, reduce=False),
                 },
-                "target": tgt_dataset,
-                # MultiplePadDataset(
-                    # tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-                # ),
+                "target": PadDataset(
+                    tgt_dataset, pad_idx=self.source_dictionary.pad(), left_pad=False
+                ),
             },
             sizes=[np.array(src_lengths)],
         )
