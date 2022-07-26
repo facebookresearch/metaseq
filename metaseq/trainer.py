@@ -1002,7 +1002,7 @@ class Trainer(object):
             clip_norm,
             clip_norm_type,
             aggregate_norm_fn=None,
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            # skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def cumulative_training_time(self):

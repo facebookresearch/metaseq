@@ -168,6 +168,12 @@ def do_setup(package_data):
             "torch",
             "tqdm",
             "typing_extensions",
+            "wandb",
+            "webdataset==0.1.103",
+            "glide_text2im @ git+https://github.com/openai/glide-text2im",
+            "clip @ git+https://github.com/openai/CLIP.git",
+            "matplotlib",
+            "opencv-python"
         ],
         dependency_links=dependency_links,
         packages=find_packages(
