@@ -3,8 +3,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, List, Optional, Tuple
-
 import torch.nn as nn
 from torch import Tensor
 
@@ -56,27 +54,16 @@ class BaseDecoder(nn.Module):
         """
         raise NotImplementedError
 
-    def get_normalized_probs(
-        self,
-        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-        log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
-    ):
+    def get_normalized_probs(self, logits: Tensor, log_probs: bool):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+        return self.get_normalized_probs_scriptable(logits, log_probs)
 
     # TorchScript doesn't support super() method so that the scriptable Subclass
     # can't access the base class model in Torchscript.
     # Current workaround is to add a helper function with different name and
     # call the helper function from scriptable Subclass.
-    def get_normalized_probs_scriptable(
-        self,
-        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-        log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
-    ):
+    def get_normalized_probs_scriptable(self, logits: Tensor, log_probs: bool):
         """Get normalized probabilities (or log probs) from a net's output."""
-        logits = net_output[0]
         if log_probs:
             return utils.log_softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
         else:
@@ -85,10 +72,6 @@ class BaseDecoder(nn.Module):
     def max_positions(self):
         """Maximum input length supported by the decoder."""
         return 1e6  # an arbitrary large number
-
-    def upgrade_state_dict_named(self, state_dict, name):
-        """Upgrade old state dicts to work with newer code."""
-        return state_dict
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True

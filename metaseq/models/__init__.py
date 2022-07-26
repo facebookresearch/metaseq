@@ -18,7 +18,6 @@ from .base_encoder import BaseEncoder
 from .incremental_decoder import IncrementalDecoder
 from .base_model import (
     BaseModel,
-    EncoderDecoderModel,
     LanguageModel,
 )
 
@@ -36,7 +35,6 @@ __all__ = [
     "DistributedModel",
     "BaseDecoder",
     "BaseEncoder",
-    "EncoderDecoderModel",
     "IncrementalDecoder",
     "LanguageModel",
     "register_model",
@@ -97,12 +95,11 @@ def register_model(name, dataclass=None):
     For example::
 
         @register_model('lstm')
-        class LSTM(EncoderDecoderModel):
+        class LSTM(LanguageModel):
             (...)
 
     .. note:: All models must implement the :class:`BaseModel` interface.
-        Typically you will extend :class:`EncoderDecoderModel` for
-        sequence-to-sequence tasks or :class:`LanguageModel` for
+        Typically you will extend :class:`LanguageModel` for
         language modeling tasks.
 
     Args:

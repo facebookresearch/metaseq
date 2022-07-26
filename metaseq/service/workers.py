@@ -20,6 +20,8 @@ class WorkItem:
     uid: int  # unique id to map back to multi-input requests
     return_queue: queue.Queue
     data: Any
+    prompt_len: int
+    gen_len: int
 
     # for sorting / priority queue
     def __lt__(self, other: "WorkItem"):

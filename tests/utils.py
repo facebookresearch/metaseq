@@ -10,18 +10,15 @@ from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 import metaseq.distributed.utils as distributed_utils
-from metaseq import options, utils
+from metaseq import options
 from metaseq.data import Dictionary, data_utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.models import (
-    BaseEncoder,
-    EncoderDecoderModel,
+    LanguageModel,
     IncrementalDecoder,
 )
-from metaseq.models.base_encoder import EncoderOut
 from metaseq.tasks import LegacyTask
 from metaseq_cli import train, validate
 
@@ -410,41 +407,14 @@ class TestTranslationTask(LegacyTask):
         return self.tgt_dict
 
 
-class TestModel(EncoderDecoderModel):
-    def __init__(self, encoder, decoder):
-        super().__init__(encoder, decoder)
+class TestModel(LanguageModel):
+    def __init__(self, decoder):
+        super().__init__(decoder)
 
     @classmethod
     def build_model(cls, args, task):
-        encoder = TestEncoder(args, task.source_dictionary)
         decoder = TestIncrementalDecoder(args, task.target_dictionary)
-        return cls(encoder, decoder)
-
-
-class TestEncoder(BaseEncoder):
-    def __init__(self, args, dictionary):
-        super().__init__(dictionary)
-        self.args = args
-
-    def forward(self, src_tokens, src_lengths=None, **kwargs):
-        return EncoderOut(
-            encoder_out=src_tokens,
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
+        return cls(decoder)
 
 
 class TestIncrementalDecoder(IncrementalDecoder):
@@ -454,24 +424,13 @@ class TestIncrementalDecoder(IncrementalDecoder):
         args.max_decoder_positions = getattr(args, "max_decoder_positions", 100)
         self.args = args
 
-    def forward(self, prev_output_tokens, encoder_out=None, incremental_state=None):
-        if incremental_state is not None:
-            prev_output_tokens = prev_output_tokens[:, -1:]
+    def forward(self, src_tokens, src_lengths, prev_output_tokens):
         bbsz = prev_output_tokens.size(0)
         vocab = len(self.dictionary)
-        src_len = encoder_out.encoder_out.size(1)
+        src_len = src_tokens.size(1)
         tgt_len = prev_output_tokens.size(1)
 
-        # determine number of steps
-        if incremental_state is not None:
-            # cache step number
-            step = utils.get_incremental_state(self, incremental_state, "step")
-            if step is None:
-                step = 0
-            utils.set_incremental_state(self, incremental_state, "step", step + 1)
-            steps = [step]
-        else:
-            steps = list(range(tgt_len))
+        steps = list(range(tgt_len))
 
         # define output in terms of raw probs
         if hasattr(self.args, "probs"):
@@ -495,106 +454,15 @@ class TestIncrementalDecoder(IncrementalDecoder):
         dev = prev_output_tokens.device
         return probs.to(dev), {"attn": [attn.to(dev)]}
 
-    def get_normalized_probs(self, net_output, log_probs, _):
+    def get_normalized_probs(self, logits, log_probs):
         # the decoder returns probabilities directly
-        probs = net_output[0]
         if log_probs:
-            return probs.log()
+            return logits.log()
         else:
-            return probs
+            return logits
 
     def max_positions(self):
         return self.args.max_decoder_positions
-
-
-class TestReshapingEncoder(BaseEncoder):
-    def __init__(self, args, dictionary):
-        super().__init__(dictionary)
-        self.args = args
-
-    def forward(self, src_tokens, src_lengths=None, **kwargs):
-        b_sz, t_sz = src_tokens.shape
-        padding_needed = t_sz % 2
-        x = src_tokens
-        if padding_needed > 0:
-            padding_needed = 2 - padding_needed
-            x = F.pad(x, (0, padding_needed))
-
-        return EncoderOut(
-            encoder_out=x.view(b_sz, -1, 2),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-
-class TestReshapingModel(EncoderDecoderModel):
-    def __init__(self, encoder, decoder):
-        super().__init__(encoder, decoder)
-
-    @classmethod
-    def build_model(cls, args, task):
-        encoder = TestReshapingEncoder(args, task.source_dictionary)
-        decoder = TestIncrementalDecoder(args, task.target_dictionary)
-        return cls(encoder, decoder)
-
-
-class TestAdditionalInputEncoder(BaseEncoder):
-    def __init__(self, args, dictionary):
-        super().__init__(dictionary)
-        self.args = args
-
-    def forward(self, src_tokens, src_lengths=None, **kwargs):
-        assert "fancy_other_input" in kwargs
-        assert kwargs["fancy_other_input"] is not None
-        return EncoderOut(
-            encoder_out=src_tokens,
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-    def reorder_encoder_out(self, encoder_out, new_order):
-        return EncoderOut(
-            encoder_out=encoder_out.encoder_out.index_select(0, new_order),
-            encoder_padding_mask=None,
-            encoder_embedding=None,
-            encoder_states=None,
-            src_tokens=None,
-            src_lengths=None,
-        )
-
-
-class TestAdditionalInputModel(EncoderDecoderModel):
-    def __init__(self, encoder, decoder):
-        super().__init__(encoder, decoder)
-
-    @classmethod
-    def build_model(cls, args, task):
-        encoder = TestAdditionalInputEncoder(args, task.source_dictionary)
-        decoder = TestIncrementalDecoder(args, task.target_dictionary)
-        return cls(encoder, decoder)
-
-    def forward(self, src_tokens, src_lengths, prev_output_tokens, **kwargs):
-        encoder_out = self.encoder(src_tokens, src_lengths=src_lengths, **kwargs)
-        decoder_out = self.decoder(
-            prev_output_tokens, encoder_out=encoder_out, **kwargs
-        )
-        return decoder_out
 
 
 def train_language_model(

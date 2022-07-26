@@ -27,6 +27,9 @@ install_dep_common: &install_dep_common
         pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
+        # Need to install ninja build system
+        sudo apt-get update
+        sudo apt-get install ninja-build
 
 install_dep_fused_ops: &install_dep_fused_ops
   - run:
@@ -46,7 +49,7 @@ install_dep_fused_ops: &install_dep_fused_ops
           git clone --depth=1 --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
           cd Megatron-LM
           pip install -r requirements.txt
-          pip install .
+          pip install -e .
           cd ~/
         fi
 
@@ -74,14 +77,6 @@ install_dep_pt19: &install_dep_pt19
         pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
-install_dep_pt18: &install_dep_pt18
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
 
 install_pytorch_dep: &install_pytorch_dep
   - parameters:
@@ -132,6 +127,17 @@ create_conda_env: &create_conda_env
         python --version
         pip install --upgrade pip
 
+download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
+  - run:
+      name: Download and configure a 125m checkpoint with HF dependencies
+      working_directory: ~/metaseq/gpu_tests
+      command: |
+        source activate metaseq
+        wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
+        tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
+        python -m metaseq.scripts.convert_to_singleton ./125m
+        python -m transformers.models.opt.convert_opt_original_pytorch_checkpoint_to_pytorch --pytorch_dump_folder_path ./125m/ --hf_config ./125m/config.json --fairseq_path ./125m/restored.pt 
+
 commands:
 
   gpu_pre: &gpu_pre
@@ -151,6 +157,7 @@ commands:
       - <<: *install_fairscale
       - <<: *install_dep_fused_ops
       - <<: *install_repo
+      - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
             - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
@@ -169,15 +176,6 @@ commands:
 # -------------------------------------------------------------------------------------
 
 jobs:
-  gpu_tests_pt18:
-    <<: *gpu
-
-    working_directory: ~/metaseq
-
-    steps:
-      - gpu_pre
-      - <<: *install_dep_pt18
-      - gpu_post
 
   gpu_tests_pt19:
     <<: *gpu
@@ -194,5 +192,4 @@ workflows:
   version: 2
   build:
     jobs:
-      - gpu_tests_pt18
       - gpu_tests_pt19

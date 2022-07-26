@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
@@ -15,7 +15,6 @@ EncoderOut = NamedTuple(
         ("encoder_out", Tensor),  # T x B x C
         ("encoder_padding_mask", Optional[Tensor]),  # B x T
         ("encoder_embedding", Optional[Tensor]),  # B x T x C
-        ("encoder_states", Optional[List[Tensor]]),  # List[T x B x C]
         ("src_tokens", Optional[Tensor]),  # B x T
         ("src_lengths", Optional[Tensor]),  # B x 1
     ],
@@ -60,26 +59,9 @@ class BaseEncoder(nn.Module):
         }
         return self.forward(**encoder_input)
 
-    def reorder_encoder_out(self, encoder_out, new_order):
-        """
-        Reorder encoder output according to `new_order`.
-
-        Args:
-            encoder_out: output from the ``forward()`` method
-            new_order (LongTensor): desired order
-
-        Returns:
-            `encoder_out` rearranged according to `new_order`
-        """
-        raise NotImplementedError
-
     def max_positions(self):
         """Maximum input length supported by the encoder."""
         return 1e6  # an arbitrary large number
-
-    def upgrade_state_dict_named(self, state_dict, name):
-        """Upgrade old state dicts to work with newer code."""
-        return state_dict
 
     def set_num_updates(self, num_updates):
         """State from trainer to pass along to model at every update."""

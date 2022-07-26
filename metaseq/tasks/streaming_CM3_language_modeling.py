@@ -391,6 +391,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=tokenizer_func,
+                    epoch=epoch,
+                    data_subshard_count=self.args.data_subshard_count,
                 )
             )
             corpora.append(os.path.splitext(file)[0])

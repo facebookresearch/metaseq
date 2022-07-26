@@ -90,6 +90,13 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
+    data_subshard_count: int = field(
+        default=1,
+        metadata={
+            "help": "Number of data subshards to use while training."
+            "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
+        },
+    )
 
     # TODO common vars below add to parent
     seed: int = II("common.seed")
@@ -186,9 +193,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             smoothed_prob = prob**self.args.multicorpus_sampling_alpha
             smoothed_prob = smoothed_prob / smoothed_prob.sum()
         else:
-            dataset_lens = [
-                min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens
-            ]
+            dataset_lens = np.array(
+                [min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens]
+            )
             smoothed_prob = dataset_lens / sum(dataset_lens)
         return smoothed_prob
 
@@ -265,7 +272,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert min(shards.keys()) == 0
         assert max(shards.keys()) == len(shards) - 1
 
-        cur_shard_str = shards[(epoch - 1) % len(shards)]
+        shard_idx = ((epoch - 1) // self.args.data_subshard_count) % len(shards)
+        cur_shard_str = shards[shard_idx]
         return cur_shard_str
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
@@ -305,6 +313,8 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
+                    epoch=epoch,
+                    data_subshard_count=self.args.data_subshard_count,
                 )
             )
             corpora.append(os.path.splitext(file)[0])

@@ -381,10 +381,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             checkpoint_path_to_load = save_dir_last
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
-    import torch.distributed
-    import metaseq.distributed.utils as dist_utils
 
-    torch.distributed.barrier(dist_utils.get_global_group())
+    # make sure everyone is done downloading their checkpoints before we load
+    dist_utils.global_barrier()
 
     extra_state = trainer.load_checkpoint(
         checkpoint_path_to_load,
@@ -570,10 +569,12 @@ def load_model_ensemble_and_task(
             ):
                 cfg.model.arch = "transformer_lm_gpt"
                 cfg.model._name = "transformer_lm_gpt"
-                oproj_key = "decoder.output_projection.weight"
-                emb_key = "decoder.embed_tokens.weight"
-                if emb_key in state["model"] and oproj_key not in state["model"]:
-                    state["model"][oproj_key] = state["model"][emb_key]
+
+            # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
+            oproj_key = "decoder.output_projection.weight"
+            emb_key = "decoder.embed_tokens.weight"
+            if emb_key in state["model"] and oproj_key not in state["model"]:
+                state["model"][oproj_key] = state["model"][emb_key]
 
             if task is None:
                 task = tasks.setup_task(cfg.task)
@@ -587,7 +588,7 @@ def load_model_ensemble_and_task(
                 # build model for ensemble
                 model = task.build_model(cfg.model)
 
-            model.load_state_dict(state["model"], strict=strict, model_cfg=cfg.model)
+            model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble
             state = None
@@ -742,6 +743,7 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
 
             merged_state["model"][k] = catted
 
+    # TODO(susanz): Not removing decoder.version due to HF compatibility.
     if "decoder.version" not in merged_state["model"]:
         merged_state["model"]["decoder.version"] = torch.tensor([3.0], dtype=dtype)
     if OPT_KEY in merged_state:

@@ -96,28 +96,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             )
         },
     )
-    use_stable_embedding: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Use bitsandbytes StableEmbeddingLayer which saves embedding state in fp32",
-            "argparse_alias": "--stable-emb",
-        },
-    )
-    # NormFormer
-    scale_fc: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Insert LayerNorm between fully connected layers",
-        },
-    )
-    scale_attn: Optional[bool] = field(
-        default=False, metadata={"help": "Insert LayerNorm after attention"}
-    )
-    scale_heads: Optional[bool] = field(
-        default=False,
-        metadata={"help": "Learn a scale coefficient for each attention head"},
-    )
-
     # ALiBi
     alibi: bool = field(
         default=False,
@@ -160,11 +138,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
     )
-    sync_ln_variance: Optional[bool] = field(
-        default=False,
-        metadata={"help": "sync_ln_variance stats", "argparse_alias": "--sync-ln"},
-    )
-
     no_emb_dropout: Optional[bool] = field(
         default=False, metadata={"help": "Avoid emb dropout for decoder"}
     )
@@ -211,24 +184,14 @@ class TransformerLanguageModel(LanguageModel):
 
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
-        if getattr(args, "use_stable_embedding", False):
-            import bitsandbytes as bnb
-
-            if not args.no_scale_embedding:
-                logger.warning(
-                    "It is recommended to pass --no-scale-embedding with --use-stable-embedding"
-                )
-            return bnb.nn.StableEmbedding(len(dictionary), embed_dim, dictionary.pad())
-
-        else:
-            return Embedding(
-                len(dictionary),
-                embed_dim,
-                dictionary.pad(),
-                initialize_params_on_gpu=getattr(
-                    args, "tensor_parallel_init_model_on_gpu", False
-                ),
-            )
+        return Embedding(
+            len(dictionary),
+            embed_dim,
+            dictionary.pad(),
+            initialize_params_on_gpu=getattr(
+                args, "tensor_parallel_init_model_on_gpu", False
+            ),
+        )
 
 
 def base_lm_architecture(args):

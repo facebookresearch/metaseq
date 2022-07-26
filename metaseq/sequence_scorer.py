@@ -71,8 +71,10 @@ class SequenceScorer(object):
             vocab_dist = []
             for bd, tgt, is_single in batched:
                 sample["target"] = tgt
+                # note that unlike in sequence generator, we don't need to convert
+                # to float32 because we don't do temperature dividing here
                 curr_prob = model.get_normalized_probs(
-                    bd, log_probs=len(models) == 1, sample=sample
+                    bd[0], log_probs=len(models) == 1
                 ).data
                 if is_single:
                     probs = gather_target_probs(curr_prob, orig_target)
