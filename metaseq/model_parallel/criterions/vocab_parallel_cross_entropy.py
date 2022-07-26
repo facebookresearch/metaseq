@@ -124,9 +124,13 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
 
 
 @register_criterion("vocab_parallel_cross_entropy_cm3")
-class VocabParallelCrossEntropyCM3Criterion(VocabParallelCrossEntropyCriterion):
+class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
     def __init__(self, task):
         super().__init__(task)
+        if not has_megatron_submodule:
+            raise ImportError(
+                "\n\nPlease install megatron using the setup instructions!"
+            )
         assert self.padding_idx == task.dictionary.pad_index
 
     def forward(self, model, sample, reduce=True):
@@ -143,20 +147,19 @@ class VocabParallelCrossEntropyCM3Criterion(VocabParallelCrossEntropyCriterion):
         net_output = model(**sample["net_input"])
 
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
-        with torch.no_grad():
-            loss_flattened = loss.detach().clone().data.view(-1)
-            flat_target = sample["target"].data.view(-1)
-            image_tokens = torch.logical_and(
-                flat_target >= self.task.image_modality_start_token,
-                flat_target < self.task.image_modality_end_token,
-            )
-            image_loss_unreduced = loss_flattened * image_tokens
+        loss_flattened = loss.view(-1)
+        flat_target = sample["target"].view(-1)
+        image_tokens = torch.logical_and(
+            flat_target >= self.task.image_modality_start_token,
+            flat_target < self.task.image_modality_end_token,
+        )
+        image_loss_unreduced = loss_flattened * image_tokens
 
-            # TODO: Armen: Add speech eventually
-            text_tokens = torch.logical_and(
-                torch.logical_not(image_tokens), flat_target != self.padding_idx
-            )
-            text_loss_unreduced = loss_flattened * text_tokens
+        # TODO: Armen: Add speech eventually
+        text_tokens = torch.logical_and(
+            torch.logical_not(image_tokens), flat_target != self.padding_idx
+        )
+        text_loss_unreduced = loss_flattened * text_tokens
 
         if has_pad:
             loss = loss * (target != self.padding_idx)

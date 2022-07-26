@@ -57,12 +57,12 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
 
         # project back to size of vocabulary
         x = self.output_projection(features)
-        # Gather output if model is in inference mode (i.e. evallm or generation) cause both are not yet compatible with
+        # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings
-        assert "vocab_parallel_cross_entropy" in getattr(
+        if "vocab_parallel_cross_entropy" not in getattr(
             self.args, "criterion"
-        ) or getattr(self, "inference", False)
-        x = gather_from_tensor_model_parallel_region(x).contiguous()
+        ) or getattr(self, "inference", False):
+            x = gather_from_tensor_model_parallel_region(x).contiguous()
         return x
 
     # This hook used as proxy for tracking state if model is in eval or generation mode.
