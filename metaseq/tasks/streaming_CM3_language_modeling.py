@@ -35,6 +35,7 @@ try:
         models,
         normalizers,
         pre_tokenizers,
+        Regex,
     )
     from tokenizers.pre_tokenizers import ByteLevel, Digits
 
@@ -188,13 +189,28 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         return tokenizer
 
     def _initialize_unigram_tokenizer(self, args):
-        tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
-        tokenizer.normalizer = normalizers.NFKC()
-        tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
-            [ByteLevel(), Digits(individual_digits=True)]
-        )
-        tokenizer.decoder = decoders.ByteLevel()
-        return tokenizer
+        if "1.3" in args.spm_path:
+            tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
+            tokenizer.normalizer = normalizers.NFKC()
+            tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+                [ByteLevel(), Digits(individual_digits=True)]
+            )
+            tokenizer.decoder = decoders.ByteLevel()
+            return tokenizer
+        elif "1.4" in args.spm_path:
+            tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
+            tokenizer.normalizer = normalizers.NFKC()
+            tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+                [
+                    pre_tokenizers.Split(Regex(r"[\r\n]+"), "isolated"),
+                    pre_tokenizers.Split(Regex(r"(I|S)(\d{1,4}) "), "isolated"),
+                    ByteLevel(use_regex=False),
+                    Digits(individual_digits=True),
+                ]
+            )
+            tokenizer.decoder = decoders.ByteLevel()
+            return tokenizer
+        raise ValueError("What tokenizer are you trying to use?")
 
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
