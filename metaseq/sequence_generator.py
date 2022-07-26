@@ -171,17 +171,22 @@ class SequenceGenerator(nn.Module):
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
-        # normalize
-        model_out[0].div_(self.temperature, rounding_mode="trunc")
+        # temperature and normalization
+        # convert to float before the temparture divide to ensure good precision.
+        # Avoid dividing by 1.0 to prevent unnecessary numerical instability
+        # and always log in float
+        model_predictions = model_out[0].float()
+        if self.temperature > 0 and self.temperature != 1.0:
+            model_predictions.div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
-        lprobs = self.model.get_normalized_probs(model_out, log_probs=True)
+        lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
 
         # don't allow generation of eos/pad
-        model_out[0][:, :, self.eos] = -math.inf
-        model_out[0][:, :, self.pad] = -math.inf
+        model_predictions[:, :, self.eos] = -math.inf
+        model_predictions[:, :, self.pad] = -math.inf
         for stop_token in self.stop:
-            model_out[0][:, :, stop_token] = -math.inf
+            model_predictions[:, :, stop_token] = -math.inf
 
         if self.need_logprobs:
             all_lprobs[:, 1:start_step] = lprobs[:, :-1].type_as(all_lprobs)
@@ -247,8 +252,11 @@ class SequenceGenerator(nn.Module):
                 tokens[:, : step + 1],
                 incremental_state=incremental_states,
             )
-            model_out[0].div_(self.temperature)
-            lprobs = self.model.get_normalized_probs(model_out, log_probs=True)
+            # see above for why this must remain float
+            model_predictions = model_out[0].float()
+            if self.temperature > 0 and self.temperature != 1.0:
+                model_predictions.div_(self.temperature)
+            lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
             lprobs = lprobs[:, -1, :]
 
         # we want the highest scoring items to be top ranked
