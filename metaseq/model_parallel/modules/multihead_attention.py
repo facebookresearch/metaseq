@@ -518,16 +518,12 @@ class ModelParallelMultiheadAttention(nn.Module):
             with get_cuda_rng_tracker().fork():
                 attn_probs = self.dropout_module(attn_weights)
 
-        # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        # attn = torch.bmm(attn_probs, v)
 
-        attn = xops.memory_efficient_attention(q, k, v)
-        import metaseq.pdb
+        attn = xops.memory_efficient_attention(
+            q, k, v, attn_bias=xops.LowerTriangularMask()
+        )
 
-        # metaseq.pdb.set_trace_rank0()
-
-        # logger.info("attn:" + str(attn.float().norm().item()))
         assert list(attn.size()) == [
             tgt_len,
             bsz * self.num_heads_partition,
