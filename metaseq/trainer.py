@@ -465,9 +465,7 @@ class Trainer(object):
 
             # load model parameters
             try:
-                self.model.load_state_dict(
-                    state["model"], strict=True, model_cfg=self.cfg.model
-                )
+                self.model.load_state_dict(state["model"], strict=True)
                 # save memory for later steps
                 del state["model"]
                 if utils.has_parameters(self.get_criterion()):
