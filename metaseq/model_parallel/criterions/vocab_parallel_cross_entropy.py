@@ -155,9 +155,18 @@ class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
         )
         image_loss_unreduced = loss_flattened * image_tokens
 
-        # TODO: Armen: Add speech eventually
+        speech_tokens = torch.logical_and(
+            flat_target >= self.task.speech_modality_start_token,
+            flat_target < self.task.speech_modality_end_token,
+        )
+        speech_loss_unreduced = loss_flattened * speech_tokens
+
+        # Text tokens = !speech_tokens & !image_tokens & !padding_idx
         text_tokens = torch.logical_and(
-            torch.logical_not(image_tokens), flat_target != self.padding_idx
+            torch.logical_not(speech_tokens),
+            torch.logical_and(
+                torch.logical_not(image_tokens), flat_target != self.padding_idx
+            ),
         )
         text_loss_unreduced = loss_flattened * text_tokens
 
@@ -180,6 +189,9 @@ class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
             # Text Modality
             "text_loss": text_loss_unreduced.sum().data,
             "text_ntokens": text_tokens.sum().data,
+            # Speech Modality:
+            "speech_loss": speech_loss_unreduced.sum().data,
+            "speech_ntokens": speech_tokens.sum().data,
             # Metadata
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
@@ -216,10 +228,12 @@ class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         image_sum = sum(log.get("image_loss", 0) for log in logging_outputs)
         text_sum = sum(log.get("text_loss", 0) for log in logging_outputs)
+        speech_sum = sum(log.get("speech_loss", 0) for log in logging_outputs)
 
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         ntokens_image = sum(log.get("image_ntokens", 0) for log in logging_outputs)
         ntokens_text = sum(log.get("text_ntokens", 0) for log in logging_outputs)
+        ntokens_speech = sum(log.get("speech_ntokens", 0) for log in logging_outputs)
 
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -264,6 +278,17 @@ class VocabParallelCrossEntropyCM3Criterion(BaseCriterion):
         )
         metrics.log_derived(
             "ppl_text", lambda meters: utils.get_perplexity(meters["loss_text"].avg)
+        )
+
+        # SPEECH MODALITY
+        metrics.log_scalar(
+            "loss_speech",
+            speech_sum / ntokens_speech / math.log(2),
+            ntokens_speech,
+            round=3,
+        )
+        metrics.log_derived(
+            "ppl_speech", lambda meters: utils.get_perplexity(meters["loss_speech"].avg)
         )
 
     @staticmethod
