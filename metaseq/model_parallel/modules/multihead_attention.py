@@ -13,6 +13,7 @@ from torch import Tensor, nn
 from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
+from metaseq.utils import init_method_normal_trunc, scaled_init_method_normal_trunc
 
 try:
     from megatron.mpu import (
@@ -26,7 +27,6 @@ try:
         ScaledUpperTriangMaskedSoftmax,
         ScaledMaskedSoftmax,
     )
-    from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -171,9 +171,7 @@ class ModelParallelMultiheadAttention(nn.Module):
 
             if full_megatron_init:
                 assert megatron_init_sigma is not None
-                init_method_weights = megatron_utils.init_method_normal(
-                    megatron_init_sigma
-                )
+                init_method_weights = init_method_normal_trunc(megatron_init_sigma)
                 init_method_bias = None
             else:
                 init_method_weights = (
@@ -249,7 +247,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         if full_megatron_init:
             assert megatron_init_sigma is not None
             assert num_layers is not None
-            init_method_weights = megatron_utils.scaled_init_method_normal(
+            init_method_weights = scaled_init_method_normal_trunc(
                 megatron_init_sigma, num_layers
             )
         self.out_proj = RowParallelLinear(

@@ -11,6 +11,7 @@ import os
 import random
 import sys
 import warnings
+import math
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -34,6 +35,29 @@ logger = logging.getLogger(__name__)
 
 
 MANIFOLD_PATH_SEP = "|"
+
+
+def init_method_normal_trunc(sigma):
+    """Init method based on N(0, sigma)."""
+
+    def init_(tensor):
+        return torch.nn.init.trunc_normal_(
+            tensor, mean=0.0, std=sigma, a=-2 * sigma, b=2 * sigma
+        )
+
+    return init_
+
+
+def scaled_init_method_normal_trunc(sigma, num_layers):
+    """Init method based on N(0, sigma/sqrt(2*num_layers)."""
+    std = sigma / math.sqrt(2.0 * num_layers)
+
+    def init_(tensor):
+        return torch.nn.init.trunc_normal_(
+            tensor, mean=0.0, std=std, a=-2 * std, b=2 * std
+        )
+
+    return init_
 
 
 class FileContentsAction(argparse.Action):
