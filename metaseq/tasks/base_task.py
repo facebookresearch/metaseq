@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List
 import torch
 from omegaconf import DictConfig
 
-from metaseq import metrics, tokenizer, utils
+from metaseq import metrics, tokenizer
 from metaseq.data import Dictionary, BaseDataset, data_utils, encoders, iterators
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.dataclass.utils import gen_parser_from_dataclass
@@ -71,8 +71,8 @@ class BaseTask(object):
     def logging_outputs_can_be_summed(criterion) -> bool:
         """
         Whether the logging outputs returned by `train_step` and `valid_step` can
-        be summed across workers prior to calling `aggregate_logging_outputs`.
-        Setting this to True will improves distributed training speed.
+        be summed across workers prior to calling `reduce_metrics`.
+        Setting this to True will improve distributed training speed.
         """
         return criterion.logging_outputs_can_be_summed()
 
@@ -430,33 +430,8 @@ class BaseTask(object):
         """Hook function called before the start of each validation epoch."""
         pass
 
-    def aggregate_logging_outputs(self, logging_outputs, criterion):
-        """[deprecated] Aggregate logging outputs from data parallel training."""
-        utils.deprecation_warning(
-            "The aggregate_logging_outputs API is deprecated. "
-            "Please use the reduce_metrics API instead."
-        )
-        with metrics.aggregate() as agg:
-            self.reduce_metrics(logging_outputs, criterion)
-            return agg.get_smoothed_values()
-
     def reduce_metrics(self, logging_outputs, criterion):
         """Aggregate logging outputs from data parallel training."""
-        # backward compatibility for tasks that override aggregate_logging_outputs
-        base_func = BaseTask.aggregate_logging_outputs
-        self_func = getattr(self, "aggregate_logging_outputs").__func__
-        if self_func is not base_func:
-            utils.deprecation_warning(
-                "Tasks should implement the reduce_metrics API. "
-                "Falling back to deprecated aggregate_logging_outputs API."
-            )
-            agg_logging_outputs = self.aggregate_logging_outputs(
-                logging_outputs, criterion
-            )
-            for k, v in agg_logging_outputs.items():
-                metrics.log_scalar(k, v)
-            return
-
         if not any("ntokens" in log for log in logging_outputs):
             warnings.warn(
                 "ntokens not found in Criterion logging outputs, cannot log wpb or wps"

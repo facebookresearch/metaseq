@@ -128,8 +128,8 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
-        min_len = min(max_len - 1, self.min_len or 0)
+        max_len = min(self.model.max_decoder_positions(), self.max_len_b or 1e99)
+        min_len = min(max_len, self.min_len or 0)
 
         assert (
             min_len <= max_len
