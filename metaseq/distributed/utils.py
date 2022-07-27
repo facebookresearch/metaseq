@@ -200,9 +200,9 @@ def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
     after_distributed_init_fn = kwargs.pop("after_distributed_init_fn", None)
     if after_distributed_init_fn:
         cfg = after_distributed_init_fn(cfg)
-    main(cfg, **kwargs)
-
+    retval = main(cfg, **kwargs)
     global_barrier()
+    return retval
 
 
 def global_barrier():
