@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 
 from torch.nn.modules.loss import _Loss
 
-from metaseq import metrics, utils
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.dataclass.utils import gen_parser_from_dataclass
 
@@ -70,29 +69,10 @@ class BaseCriterion(_Loss):
         """
         raise NotImplementedError
 
-    @staticmethod
-    def aggregate_logging_outputs(
-        logging_outputs: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Aggregate logging outputs from data parallel training."""
-        utils.deprecation_warning(
-            "The aggregate_logging_outputs API is deprecated. "
-            "Please use the reduce_metrics API instead."
-        )
-        raise NotImplementedError
-
     @classmethod
     def reduce_metrics(cls, logging_outputs: List[Dict[str, Any]]) -> None:
         """Aggregate logging outputs from data parallel training."""
-        utils.deprecation_warning(
-            "Criterions should implement the reduce_metrics API. "
-            "Falling back to deprecated aggregate_logging_outputs API."
-        )
-        agg_logging_outputs = cls.aggregate_logging_outputs(logging_outputs)
-        for k, v in agg_logging_outputs.items():
-            if k in {"nsentences", "ntokens", "sample_size"}:
-                continue
-            metrics.log_scalar(k, v)
+        raise NotImplementedError
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:

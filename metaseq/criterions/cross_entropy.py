@@ -131,6 +131,6 @@ class CrossEntropyCriterion(BaseCriterion):
         """
         Whether the logging outputs returned by `forward` can be summed
         across workers prior to calling `reduce_metrics`. Setting this
-        to True will improves distributed training speed.
+        to True will improve distributed training speed.
         """
         return True
