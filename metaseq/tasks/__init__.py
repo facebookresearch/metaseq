@@ -129,26 +129,7 @@ for file in os.listdir(tasks_dir):
             TASK_REGISTRY[task_name].add_args(group_args)
             globals()[task_name + "_parser"] = parser
 
-tasks_dir = os.path.dirname(__file__).replace('metaseq/metaseq', 'metaseq-internal/metaseq_internal')
-if os.path.exists(tasks_dir):
-    for file in os.listdir(tasks_dir):
-        path = os.path.join(tasks_dir, file)
-        if (
-            not file.startswith("_")
-            and not file.startswith(".")
-            and (file.endswith(".py") or os.path.isdir(path))
-        ):
-            task_name = file[: file.find(".py")] if file.endswith(".py") else file
-            module = importlib.import_module("metaseq_internal.tasks." + task_name)
-
-            # expose `task_parser` for sphinx
-            if task_name in TASK_REGISTRY:
-                parser = argparse.ArgumentParser(add_help=False)
-                group_task = parser.add_argument_group("Task name")
-                # fmt: off
-                group_task.add_argument('--task', metavar=task_name,
-                                        help='Enable this task with: ``--task=' + task_name + '``')
-                # fmt: on
-                group_args = parser.add_argument_group("Additional command-line arguments")
-                TASK_REGISTRY[task_name].add_args(group_args)
-                globals()[task_name + "_parser"] = parser
+try:
+    import metaseq_internal.tasks
+except ImportError:
+    pass
