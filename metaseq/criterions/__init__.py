@@ -32,7 +32,9 @@ for file in os.listdir(os.path.dirname(__file__)):
         file_name = file[: file.find(".py")]
         importlib.import_module("metaseq.criterions." + file_name)
 
-for file in os.listdir(os.path.dirname(__file__).replace('metaseq/metaseq', 'metaseq-internal/metaseq_internal')):
-    if file.endswith(".py") and not file.startswith("_"):
-        file_name = file[: file.find(".py")]
-        importlib.import_module("metaseq_internal.criterions." + file_name)
+criterions_dir = os.path.dirname(__file__).replace('metaseq/metaseq', 'metaseq-internal/metaseq_internal')
+if os.path.exists(criterions_dir):
+    for file in os.listdir(criterions_dir):
+        if file.endswith(".py") and not file.startswith("_"):
+            file_name = file[: file.find(".py")]
+            importlib.import_module("metaseq_internal.criterions." + file_name)
