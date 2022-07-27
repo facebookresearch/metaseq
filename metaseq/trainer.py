@@ -663,6 +663,13 @@ class Trainer(object):
     @metrics.aggregate("train")
     def train_step(self, samples, raise_oom=False):
         """Do forward, backward and parameter update."""
+        # with torch.autograd.profiler.record_function("grad_sim"):
+        #     grad_sim_return = self.grad_sim(
+        #         self.cfg.optimization.clip_norm,
+        #         self.cfg.optimization.clip_norm_type,
+        #     )
+        # kill_now()
+
         self._set_seed()
         self.model.train()
         self.criterion.train()

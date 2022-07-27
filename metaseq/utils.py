@@ -367,24 +367,13 @@ def grad_sim_(
         else:
             device = torch.device("cpu")
 
-    # def norm(t, n_type):
-    #     if n_type == "l2":
-    #         return torch.norm(t, p=2, dtype=torch.float32)
-    #     elif n_type == "inf":
-    #         return torch.norm(t, p=float("inf"), dtype=torch.float32)
-    #     else:
-    #         raise ValueError(
-    #             f"Invalid clip_norm_type: {n_type}! Please pass either 'l2' or 'inf'!"
-    #         )
-
     for p in params:
         if hasattr(p, "_is_sharded"):
             sharded_grads.append(p.grad.detach())
         else:
             grads.append(p.grad.detach())
 
-    # for p in params[:3]: # Han: debug, try to see whether the params mostly match across data parallel group (note the fwd and bwd pass would affect the FSDP model)
-    #     print(torch.distributed.get_rank(), p.shape, p)
+    # Han: debug, try to see whether the params mostly match across data parallel group (note the fwd and bwd pass would affect the FSDP model)
 
     from metaseq import checkpoint_utils, utils
     test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{distributed_utils.get_model_parallel_rank()}.pt"
@@ -400,6 +389,9 @@ def grad_sim_(
     )
     print("saving, one example: ", tbs_sharded_grads[2])
 
+    # # only for debugging
+    # test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{1-distributed_utils.get_model_parallel_rank()}.pt" # delete
+    
     # Han: loading the saved sharded grads
     loaded_sharded_grads = torch.load(test_sharded_grads_fn, map_location=device)
     for shared_grads_tensor in loaded_sharded_grads:
@@ -407,6 +399,10 @@ def grad_sim_(
     print("loading, one example: ", loaded_sharded_grads[2])
 
     assert len(grads) == 0 # Han: only consider shared model for now
+    for g, lg in zip(sharded_grads, loaded_sharded_grads):
+        eq_tensor = torch.eq(g, lg) * torch.ne(g, 0) * torch.ne(lg, 0)
+        # print_r0(eq_tensor[:1000])
+        print_r0(eq_tensor.sum() / len(eq_tensor))
 
     # calculate split_norm and all_reduce with other workers
     prods = []
@@ -436,6 +432,21 @@ def grad_sim_(
 
     print(distributed_utils.get_global_rank(), grad_prod)
     return grad_prod
+
+
+# @torch.no_grad()
+# def grad_sim_(
+#     params, max_norm, norm_type="l2", aggregate_norm_fn=None, device=None
+# ) -> torch.Tensor:
+#     if isinstance(params, torch.Tensor):
+#         params = [params]
+#     params = list(params)
+#     print([len(p) for p in params])
+#     for p in params:
+#         if hasattr(p, "_is_sharded"):
+#             print(f"device {torch.distributed.get_rank()}: ", p[:10])
+#             print(f"device {torch.distributed.get_rank()}: ", p.sum())
+#     return 0
 
 
 def fill_with_neg_inf(t):

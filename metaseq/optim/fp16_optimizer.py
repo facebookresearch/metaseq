@@ -509,17 +509,22 @@ class MemoryEfficientFP16Optimizer(
         super().__init__(cfg.optimizer)
         self.wrapped_optimizer = optimizer
 
-        # No loss scaler required for training with bf16
+        # # No loss scaler required for training with bf16
+        # self.scaler = (
+        #     None
+        #     if cfg.common.bf16
+        #     else DynamicLossScaler(
+        #         init_scale=cfg.common.fp16_init_scale,
+        #         scale_window=cfg.common.fp16_scale_window,
+        #         tolerance=cfg.common.fp16_scale_tolerance,
+        #         threshold=cfg.common.threshold_loss_scale,
+        #         min_loss_scale=cfg.common.min_loss_scale,
+        #     )
+        # )
+
+        # Han: try removing the loss scaler
         self.scaler = (
             None
-            if cfg.common.bf16
-            else DynamicLossScaler(
-                init_scale=cfg.common.fp16_init_scale,
-                scale_window=cfg.common.fp16_scale_window,
-                tolerance=cfg.common.fp16_scale_tolerance,
-                threshold=cfg.common.threshold_loss_scale,
-                min_loss_scale=cfg.common.min_loss_scale,
-            )
         )
 
     @classmethod
