@@ -12,12 +12,12 @@ from torch import Tensor, nn
 from torch.nn import Parameter
 
 from metaseq import utils
-from metaseq.incremental_decoding_utils import with_incremental_state
+# from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
 from metaseq.modules.linear import Linear
 
 
-@with_incremental_state
+# @with_incremental_state
 class MultiheadAttention(nn.Module):
     """Multi-headed attention.
 

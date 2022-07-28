@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SequenceGenerator(nn.Module):
+    @torch.no_grad()
     def __init__(
         self,
         models,
@@ -52,53 +53,54 @@ class SequenceGenerator(nn.Module):
         self.unk = tgt_dict.unk()
         self.eos = tgt_dict.eos()
         self.vocab_size = len(tgt_dict)
-        self.beam_size = beam_size
         # the max beam size is the dictionary size - 1, since we never select pad
-        self.beam_size = min(beam_size, self.vocab_size - 1)
-        self.max_len_a = max_len_a
-        self.max_len_b = max_len_b
-        self.min_len = min_len
+        self.default_beam_size = min(beam_size, self.vocab_size - 1)
+        self.default_max_len_a = max_len_a
+        self.default_max_len_b = max_len_b
+        self.default_min_len = min_len
         self.need_logprobs = need_logprobs
         self.stop = stop if stop is not None else []
         if topp is None:
             topp = 0.0
-        self.sampling_topp = max(0, topp)
-        self.temperature = temperature
+        self.default_sampling_topp = max(0, topp)
+        self.default_temperature = temperature
         assert temperature > 0, "--temperature must be greater than 0"
 
         self.model.eval()
         self.profile = profile
 
-
-        self.max_bsz = 5
-        self.max_len = 128
+        # [Naman] This is hardcoded for now for nbest=1 and seq-len=2048.
+        # With this setting, I am seeing 95 ms -> 66 ms per token latency improvement.
+        # We can make it better by creating multiple cuda graphs for various bucketed seq_len.
+        max_bsz = 1
+        max_len = 2048
 
         decoder = self.model.decoder
         dtype = next(decoder.parameters()).dtype
         self.static_single_input_embedding = torch.zeros(
-            (self.max_bsz, 1, decoder.embed_dim),
+            (max_bsz, 1, decoder.embed_dim),
             device='cuda',
             dtype=dtype,
         )
         self.static_masked_tokens = torch.zeros((
-            self.max_bsz * decoder.layers[0].self_attn.num_heads_partition,
-            self.max_len,
+            max_bsz * decoder.layers[0].self_attn.num_heads_partition,
+            max_len,
             decoder.layers[0].head_dim
         ), dtype=torch.bool, device='cuda')
         self.static_self_attn_padding_mask = torch.ones(
-            (self.max_bsz, self.max_len),
+            (max_bsz, max_len),
             dtype=torch.bool, device='cuda'
         )
         self.static_incremental_states = []
         for _ in range(len(decoder.layers)):
-            prev_key = torch.zeros((self.max_bsz * decoder.layers[0].self_attn.num_heads_partition, self.max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
-            prev_value = torch.zeros((self.max_bsz * decoder.layers[0].self_attn.num_heads_partition, self.max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
+            prev_key = torch.zeros((max_bsz * decoder.layers[0].self_attn.num_heads_partition, max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
+            prev_value = torch.zeros((max_bsz * decoder.layers[0].self_attn.num_heads_partition, max_len, decoder.layers[0].head_dim), dtype=dtype, device='cuda')
             self.static_incremental_states.append({
                 'prev_key': prev_key,
                 'prev_value': prev_value,
             })
         self._warmup()
-        self._record_graph()
+        self.recorded_graph = self._record_graph()
         self._run_recorded_graph()
 
     def _warmup(self):
@@ -131,15 +133,15 @@ class SequenceGenerator(nn.Module):
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
-        self.recorded_graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.recorded_graph):
+        recorded_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(recorded_graph):
             self.static_output = self.model.decoder.forward_transformer_layers(
                 self.static_single_input_embedding,
                 incremental_state=self.static_incremental_states,
                 self_attn_mask=None,
                 encoder_out=None,
                 self_attn_padding_mask=self.static_self_attn_padding_mask,
-                static_masked_tokens=self.static_masked_tokens
+                static_masked_tokens=self.static_masked_tokens,
             )
         end.record()
         torch.cuda.synchronize()
@@ -148,6 +150,7 @@ class SequenceGenerator(nn.Module):
         # Params have been updated. static_y_pred, static_loss, and .grad
         # attributes hold values from computing on this iteration's data.
         logger.info(f"time taken in recoding graph: {time}")
+        return recorded_graph
 
 
     def _run_recorded_graph(self):
@@ -195,6 +198,12 @@ class SequenceGenerator(nn.Module):
         sample: Dict[str, Dict[str, Tensor]],
         prefix_tokens: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
+        beam_size: Optional[int] = None,
+        max_len_a: Optional[int] = None,
+        max_len_b: Optional[int] = None,
+        min_len: Optional[int] = None,
+        temperature: Optional[float] = None,
+        sampling_topp: Optional[float] = None,
     ):
         """
         Args:
@@ -228,10 +237,15 @@ class SequenceGenerator(nn.Module):
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]
-        beam_size = self.beam_size
+        beam_size = beam_size or self.default_beam_size
+        max_len_a = max_len_a or self.default_max_len_a
+        max_len_b = max_len_b or self.default_max_len_b
+        min_len = min_len or self.default_min_len
+        temperature = temperature or self.default_temperature
+        sampling_topp = sampling_topp or self.default_sampling_topp
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
-        min_len = min(max_len - 1, self.min_len or 0)
+        max_len = min(self.model.max_decoder_positions() - 1, max_len_b or 1e99)
+        min_len = min(max_len - 1, min_len or 0)
 
         assert (
             min_len <= max_len
@@ -276,24 +290,14 @@ class SequenceGenerator(nn.Module):
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
 
-        self.static_masked_tokens.fill_(False)
-        self.static_masked_tokens[:, :start_step, :] = True
-        self.static_self_attn_padding_mask.fill_(True)
-        self.static_self_attn_padding_mask[:, :start_step] = False
         model_out = self.model.decoder(
-            tokens[:, :start_step],
-            incremental_state=self.static_incremental_states,
-            self_attn_padding_mask=self.static_self_attn_padding_mask,
-            static_masked_tokens=self.static_masked_tokens
-
+            tokens[:, :start_step]
         )
         self._copy_incremental_state_to_static_ones(model_out[2], offset=0)
-        # if torch.distributed.get_rank() == 0:
-        #     from metaseq.pdb import set_trace; set_trace()
 
 
         # normalize
-        model_out[0].div_(self.temperature, rounding_mode="trunc")
+        model_out[0].div_(temperature, rounding_mode="trunc")
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
         lprobs = self.model.get_normalized_probs(model_out, log_probs=True, sample=None)
@@ -347,7 +351,7 @@ class SequenceGenerator(nn.Module):
             lprobs[eos_mask, self.eos + 1 :] = -math.inf
 
             # find our next tokens and record them
-            next_scores, next_toks = self._sample_topp(lprobs)
+            next_scores, next_toks = self._sample_topp(lprobs, sampling_topp, temperature)
             tokens[:, step] = next_toks
             scores[:, step] = next_scores
 
@@ -359,7 +363,11 @@ class SequenceGenerator(nn.Module):
             if torch.all(eos_mask):
                 break
 
-            x, tok, pos = self.model.decoder.forward_embedding(tokens[:, : step + 1], None)
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+
+            x, _, _ = self.model.decoder.forward_embedding(tokens[:, : step + 1], None)
             # forward through the next pass
             self.static_masked_tokens.fill_(False)
             self.static_masked_tokens[:, step: step+1, :] = True
@@ -367,18 +375,18 @@ class SequenceGenerator(nn.Module):
             self.static_self_attn_padding_mask[:, :step+1].fill_(False)
             self.static_single_input_embedding.copy_(x[:, -1:, :])
             self.recorded_graph.replay()
-            # model_out = self.model.decoder(
-            #     tokens[:, : step + 1],
-            #     incremental_state=incremental_states,
-            # )
-            model_out = (self.static_output[0], self.static_output[1])
+            # model_out = (self.static_output[0], self.static_output[1])
+            torch.cuda.synchronize()
+            model_out = (self.model.decoder.output_layer(self.static_output[0]), self.static_output[1])
 
-            # if torch.distributed.get_rank() == 0:
-            #     from metaseq.pdb import set_trace; set_trace()
-            # else:
-            #     from time import sleep; sleep(10000)
-            # self._copy_incremental_state_to_static_ones(self.static_output[2], offset=step+1)
-            model_out[0].div_(self.temperature)
+
+            end.record()
+            torch.cuda.synchronize()
+
+            time = start.elapsed_time(end)
+            logger.info(f"time for replaying recorded graph: {time}")
+
+            model_out[0].div_(temperature)
             lprobs = self.model.get_normalized_probs(
                 model_out, log_probs=True, sample=None
             )
@@ -407,7 +415,7 @@ class SequenceGenerator(nn.Module):
             )
         return retval
 
-    def _sample_topp(self, lprobs):
+    def _sample_topp(self, lprobs,  sampling_topp, temperature):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
 
         See `"The Curious Case of Neural Text Degeneration"
@@ -424,13 +432,13 @@ class SequenceGenerator(nn.Module):
             truncated_indices: (bsz x input_beam_size x ?)
                 the indices of the chosen elements.
         """
-        if self.temperature == 0.0 or self.sampling_topp == 0.0:
+        if temperature == 0.0 or sampling_topp == 0.0:
             # greedy search
             return tuple(lprobs.max(dim=-1))
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        mask = (sprobs.cumsum(dim=-1) - sprobs) >= sampling_topp
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))

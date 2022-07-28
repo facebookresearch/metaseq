@@ -533,6 +533,11 @@ class GeneratorInterface:
         self.models = models
         self.src_dict = src_dict
         self.tgt_dict = tgt_dict
+        self.generator = self.task.build_generator(
+            self.models,
+            self.cfg.generation,
+            # extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
+        )
 
         return models
 
@@ -573,20 +578,21 @@ class GeneratorInterface:
             utils.set_torch_seed(seed)
         start_time = time.time()
         total_generation_time = 0
+        gen_args = {}
 
         # Initialize generator
         if not best_of:
             best_of = n
         assert best_of >= n
-        self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
-        self.cfg.generation.sampling = top_p > 0.0
-        self.cfg.generation.beam = best_of
+        gen_args['sampling_topp'] = top_p if top_p > 0 else -1
+        # gen_args['sampling'] = top_p > 0.0
+        gen_args['beam_size'] = best_of
         if temperature > 0:
-            self.cfg.generation.temperature = temperature
+            gen_args['temperature'] = temperature
         elif temperature == 0:
-            self.cfg.generation.sampling = False
-            self.cfg.generation.temperature = 1.0
-            self.cfg.generation.sampling_topp = -1
+            # gen_args['sampling'] = False
+            gen_args['temperature'] = 1.0
+            gen_args['sampling_topp'] = -1
         elif temperature < 0:
             raise ValueError("temperature must be >= 0 and <= 1")
 
@@ -619,24 +625,28 @@ class GeneratorInterface:
                 MAX_SEQ_LEN, max(max_tokens) + src_lengths.max().item()
             )
             total_min_tokens = max(min_tokens) + src_lengths.max().item()
-            self.cfg.generation.min_len = total_min_tokens
-            self.cfg.generation.max_len_b = total_max_tokens
-            self.cfg.generation.max_len_a = 0
 
-            logger.info(f"Preparing generator with settings {self.cfg.generation}")
+            gen_args.update({
+                'min_len': total_min_tokens,
+                'max_len_b': total_max_tokens,
+                'max_len_a': 0
+            })
+
+            logger.info(f"Preparing generator with settings {gen_args}")
             need_logprobs = True if logprobs > 0 else False
-            generator = self.task.build_generator(
-                self.models,
-                self.cfg.generation,
-                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
-            )
+
             # okay actually generate
             logger.info(f"Executing generation on input tensor size {src_tokens.shape}")
             if use_cuda:
                 batch = utils.move_to_cuda(batch)
 
             translate_start_time = time.time()
-            translations = self.task.inference_step(generator, self.models, batch)
+            translations = self.task.inference_step(
+                self.generator,
+                self.models,
+                batch,
+                **gen_args,
+            )
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
 

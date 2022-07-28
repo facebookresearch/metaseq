@@ -137,6 +137,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                     request_object, src_rank=0, group=dist_utils.get_global_group()
                 )
                 try:
+                    print(request_object)
                     generations = generator.generate(**request_object)
                 except RuntimeError:
                     # Probably cuda died. Unfortunately, we need to hard crash
@@ -295,6 +296,8 @@ def completions(engine=None):
         generation_args["n"] = min(5, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
+
+    assert generation_args["n"] == 1, "only --n=1 supported for now with cuda graphs"
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):

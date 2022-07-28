@@ -11,7 +11,6 @@ import torch
 from torch import Tensor, nn
 
 from metaseq import utils
-from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
 
 try:
@@ -37,7 +36,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# @with_incremental_state
 class ModelParallelMultiheadAttention(nn.Module):
     """Model parallel Multi-headed attention.
     This performs the Multi-headed attention over multiple gpus.
