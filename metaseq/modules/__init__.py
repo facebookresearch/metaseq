@@ -6,6 +6,7 @@
 
 from .dropout import Dropout
 from .gelu import gelu, gelu_accurate
+from .fp32_group_norm import Fp32GroupNorm
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .multihead_attention import MultiheadAttention
@@ -15,6 +16,7 @@ from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 
 __all__ = [
     "Dropout",
+    "Fp32GroupNorm",
     "Fp32LayerNorm",
     "gelu",
     "gelu_accurate",

@@ -128,3 +128,8 @@ for file in os.listdir(tasks_dir):
             group_args = parser.add_argument_group("Additional command-line arguments")
             TASK_REGISTRY[task_name].add_args(group_args)
             globals()[task_name + "_parser"] = parser
+
+try:
+    import metaseq_internal.tasks
+except ImportError:
+    pass
