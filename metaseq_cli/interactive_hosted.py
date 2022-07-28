@@ -134,7 +134,9 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 # do the actual generations
                 request_object["seed"] = random.randint(1, 20000)
                 distributed_utils.broadcast_object(
-                    request_object, src_rank=0, group=distributed_utils.get_global_group()
+                    request_object,
+                    src_rank=0,
+                    group=distributed_utils.get_global_group(),
                 )
                 try:
                     generations = generator.generate(**request_object)

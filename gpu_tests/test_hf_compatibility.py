@@ -130,7 +130,9 @@ class TestHFCompatibility(unittest.TestCase):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
         cfg = create_generation_config_with_defaults(model_path)
-        distributed_utils.call_main(cfg, load_mp_model_and_run_eval, model_path=model_path)
+        distributed_utils.call_main(
+            cfg, load_mp_model_and_run_eval, model_path=model_path
+        )
 
         # Verify that the generated logits match the consolidated model logits
         mp_logits_list = [
