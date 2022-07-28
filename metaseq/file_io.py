@@ -216,7 +216,7 @@ def torch_load_cpu(path):
         return state
     if "cfg" in state:
         state["cfg"] = recursively_cast_dictconfigs(state["cfg"])
-        if state["cfg"]["common"]["bf16"]:
+        if state["cfg"]["common"].get("bf16", False):
             state["model"] = {k: v.bfloat16() for k, v in state["model"].items()}
         elif (
             state["cfg"]["common"]["fp16"]
