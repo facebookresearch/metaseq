@@ -36,7 +36,7 @@ import torch
 from metaseq import options, tasks, checkpoint_utils, utils
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.distributed.stitch_fsdp_ckpt import reshard_megatron_parts
 
@@ -122,14 +122,14 @@ def worker_main(cfg: MetaseqConfig):
         model = models[0]
 
     # consolidate everything on rank0
-    mp_size = dist_utils.get_model_parallel_world_size()
+    mp_size = distributed_utils.get_model_parallel_world_size()
     model_parts = [{} for _ in range(mp_size)]
 
     with model.summon_full_params():
         for name, p in model.named_parameters():
             gathered = [torch.zeros_like(p) for _ in range(mp_size)]
             torch.distributed.all_gather(
-                gathered, p, group=dist_utils.get_global_group()
+                gathered, p, group=distributed_utils.get_global_group()
             )
             for r, t in enumerate(gathered):
                 model_parts[r][name] = t.cpu()
@@ -149,7 +149,7 @@ def worker_main(cfg: MetaseqConfig):
     output_sd["cfg"]["model"].arch = "transformer_lm"
     output_sd["cfg"]["model"]._name = "transformer_lm"
 
-    if dist_utils.get_global_rank() == 0:
+    if distributed_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
             torch.save(output_sd, f)
 
@@ -161,7 +161,7 @@ def main():
     args = real_parser.parse_args()
 
     cfg = create_generation_config_with_defaults(args.location)
-    dist_utils.call_main(cfg, worker_main)
+    distributed_utils.call_main(cfg, worker_main)
 
 
 if __name__ == "__main__":

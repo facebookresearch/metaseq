@@ -18,7 +18,7 @@ from omegaconf import OmegaConf
 
 from metaseq.dataclass.configs import CheckpointConfig, DistributedTrainingConfig
 from metaseq.dataclass.utils import overwrite_args_by_name
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
@@ -383,7 +383,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
     # make sure everyone is done downloading their checkpoints before we load
-    dist_utils.global_barrier()
+    distributed_utils.global_barrier()
 
     extra_state = trainer.load_checkpoint(
         checkpoint_path_to_load,
@@ -429,7 +429,7 @@ def get_paths_to_load(local_path, suffix="rank-"):
     if not _is_checkpoint_sharded(checkpoint_files):
         return [local_path]
     checkpoint_files_count = len(checkpoint_files)
-    world_size = dist_utils.get_data_parallel_world_size()
+    world_size = distributed_utils.get_data_parallel_world_size()
     fnames = []
     if world_size >= checkpoint_files_count:
         return [local_path]
@@ -437,7 +437,7 @@ def get_paths_to_load(local_path, suffix="rank-"):
     assert checkpoint_files_count % world_size == 0
 
     n_local_files = int(checkpoint_files_count / world_size)
-    rank = dist_utils.get_data_parallel_rank()
+    rank = distributed_utils.get_data_parallel_rank()
     start_rank = n_local_files * rank  #
     for rank_to_load in range(start_rank, start_rank + n_local_files):
         fname = re.sub(
@@ -700,7 +700,7 @@ def _upgrade_state_dict(state):
 def verify_checkpoint_directory(save_dir: str) -> None:
     if not os.path.exists(save_dir):
         os.makedirs(save_dir, exist_ok=True)
-    rank = dist_utils.get_global_rank()
+    rank = distributed_utils.get_global_rank()
     temp_file_path = os.path.join(save_dir, f"dummy{rank}")
     try:
         with open(temp_file_path, "w"):
@@ -723,7 +723,7 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
     local_state_dict to allow resumption on a different world size.
     """
     merged_state = {}
-    world_size = dist_utils.get_data_parallel_world_size()
+    world_size = distributed_utils.get_data_parallel_world_size()
     for key in shards_to_load[0].keys():
         merged_state[key] = shards_to_load[0][key]
 
@@ -755,7 +755,7 @@ def _merge_flat_fsdp_opt_state(shards_to_load: List[Dict]) -> Dict:
     """Logic described here: https://tinyurl.com/2p86zffr"""
     result = shards_to_load[0][OPT_KEY]
     pad_info = _get_pad_info(shards_to_load[-1])
-    world_size = dist_utils.get_data_parallel_world_size()
+    world_size = distributed_utils.get_data_parallel_world_size()
     os2model_key = dict(
         zip(shards_to_load[0][OPT_KEY]["state"].keys(), pad_info.keys())
     )

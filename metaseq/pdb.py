@@ -48,9 +48,9 @@ def set_trace():
 
 
 def set_trace_rank0():
-    import metaseq.distributed.utils as dist_utils
+    import metaseq.distributed.utils as distributed_utils
 
-    if dist_utils.get_global_rank() == 0:
+    if distributed_utils.get_global_rank() == 0:
         set_trace()
     else:
         while True:

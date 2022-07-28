@@ -14,7 +14,7 @@ from torch import Tensor
 from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
-from metaseq.distributed import utils as dist_utils, fsdp_wrap
+from metaseq.distributed import utils as distributed_utils, fsdp_wrap
 from metaseq.models import BaseEncoder, IncrementalDecoder
 from metaseq.modules import (
     Dropout,
@@ -101,7 +101,7 @@ class TransformerEncoder(BaseEncoder):
         layer = fsdp_wrap(
             layer,
             min_num_params=min_params_to_wrap,
-            process_group=dist_utils.get_data_parallel_group(),
+            process_group=distributed_utils.get_data_parallel_group(),
         )
         return layer
 
@@ -346,7 +346,7 @@ class TransformerDecoder(IncrementalDecoder):
                 layer_block = fsdp_wrap(
                     layer_block,
                     min_num_params=min_params_to_wrap,
-                    process_group=dist_utils.get_data_parallel_group(),
+                    process_group=distributed_utils.get_data_parallel_group(),
                 )
                 self.layers.append(layer_block)
         else:
@@ -460,7 +460,7 @@ class TransformerDecoder(IncrementalDecoder):
         layer = fsdp_wrap(
             layer,
             min_num_params=min_params_to_wrap,
-            process_group=dist_utils.get_data_parallel_group(),
+            process_group=distributed_utils.get_data_parallel_group(),
         )
         return layer
 
