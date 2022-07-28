@@ -57,37 +57,6 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module):
     return x
 
 
-class FeedForwardNetwork(nn.Module):
-    """
-    Feed Forward Network layer in the Transformer model
-    """
-
-    def __init__(self, args, embed_dim, ffn_dim, dropout_module=None):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.activation_fn = utils.get_activation_fn(
-            activation=str(args.activation_fn)
-            if getattr(args, "activation_fn", None) is not None
-            else "relu"
-        )
-        self.fc1 = Linear(self.embed_dim, ffn_dim)
-        self.fc2 = Linear(ffn_dim, self.embed_dim)
-        self.dropout_module = (
-            Dropout(args.dropout, module_name=self.__class__.__name__)
-            if not dropout_module
-            else dropout_module
-        )
-
-    def forward(self, x):
-        return _ffn(
-            x,
-            fc1=self.fc1,
-            activation_fn=self.activation_fn,
-            fc2=self.fc2,
-            dropout_module=self.dropout_module,
-        )
-
-
 class TransformerEncoderLayer(nn.Module):
     """Encoder layer block.
 

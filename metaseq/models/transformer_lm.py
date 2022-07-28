@@ -248,15 +248,3 @@ def transformer_lm_gpt2_tiny(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")
     base_lm_architecture(args)
-
-
-@register_model_architecture("transformer_lm", "transformer_lm_gpt2_bigger")
-def transformer_lm_gpt2_bigger(args):
-    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 2048)
-    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 8192)
-    args.decoder_layers = getattr(args, "decoder_layers", 48)
-    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 32)
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
-    args.activation_fn = getattr(args, "activation_fn", "gelu")
-    base_lm_architecture(args)
