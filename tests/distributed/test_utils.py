@@ -9,7 +9,7 @@ import unittest
 
 import torch
 
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from .utils import objects_are_equal, spawn_and_init
 
 
@@ -59,7 +59,7 @@ class TestBroadcastObject(DistributedTest):
 
     @staticmethod
     def _test_broadcast_object(ref_obj, rank, group):
-        obj = dist_utils.broadcast_object(
+        obj = distributed_utils.broadcast_object(
             ref_obj if rank == 0 else None, src_rank=0, group=group
         )
         assert objects_are_equal(ref_obj, obj)
@@ -102,7 +102,7 @@ class TestAllGatherList(DistributedTest):
 
     @staticmethod
     def _test_all_gather_list_equality(ref_obj, rank, group):
-        objs = dist_utils.all_gather_list(ref_obj, group)
+        objs = distributed_utils.all_gather_list(ref_obj, group)
         for obj in objs:
             assert objects_are_equal(ref_obj, obj)
 
@@ -114,7 +114,7 @@ class TestAllGatherList(DistributedTest):
     @staticmethod
     def _test_all_gather_list_rank_tensor(rank, group):
         obj = torch.tensor([rank])
-        objs = dist_utils.all_gather_list(obj, group)
+        objs = distributed_utils.all_gather_list(obj, group)
         for i, obj in enumerate(objs):
             assert obj.item() == i
 

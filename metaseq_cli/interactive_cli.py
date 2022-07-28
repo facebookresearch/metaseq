@@ -21,7 +21,7 @@ import torch
 from metaseq import options
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.constants import (
     TOTAL_WORLD_SIZE,
@@ -69,8 +69,8 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
     logging.getLogger("metaseq.hub_utils").setLevel(logging.WARNING)
 
     logger.info(f"loaded model {cfg.distributed_training.distributed_rank}")
-    request_object = dist_utils.broadcast_object(
-        None, src_rank=0, group=dist_utils.get_global_group()
+    request_object = distributed_utils.broadcast_object(
+        None, src_rank=0, group=distributed_utils.get_global_group()
     )
     if torch.distributed.get_rank() == 0:
         while True:
@@ -80,16 +80,16 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
                 "inputs": [tokens],
                 "max_tokens": [128],
             }
-            dist_utils.broadcast_object(
-                request_object, src_rank=0, group=dist_utils.get_global_group()
+            distributed_utils.broadcast_object(
+                request_object, src_rank=0, group=distributed_utils.get_global_group()
             )
             generations = generator.generate(**request_object)
             print(generations[0][0]["text"])
     else:
         # useful in FSDP setting
         while True:
-            request_object = dist_utils.broadcast_object(
-                None, src_rank=0, group=dist_utils.get_global_group()
+            request_object = distributed_utils.broadcast_object(
+                None, src_rank=0, group=distributed_utils.get_global_group()
             )
             _ = generator.generate(**request_object)
 
@@ -108,7 +108,7 @@ def cli_main():
     args.data = os.path.dirname(args.path)  # hardcode the data arg
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
-    dist_utils.call_main(cfg, worker_main, namespace_args=args)
+    distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
 if __name__ == "__main__":

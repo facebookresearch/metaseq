@@ -16,7 +16,7 @@ from typing import Callable, Optional
 import numpy as np
 import torch
 
-import metaseq.distributed.utils as dist_utils
+import metaseq.distributed.utils as distributed_utils
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +52,16 @@ class JsonlDataset(torch.utils.data.Dataset):
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{path}.fairseq.idx.npy")
         # only build the cache in on the primary worker to prevent overloading nfs
-        if dist_utils.get_global_rank() != 0:
-            dist_utils.global_barrier()
+        if distributed_utils.get_global_rank() != 0:
+            distributed_utils.global_barrier()
         if self.cache.exists() and not recache:
             logger.info(f"Loading up cache: {self.cache}")
             self.offsets = np.load(self.cache, allow_pickle=True)
-        elif dist_utils.get_global_rank() == 0:
+        elif distributed_utils.get_global_rank() == 0:
             self.offsets = self._build_index(path)
             np.save(self.cache, self.offsets, allow_pickle=False)
-        if dist_utils.get_global_rank() == 0:
-            dist_utils.global_barrier()
+        if distributed_utils.get_global_rank() == 0:
+            distributed_utils.global_barrier()
 
         self.epoch = epoch
         self.data_subshard_count = data_subshard_count

@@ -25,7 +25,7 @@ from werkzeug.exceptions import HTTPException
 from metaseq import options
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.queue import PriorityQueueRingShard
 from metaseq.service.workers import WorkItem
@@ -133,8 +133,8 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                             request_object[key] = ro[key]
                 # do the actual generations
                 request_object["seed"] = random.randint(1, 20000)
-                dist_utils.broadcast_object(
-                    request_object, src_rank=0, group=dist_utils.get_global_group()
+                distributed_utils.broadcast_object(
+                    request_object, src_rank=0, group=distributed_utils.get_global_group()
                 )
                 try:
                     generations = generator.generate(**request_object)
@@ -173,8 +173,8 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
     models = generator.load_model()  # noqa: F841
 
     logger.info(f"loaded model {cfg.distributed_training.distributed_rank}")
-    request_object = dist_utils.broadcast_object(
-        None, src_rank=0, group=dist_utils.get_global_group()
+    request_object = distributed_utils.broadcast_object(
+        None, src_rank=0, group=distributed_utils.get_global_group()
     )
     if torch.distributed.get_rank() == 0:
         logger.info(f"Worker engaged! {get_my_ip()}:{port}")
@@ -186,8 +186,8 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
         logger.info(f"Looping engaged! {get_my_ip()}:{port}")
         while True:
             try:
-                request_object = dist_utils.broadcast_object(
-                    None, src_rank=0, group=dist_utils.get_global_group()
+                request_object = distributed_utils.broadcast_object(
+                    None, src_rank=0, group=distributed_utils.get_global_group()
                 )
                 _ = generator.generate(**request_object)
             except Exception:
@@ -355,7 +355,7 @@ def cli_main():
     port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
-    dist_utils.call_main(cfg, worker_main, namespace_args=args)
+    distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import torch
 import unittest
 import torch.nn.functional as F
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
@@ -68,10 +68,10 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 
     gathered_logits = [
         torch.zeros_like(logits)
-        for _ in range(dist_utils.get_model_parallel_world_size())
+        for _ in range(distributed_utils.get_model_parallel_world_size())
     ]
     torch.distributed.all_gather(
-        gathered_logits, logits, group=dist_utils.get_global_group()
+        gathered_logits, logits, group=distributed_utils.get_global_group()
     )
     gathered_logits = torch.cat(gathered_logits, dim=2)
 
@@ -130,7 +130,7 @@ class TestHFCompatibility(unittest.TestCase):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
         cfg = create_generation_config_with_defaults(model_path)
-        dist_utils.call_main(cfg, load_mp_model_and_run_eval, model_path=model_path)
+        distributed_utils.call_main(cfg, load_mp_model_and_run_eval, model_path=model_path)
 
         # Verify that the generated logits match the consolidated model logits
         mp_logits_list = [
