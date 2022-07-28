@@ -30,6 +30,9 @@ except ImportError:
     multi_tensor_l2norm_available = False
 
 
+from metaseq import checkpoint_utils, utils
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -354,7 +357,7 @@ def grad_sim_(
     if isinstance(params, torch.Tensor):
         params = [params]
     params = list(params)
-    params = list(filter(grad_exists, params))
+    
     grads, sharded_grads = [], []
 
     if device is None:
@@ -363,46 +366,56 @@ def grad_sim_(
             # everything on GPU if possible
             device = torch.device("cuda:{}".format(torch.cuda.current_device()))
         elif len(params) > 0:
+            raise ValueError("check device")
             device = params[0].device  # could be "xla"
         else:
+            raise ValueError("check device")
             device = torch.device("cpu")
 
-    for p in params:
-        if hasattr(p, "_is_sharded"):
-            sharded_grads.append(p.grad.detach())
-        else:
-            grads.append(p.grad.detach())
+    debug = False
 
-    # Han: debug, try to see whether the params mostly match across data parallel group (note the fwd and bwd pass would affect the FSDP model)
+    if not debug:
+        params = list(filter(grad_exists, params))
+        for p in params:
+            if hasattr(p, "_is_sharded"):
+                sharded_grads.append(p.grad.detach())
+            else:
+                grads.append(p.grad.detach())
+        loaded_sharded_grads = sharded_grads
+    else:
+        # Han: debug, try to see whether the params mostly match across data parallel group (note the fwd and bwd pass would affect the FSDP model)
+        for p in params:
+            if hasattr(p, "_is_sharded"):
+                sharded_grads.append(p.detach()) # use param for debugging
+            else:
+                sharded_grads.append(p.detach()) # use param for debugging
 
-    from metaseq import checkpoint_utils, utils
-    test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{distributed_utils.get_model_parallel_rank()}.pt"
-    # Han: a casual saving
-    tbs_sharded_grads = utils.move_to_cpu(
-        sharded_grads,
-        # keep params in FP16 when training with --memory-efficient-fp16
-        cast_to_fp32=False,
-    )
-    checkpoint_utils.torch_persistent_save(
-        tbs_sharded_grads,
-        test_sharded_grads_fn,
-    )
-    print("saving, one example: ", tbs_sharded_grads[2])
+        test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{distributed_utils.get_model_parallel_rank()}.pt"
+        # Han: a casual saving
+        tbs_sharded_grads = utils.move_to_cpu(
+            sharded_grads,
+            # keep params in FP16 when training with --memory-efficient-fp16
+            cast_to_fp32=False,
+        )
+        checkpoint_utils.torch_persistent_save(
+            tbs_sharded_grads,
+            test_sharded_grads_fn,
+        )
+        print("saving, one example: ", tbs_sharded_grads[2])
 
-    # # only for debugging
-    # test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{1-distributed_utils.get_model_parallel_rank()}.pt" # delete
-    
-    # Han: loading the saved sharded grads
-    loaded_sharded_grads = torch.load(test_sharded_grads_fn, map_location=device)
-    for shared_grads_tensor in loaded_sharded_grads:
-        shared_grads_tensor.half() # Han: default in using FP16 for now
-    print("loading, one example: ", loaded_sharded_grads[2])
+        # Han: only for debugging
+        test_sharded_grads_fn = f"/private/home/xhan77/finetune_models/test_sharded_grads_mpr{1-distributed_utils.get_model_parallel_rank()}.pt" # delete
+        
+        # Han: loading the saved sharded grads (TODO load only once in the parent function instead of for each train ex)
+        loaded_sharded_grads = torch.load(test_sharded_grads_fn, map_location=device)
+        for shared_grads_tensor in loaded_sharded_grads:
+            shared_grads_tensor.half() # Han: default in using FP16 for now
+        print("loading, one example: ", loaded_sharded_grads[2])
 
-    assert len(grads) == 0 # Han: only consider shared model for now
-    for g, lg in zip(sharded_grads, loaded_sharded_grads):
-        eq_tensor = torch.eq(g, lg) * torch.ne(g, 0) * torch.ne(lg, 0)
-        # print_r0(eq_tensor[:1000])
-        print_r0(eq_tensor.sum() / len(eq_tensor))
+        assert len(grads) == 0 # Han: only consider shared model for now
+        for g, lg in zip(sharded_grads, loaded_sharded_grads):
+            eq_tensor = torch.eq(g, lg) * torch.ne(g, 0) * torch.ne(lg, 0) # cannot do len() in this case
+            print_r0(eq_tensor.sum() / (torch.ne(g, 0) * torch.ne(lg, 0)).sum())
 
     # calculate split_norm and all_reduce with other workers
     prods = []

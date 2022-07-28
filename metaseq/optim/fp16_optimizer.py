@@ -10,7 +10,7 @@ import torch
 from omegaconf import DictConfig
 
 from metaseq import optim
-from .dynamic_loss_scaler import DynamicLossScaler
+# from .dynamic_loss_scaler import DynamicLossScaler
 
 
 class _FP16OptimizerMixin(object):
@@ -254,17 +254,22 @@ class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
         self.fp32_optimizer = fp32_optimizer
         self.fp32_params = fp32_params
 
-        # No loss scaler required for training with bf16
+        # # No loss scaler required for training with bf16
+        # self.scaler = (
+        #     None
+        #     if cfg.common.bf16
+        #     else DynamicLossScaler(
+        #         init_scale=cfg.common.fp16_init_scale,
+        #         scale_window=cfg.common.fp16_scale_window,
+        #         tolerance=cfg.common.fp16_scale_tolerance,
+        #         threshold=cfg.common.threshold_loss_scale,
+        #         min_loss_scale=cfg.common.min_loss_scale,
+        #     )
+        # )
+
+        # Han: try removing the loss scaler
         self.scaler = (
             None
-            if cfg.common.bf16
-            else DynamicLossScaler(
-                init_scale=cfg.common.fp16_init_scale,
-                scale_window=cfg.common.fp16_scale_window,
-                tolerance=cfg.common.fp16_scale_tolerance,
-                threshold=cfg.common.threshold_loss_scale,
-                min_loss_scale=cfg.common.min_loss_scale,
-            )
         )
 
     @classmethod
@@ -435,23 +440,25 @@ class _MemoryEfficientFP16OptimizerMixin(object):
         max_norm,
         norm_type="l2",
         aggregate_norm_fn=None,
-    ):
+    ): # Han: this function does some post processing based on base_optimizer's grad_sim return
         """Clips gradient norm and updates dynamic loss scaler."""
-        max_norm = float(max_norm)
-        grad_norm = self._multiply_factor * self.wrapped_optimizer.grad_sim(
-            0, norm_type, aggregate_norm_fn
-        )
-        if self.scaler is not None:
-            grad_norm_cpu = float(grad_norm)
-            if grad_norm_cpu > max_norm > 0.0:
-                self._multiply_factor *= max_norm / grad_norm_cpu
-            # detect overflow and adjust loss scale
-            self.scaler.check_overflow(grad_norm_cpu)
-        elif max_norm > 0.0:
-            clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
-            self._multiply_factor *= clip_coef
+        # max_norm = float(max_norm)
+        # grad_norm = self._multiply_factor * self.wrapped_optimizer.grad_sim(
+        #     0, norm_type, aggregate_norm_fn
+        # )
+        # if self.scaler is not None:
+        #     grad_norm_cpu = float(grad_norm)
+        #     if grad_norm_cpu > max_norm > 0.0:
+        #         self._multiply_factor *= max_norm / grad_norm_cpu
+        #     # detect overflow and adjust loss scale
+        #     self.scaler.check_overflow(grad_norm_cpu)
+        # elif max_norm > 0.0:
+        #     clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
+        #     self._multiply_factor *= clip_coef
 
-        return grad_norm
+        # return grad_norm # return what we want to aggregate across model_parallel
+
+        return self.wrapped_optimizer.grad_sim(max_norm, norm_type, aggregate_norm_fn)
 
     def step(self, closure=None, groups=None):
         """Performs a single optimization step."""

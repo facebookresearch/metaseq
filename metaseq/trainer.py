@@ -661,14 +661,14 @@ class Trainer(object):
         self._dummy_batch = batch
 
     @metrics.aggregate("train")
-    def train_step(self, samples, raise_oom=False):
+    def train_step(self, samples, raise_oom=False): # Han: samples should include update_frequency batches
         """Do forward, backward and parameter update."""
         # with torch.autograd.profiler.record_function("grad_sim"):
         #     grad_sim_return = self.grad_sim(
         #         self.cfg.optimization.clip_norm,
         #         self.cfg.optimization.clip_norm_type,
         #     )
-        # kill_now()
+        # breakpoint() # breakpoint() for srun session or kill_now() for sbatch session
 
         self._set_seed()
         self.model.train()
@@ -789,6 +789,13 @@ class Trainer(object):
                 # way that avoids CPU/device transfers in case sample_size is a GPU or
                 # TPU object. The assumption is that the gradient itself is also 0.
 
+            # Han: try implementing gradient multiplication from two models, note that multiply_grads shouldn't matter for cosine metric
+            with torch.autograd.profiler.record_function("grad_sim"):
+                grad_sim_return = self.grad_sim(
+                    self.cfg.optimization.clip_norm,
+                    self.cfg.optimization.clip_norm_type,
+                )
+
             with torch.autograd.profiler.record_function("clip-grads"):
                 # clip grads
                 grad_norm = self.clip_grad_norm(
@@ -802,14 +809,6 @@ class Trainer(object):
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
-
-            # Han: try implementing gradient multiplication from two models
-            with torch.autograd.profiler.record_function("grad_sim"):
-                grad_sim_return = self.grad_sim(
-                    self.cfg.optimization.clip_norm,
-                    self.cfg.optimization.clip_norm_type,
-                )
-            kill_now()
 
             with torch.autograd.profiler.record_function("optimizer"):
                 # take an optimization step
@@ -872,21 +871,36 @@ class Trainer(object):
             ):
                 torch.cuda.empty_cache()
 
-        if self.cfg.common.fp16 and not self.cfg.common.bf16:
-            metrics.log_scalar(
-                "loss_scale",
-                self.optimizer.scaler.loss_scale,
-                priority=700,
-                round=4,
-                weight=0,
-            )
-            metrics.log_scalar(
-                "scale_window",
-                self.optimizer.scaler.scale_window,
-                priority=700,
-                round=4,
-                weight=0,
-            )
+        # Han: try removing scaling
+        # if self.cfg.common.fp16 and not self.cfg.common.bf16:
+        #     metrics.log_scalar(
+        #         "loss_scale",
+        #         self.optimizer.scaler.loss_scale,
+        #         priority=700,
+        #         round=4,
+        #         weight=0,
+        #     )
+        #     metrics.log_scalar(
+        #         "scale_window",
+        #         self.optimizer.scaler.scale_window,
+        #         priority=700,
+        #         round=4,
+        #         weight=0,
+        #     )
+        metrics.log_scalar(
+            "loss_scale",
+            -1,
+            priority=700,
+            round=4,
+            weight=0,
+        )
+        metrics.log_scalar(
+            "scale_window",
+            -1,
+            priority=700,
+            round=4,
+            weight=0,
+        )
 
         metrics.log_stop_time("train_wall")
         return logging_output
