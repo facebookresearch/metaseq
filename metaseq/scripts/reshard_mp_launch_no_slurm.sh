@@ -15,10 +15,10 @@ echo "$@"
 for i in $(seq 0 $last_part)
 do
 
-  echo "python -m metaseq.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size"
+  echo "python -m metaseq.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size --drop_optimizer_state True"
   jname=reshard_mp"$i"_ddp"$tgt_size"
   echo $jname
-  python3 -m metaseq.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size &
+  python3 -m metaseq.scripts.reshard_mp $prefix $save_dir --part $i --target-ddp-size $tgt_size --drop_optimizer_state True &
 done
 echo "Waiting on jobs..."
 wait $(jobs -p)

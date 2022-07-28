@@ -14,6 +14,10 @@ Currently, the API supports two endpoints:
 
 Complete all of the setup as mentioned in [the Setup doc](setup.md).
 
+**Prepare checkpoints**
+1) Reshard accordingly with `metaseq/scripts/reshard_mp.py` with `drop_optimizer_state=True`. Example usage: `bash metaseq/scripts/reshard_mp_launch.sh ${SHARDED_MODEL_PATH}/checkpoint_last $RESHARDED_PATH $MODEL_PARALLEL 1`. MODEL_PARALLEL is 8 for OPT_175B. Change it according for other model sizes.
+2) Modify ```metaseq/service/constants.py``` to update the model path, bpe file path, and MODEL_PARALLEL. 
+
 **Run locally on a worker**
 
 ```bash
@@ -27,7 +31,7 @@ properly ended on an interrupt.
 **Launching a worker from SLURM**
 
 ```bash
-srun --ntasks-per-node 1 --gpus-per-node 8 --nodes 1 --cpus-per-task 8 --mem 400gb \
+srun --ntasks-per-node 1 --gpus-per-node $MODEL_PARALLEL --nodes 1 --cpus-per-task 8 --mem 400gb \
     --quit-on-interrupt --job-name genwork \
     python3 -m metaseq_cli.interactive_hosted
 ```
