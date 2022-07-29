@@ -11,18 +11,23 @@ MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 4
 TOTAL_WORLD_SIZE = 4
+MAX_BEAM = 16
 
-
-CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/causal_one_image/resharded"
+CHECKPOINT_FOLDER = "/checkpoint/liliyu/cm3z_saved_models/"
 # where to store them on SSD for faster loading
-CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "2.7B", "resharded", "reshard.pt")
+# CHECKPOINT_LOCAL = os.path.join(CHECKPOINT_FOLDER,'cm3_michi_consolidated', 'checkpoint_last_consolidated_inference.pt')
+# CHECKPOINT_LOCAL = os.path.join(CHECKPOINT_FOLDER,'cm3_michi_consolidated', 'checkpoint_last_consolidated.pt')
+# CHECKPOINT_LOCAL = os.path.join(CHECKPOINT_FOLDER,'cm3_consolidated', 'checkpoint_47_40000_consolidated_inference.pt')
+# CHECKPOINT_LOCAL = os.path.join(CHECKPOINT_FOLDER,'cm3_consolidated', 'checkpoint_47_40000_consolidated_inference.pt')
+CHECKPOINT_LOCAL = os.path.join(CHECKPOINT_FOLDER,'cm3_consolidated', '47_resharded4' ,'reshard.pt')
+SPM_PATH = os.path.join(CHECKPOINT_FOLDER, 'V262144_I8192_S512_M512_R1024.json')
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
     "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
-    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V262144_I8192_S512_M512_R1024.json",
-    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
+    f"--spm-path {SPM_PATH}",
+    f"--path {CHECKPOINT_LOCAL}",
     "--beam 1 --nbest 1",
     "--bpe hf_cm3_unigram",
     # "--final-vocab-size 65536",
