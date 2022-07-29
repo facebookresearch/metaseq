@@ -61,7 +61,6 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 
     model.summon_full_params()
     model = model.eval()
-    model = model
 
     with torch.no_grad():
         logits = model(prompt_ids)[0]
@@ -81,9 +80,7 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
         logits[:orig_dim].unsqueeze(0)
         for logits, orig_dim in zip(gathered_logits, orig_dims)
     ]
-
-    for index, logits in enumerate(trimmed_logits):
-        torch.save(logits, f"/tmp/test_hf_compatibility_{index}.pt")
+    return trimmed_logits
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
@@ -105,7 +102,6 @@ class TestHFCompatibility(unittest.TestCase):
         )
 
         model = checkpoint[0][0].eval()
-        model = model
 
         hf_model = OPTForCausalLM.from_pretrained(model_path)
 
@@ -130,14 +126,11 @@ class TestHFCompatibility(unittest.TestCase):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
         cfg = create_generation_config_with_defaults(model_path)
-        distributed_utils.call_main(
+        mp_logits_list = distributed_utils.call_main(
             cfg, load_mp_model_and_run_eval, model_path=model_path
         )
 
         # Verify that the generated logits match the consolidated model logits
-        mp_logits_list = [
-            torch.load(f"/tmp/test_hf_compatibility_{index}.pt") for index in range(4)
-        ]
 
         vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
         checkpoint = checkpoint_utils.load_model_ensemble_and_task(
@@ -148,7 +141,6 @@ class TestHFCompatibility(unittest.TestCase):
             },
         )
         model = checkpoint[0][0].eval()
-        model = model
 
         for prompt, logits_mp in zip(prompts, mp_logits_list):
             input_ids = tensorize_input(tokenizer, prompt)
