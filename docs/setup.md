@@ -40,3 +40,16 @@ pip3 install -e .
 # turn on pre-commit hooks
 pre-commit install
 ```
+
+## Preprocess data
+```
+python3 ./metaseq/scripts/preprocess_data.py \
+    --input <path/to/data.jsonl> \
+    --output-prefix <output/prefix/path> \
+    --vocab ./projects/OPT/assets/gpt2-vocab.json \
+    --dataset-impl mmap \
+    --tokenizer-type GPT2BPETokenizer \
+    --merge-file ./projects/OPT/assets/gpt2-merges.txt \
+    --append-eod \
+    --workers 8
+```
