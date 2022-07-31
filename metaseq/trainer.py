@@ -25,15 +25,17 @@ from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 
+import json
+
 logger = logging.getLogger(__name__)
 
 
 # Han: exit function for debugging
-def kill_now():
+def kill_now(kill_cmd=None):
     import os
     print(f"process-gr{distributed_utils.get_global_rank()}-mpr{distributed_utils.get_model_parallel_rank()}-dpr{distributed_utils.get_data_parallel_rank()} exiting ...")
     distributed_utils.global_barrier()
-    os.system("scancel -p xlmg -u xhan77")
+    os.system(kill_cmd)
 
 
 class Trainer(object):
@@ -153,6 +155,10 @@ class Trainer(object):
         self._previous_training_time = 0
         self._cumulative_training_time = None
 
+        self.interpret_info = dict()
+        for _k, _v in self.cfg.interpret_info.items():
+            self.interpret_info[_k] = _v
+
     def reinitialize(self):
         """Reinitialize the Trainer, typically after model params change."""
         self._lr_scheduler = None
@@ -269,7 +275,7 @@ class Trainer(object):
                 self.cfg, params, allow_unsupported=allow_unsupported
             )
         elif self.cfg.common.fp16:
-            print("Han: disabled for now"); kill_now()
+            raise ValueError("Han: disabled for now")
             if self.cuda and torch.cuda.get_device_capability(0)[0] < 7:
                 logger.info(
                     "NOTE: your device does NOT support faster training with --fp16, "
@@ -282,7 +288,7 @@ class Trainer(object):
             else:
                 self._optimizer = optim.FP16Optimizer.build_optimizer(self.cfg, params)
         else:
-            print("Han: disabled for now"); kill_now()
+            raise ValueError("Han: disabled for now")
             if self.cuda and torch.cuda.get_device_capability(0)[0] >= 7:
                 logger.info("NOTE: your device may support faster training with --fp16")
             self._optimizer = optim.build_optimizer(self.cfg.optimizer, params)
@@ -668,11 +674,17 @@ class Trainer(object):
         #         self.cfg.optimization.clip_norm,
         #         self.cfg.optimization.clip_norm_type,
         #     )
-        # breakpoint() # breakpoint() for srun session or kill_now() for sbatch session
+        # breakpoint() # breakpoint() for srun session or kill_now("scancel -p <partition> -u <username>") for sbatch session
+
+        mode = self.interpret_info["mode"] # train, interpret_objective, or interpret_evidence
 
         self._set_seed()
-        self.model.train()
-        self.criterion.train()
+        if mode == "train": # train, interpret_objective, interpret_evidence
+            self.model.train()
+            self.criterion.train()
+        else:
+            self.model.eval()
+            self.criterion.eval()
         self.zero_grad()
 
         metrics.log_start_time("train_wall", priority=800, round=0)
@@ -789,35 +801,84 @@ class Trainer(object):
                 # way that avoids CPU/device transfers in case sample_size is a GPU or
                 # TPU object. The assumption is that the gradient itself is also 0.
 
-            # Han: try implementing gradient multiplication from two models, note that multiply_grads shouldn't matter for cosine metric
-            with torch.autograd.profiler.record_function("grad_sim"):
-                grad_sim_return = self.grad_sim(
-                    self.cfg.optimization.clip_norm,
-                    self.cfg.optimization.clip_norm_type,
-                )
+            if mode == "train":
+                with torch.autograd.profiler.record_function("clip-grads"):
+                    # clip grads
+                    grad_norm = self.clip_grad_norm(
+                        self.cfg.optimization.clip_norm,
+                        self.cfg.optimization.clip_norm_type,
+                        self.cfg.optimization.skip_gradient_update_on_clip_norm,
+                    )
 
-            with torch.autograd.profiler.record_function("clip-grads"):
-                # clip grads
-                grad_norm = self.clip_grad_norm(
-                    self.cfg.optimization.clip_norm,
-                    self.cfg.optimization.clip_norm_type,
-                    self.cfg.optimization.skip_gradient_update_on_clip_norm,
-                )
+                # check that grad norms are consistent across workers
+                self._check_grad_norms(grad_norm)
+                if not torch.isfinite(grad_norm).all():
+                    # check local gradnorm single GPU case, trigger NanDetector
+                    raise FloatingPointError("gradients are Nan/Inf")
 
-            # check that grad norms are consistent across workers
-            self._check_grad_norms(grad_norm)
-            if not torch.isfinite(grad_norm).all():
-                # check local gradnorm single GPU case, trigger NanDetector
-                raise FloatingPointError("gradients are Nan/Inf")
+                with torch.autograd.profiler.record_function("optimizer"):
+                    # take an optimization step
+                    self.task.optimizer_step(
+                        self.optimizer, model=self.model, update_num=self.get_num_updates()
+                    )
+                logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
+            elif mode == "interpret_objective":
+                # Han: try implementing gradient multiplication from two models, note that multiply_grads shouldn't matter for cosine metric
+                with torch.autograd.profiler.record_function("grad_sim"):
+                    grad_sim_return = self.grad_sim(
+                        -1,
+                        self.interpret_info,
+                    )
 
-            with torch.autograd.profiler.record_function("optimizer"):
-                # take an optimization step
-                self.task.optimizer_step(
-                    self.optimizer, model=self.model, update_num=self.get_num_updates()
-                )
-            logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
+                # Han: manually disable gradient update
+                with torch.autograd.profiler.record_function("clear-grads"):
+                    self.zero_grad()
+                with torch.autograd.profiler.record_function("optimizer"):
+                    # take an optimization step
+                    self.task.optimizer_step(
+                        self.optimizer, model=self.model, update_num=self.get_num_updates()
+                    )
+                grad_norm = None
+            elif mode == "interpret_evidence":
+                # Han: try implementing gradient multiplication from two models, note that multiply_grads shouldn't matter for cosine metric
+                with torch.autograd.profiler.record_function("grad_sim"):
+                    grad_sim_return = self.grad_sim(
+                        -1,
+                        self.interpret_info,
+                    )
+
+                with torch.autograd.profiler.record_function("clip-grads"):
+                    # clip grads
+                    grad_norm = self.clip_grad_norm(
+                        -1,
+                        self.cfg.optimization.clip_norm_type,
+                        self.cfg.optimization.skip_gradient_update_on_clip_norm,
+                    )
+
+                # check that grad norms are consistent across workers
+                self._check_grad_norms(grad_norm)
+                if not torch.isfinite(grad_norm).all():
+                    # check local gradnorm single GPU case, trigger NanDetector
+                    raise FloatingPointError("gradients are Nan/Inf")
+
+                final_grad_sim = grad_sim_return / grad_norm
+                logger.info(final_grad_sim.item())
+
+                # Han: manually disable gradient update
+                with torch.autograd.profiler.record_function("clear-grads"):
+                    self.zero_grad()
+                with torch.autograd.profiler.record_function("optimizer"):
+                    # take an optimization step
+                    self.task.optimizer_step(
+                        self.optimizer, model=self.model, update_num=self.get_num_updates()
+                    )
+                logger.debug(f"[{self.get_num_updates()}] done with interpret step")
+                grad_norm = None
+            else:
+                raise ValueError(f"Unknown mode {mode}")
 
         except FloatingPointError:
+            raise ValueError("Han: disabled for now")
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
             self.zero_grad()
@@ -834,6 +895,7 @@ class Trainer(object):
                     )
             raise
         except OverflowError as e:
+            raise ValueError("Han: disabled for now")
             overflow = True
             logger.info(
                 f"NOTE: gradient overflow detected, ignoring gradient, {str(e)}"
@@ -841,6 +903,7 @@ class Trainer(object):
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
         except RuntimeError as e:
+            raise ValueError("Han: disabled for now")
             if "out of memory" in str(e):
                 self._log_oom(e)
                 logger.error("OOM during optimization, irrecoverable")
@@ -871,36 +934,38 @@ class Trainer(object):
             ):
                 torch.cuda.empty_cache()
 
-        # Han: try removing scaling
-        # if self.cfg.common.fp16 and not self.cfg.common.bf16:
-        #     metrics.log_scalar(
-        #         "loss_scale",
-        #         self.optimizer.scaler.loss_scale,
-        #         priority=700,
-        #         round=4,
-        #         weight=0,
-        #     )
-        #     metrics.log_scalar(
-        #         "scale_window",
-        #         self.optimizer.scaler.scale_window,
-        #         priority=700,
-        #         round=4,
-        #         weight=0,
-        #     )
-        metrics.log_scalar(
-            "loss_scale",
-            -1,
-            priority=700,
-            round=4,
-            weight=0,
-        )
-        metrics.log_scalar(
-            "scale_window",
-            -1,
-            priority=700,
-            round=4,
-            weight=0,
-        )
+        # Han: removing scaling log (scaler is None for influence calculation)
+        if mode == "train":
+            if self.cfg.common.fp16 and not self.cfg.common.bf16:
+                metrics.log_scalar(
+                    "loss_scale",
+                    self.optimizer.scaler.loss_scale,
+                    priority=700,
+                    round=4,
+                    weight=0,
+                )
+                metrics.log_scalar(
+                    "scale_window",
+                    self.optimizer.scaler.scale_window,
+                    priority=700,
+                    round=4,
+                    weight=0,
+                )
+        else:
+            metrics.log_scalar(
+                "loss_scale",
+                -1,
+                priority=700,
+                round=4,
+                weight=0,
+            )
+            metrics.log_scalar(
+                "scale_window",
+                -1,
+                priority=700,
+                round=4,
+                weight=0,
+            )
 
         metrics.log_stop_time("train_wall")
         return logging_output

@@ -62,9 +62,9 @@ class MegatronTrainer(Trainer):
         )
 
     def grad_sim(
-        self, clip_norm, norm_type="test_mode"
-    ): # Han: reuse clip_norm for numerical value, norm_type for category
-        def _aggregate_model_parallel_grad_norm(norm_type, total_norm):
+        self, value, info
+    ): # Han: info (dict) contains interpret_mode and potentially path, etc; value is unused for now
+        def _aggregate_model_parallel_grad_norm(info, total_norm):
             # Han: reduce operation for model parallel
             dist.all_reduce(
                 total_norm,
@@ -73,13 +73,11 @@ class MegatronTrainer(Trainer):
             )
             return total_norm
 
-        # TODO: can add norm computation here, for cosine similarity
-
         return self.optimizer.grad_sim(
-            clip_norm,
-            norm_type,
+            value,
+            info,
             aggregate_norm_fn=functools.partial(
-                _aggregate_model_parallel_grad_norm, norm_type
+                _aggregate_model_parallel_grad_norm, info
             ),
         )
 

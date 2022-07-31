@@ -10,7 +10,7 @@ import torch
 from omegaconf import DictConfig
 
 from metaseq import optim
-# from .dynamic_loss_scaler import DynamicLossScaler
+from .dynamic_loss_scaler import DynamicLossScaler
 
 
 class _FP16OptimizerMixin(object):
@@ -254,23 +254,26 @@ class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
         self.fp32_optimizer = fp32_optimizer
         self.fp32_params = fp32_params
 
-        # # No loss scaler required for training with bf16
-        # self.scaler = (
-        #     None
-        #     if cfg.common.bf16
-        #     else DynamicLossScaler(
-        #         init_scale=cfg.common.fp16_init_scale,
-        #         scale_window=cfg.common.fp16_scale_window,
-        #         tolerance=cfg.common.fp16_scale_tolerance,
-        #         threshold=cfg.common.threshold_loss_scale,
-        #         min_loss_scale=cfg.common.min_loss_scale,
-        #     )
-        # )
-
-        # Han: try removing the loss scaler
-        self.scaler = (
-            None
-        )
+        # No loss scaler required for training with bf16
+        if cfg.interpret_mode == "interpret_objective" or cfg.interpret_mode == "interpret_evidence":
+            # Han: try removing the loss scaler
+            self.scaler = (
+                None
+            )
+        elif cfg.interpret_mode == "train": # empty string for interpret_mode means normal training
+            self.scaler = (
+                None
+                if cfg.common.bf16
+                else DynamicLossScaler(
+                    init_scale=cfg.common.fp16_init_scale,
+                    scale_window=cfg.common.fp16_scale_window,
+                    tolerance=cfg.common.fp16_scale_tolerance,
+                    threshold=cfg.common.threshold_loss_scale,
+                    min_loss_scale=cfg.common.min_loss_scale,
+                )
+            )
+        else:
+            raise ValueError("Unknown interpret_mode: {}".format(cfg.interpret_mode))
 
     @classmethod
     def build_optimizer(cls, cfg: DictConfig, params, **kwargs):
@@ -437,8 +440,8 @@ class _MemoryEfficientFP16OptimizerMixin(object):
 
     def grad_sim(
         self,
-        max_norm,
-        norm_type="l2",
+        value,
+        info,
         aggregate_norm_fn=None,
     ): # Han: this function does some post processing based on base_optimizer's grad_sim return
         """Clips gradient norm and updates dynamic loss scaler."""
@@ -458,7 +461,7 @@ class _MemoryEfficientFP16OptimizerMixin(object):
 
         # return grad_norm # return what we want to aggregate across model_parallel
 
-        return self.wrapped_optimizer.grad_sim(max_norm, norm_type, aggregate_norm_fn)
+        return self.wrapped_optimizer.grad_sim(value, info, aggregate_norm_fn)
 
     def step(self, closure=None, groups=None):
         """Performs a single optimization step."""
@@ -516,23 +519,26 @@ class MemoryEfficientFP16Optimizer(
         super().__init__(cfg.optimizer)
         self.wrapped_optimizer = optimizer
 
-        # # No loss scaler required for training with bf16
-        # self.scaler = (
-        #     None
-        #     if cfg.common.bf16
-        #     else DynamicLossScaler(
-        #         init_scale=cfg.common.fp16_init_scale,
-        #         scale_window=cfg.common.fp16_scale_window,
-        #         tolerance=cfg.common.fp16_scale_tolerance,
-        #         threshold=cfg.common.threshold_loss_scale,
-        #         min_loss_scale=cfg.common.min_loss_scale,
-        #     )
-        # )
-
-        # Han: try removing the loss scaler
-        self.scaler = (
-            None
-        )
+        # No loss scaler required for training with bf16
+        if cfg.interpret_mode == "interpret_objective" or cfg.interpret_mode == "interpret_evidence":
+            # Han: try removing the loss scaler
+            self.scaler = (
+                None
+            )
+        elif cfg.interpret_mode == "train": # empty string for interpret_mode means normal training
+            self.scaler = (
+                None
+                if cfg.common.bf16
+                else DynamicLossScaler(
+                    init_scale=cfg.common.fp16_init_scale,
+                    scale_window=cfg.common.fp16_scale_window,
+                    tolerance=cfg.common.fp16_scale_tolerance,
+                    threshold=cfg.common.threshold_loss_scale,
+                    min_loss_scale=cfg.common.min_loss_scale,
+                )
+            )
+        else:
+            raise ValueError("Unknown interpret_mode: {}".format(cfg.interpret_mode))
 
     @classmethod
     def build_optimizer(cls, cfg: DictConfig, params, **kwargs):

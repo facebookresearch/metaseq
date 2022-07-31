@@ -37,6 +37,9 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
+from omegaconf import open_dict
+import json
+
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -567,10 +570,24 @@ def cli_main(
     modify_parser: Optional[Callable[[argparse.ArgumentParser], None]] = None
 ) -> None:
     parser = options.get_training_parser()
+
+    parser.add_argument("--interpret_mode", default=None)
+    parser.add_argument("--interpret_notes", default=None)
+
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
 
     # For training - this is where arg parsing happens.
     cfg = convert_namespace_to_omegaconf(args)
+
+    # Han: add some extra cfg for interpretation
+    with open_dict(cfg):
+        if args.interpret_mode not in ["train", "interpret_objective", "interpret_evidence"]:
+            raise ValueError("--interpret_mode invalid")
+        cfg.interpret_mode = args.interpret_mode
+        cfg.interpret_notes = args.interpret_notes
+        cfg.interpret_info = json.loads(cfg.interpret_notes)
+        cfg.interpret_info["mode"] = cfg.interpret_mode
+        cfg.interpret_info["cache_test_grads"] = None
 
     if cfg.common.use_plasma_view:
         server = PlasmaStore(path=cfg.common.plasma_path)
