@@ -10,13 +10,13 @@ from torch import nn, Tensor
 
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
+from metaseq.utils import init_method_normal_trunc, scaled_init_method_normal_trunc
 
 try:
     from megatron.mpu import (
         ColumnParallelLinear,
         RowParallelLinear,
     )
-    from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -74,7 +74,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
 
         if full_megatron_init:
             # Setting bias init method to None, initializes biases with zero.
-            init_method_weights = megatron_utils.init_method_normal(megatron_init_sigma)
+            init_method_weights = init_method_normal_trunc(megatron_init_sigma)
             init_method_bias = None
         else:
             init_method_weights = _weight_init
@@ -103,7 +103,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
     ):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
-            init_method_weights = megatron_utils.scaled_init_method_normal(
+            init_method_weights = scaled_init_method_normal_trunc(
                 megatron_init_sigma, num_layers
             )
         else:

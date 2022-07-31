@@ -27,10 +27,10 @@ def PositionalEmbedding(
         if padding_idx is not None:
             num_embeddings = num_embeddings + padding_idx + 1
         m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
+        std = embedding_dim**-0.5
         if full_megatron_init:
-            nn.init.normal_(m.weight, mean=0, std=megatron_init_sigma)
-        else:
-            nn.init.normal_(m.weight, mean=0, std=embedding_dim**-0.5)
+            std = megatron_init_sigma
+        nn.init.trunc_normal_(m.weight, mean=0, std=std, a=-2 * std, b=2 * std)
         if padding_idx is not None:
             nn.init.constant_(m.weight[padding_idx], 0)
     elif learned_sinusoidal:

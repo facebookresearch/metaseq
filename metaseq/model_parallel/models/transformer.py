@@ -52,10 +52,6 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
 
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
-        if not self.share_input_output_embed:
-            raise NotImplementedError(
-                "Model parallel training currently requires --share-decoder-input-output-embed"
-            )
 
         features = copy_to_tensor_model_parallel_region(features)
 
@@ -63,9 +59,9 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
         x = self.output_projection(features)
         # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings
-        if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
-            self, "inference", False
-        ):
+        if "vocab_parallel_cross_entropy" not in getattr(
+            self.args, "criterion"
+        ) or getattr(self, "inference", False):
             x = gather_from_tensor_model_parallel_region(x).contiguous()
         return x
 

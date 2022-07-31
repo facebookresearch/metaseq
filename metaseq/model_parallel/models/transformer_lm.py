@@ -58,6 +58,12 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             embed_tokens,
             no_encoder_attn=True,
         )
+        if not args.share_decoder_input_output_embed:
+            output_projection = cls.build_embedding(
+                args, task.source_dictionary, args.decoder_input_dim
+            )
+            decoder.output_projection.weight = output_projection.weight
+
         return cls(decoder)
 
     @staticmethod
@@ -67,13 +73,13 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
         def _vocab_init(tensor, **kwargs):
-            nn.init.normal_(tensor, mean=0, std=embed_dim**-0.5)
+            std = embed_dim**-0.5
+            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-2 * std, b=2 * std)
             nn.init.constant_(tensor[1], 0)
 
         def _vocab_init_megatron(tensor, **kwargs):
-            nn.init.normal_(
-                tensor, mean=0, std=getattr(args, "megatron_init_sigma", 0.006)
-            )
+            std = getattr(args, "megatron_init_sigma", 0.006)
+            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-2 * std, b=2 * std)
             nn.init.constant_(tensor[1], 0)
 
         if getattr(args, "memory_efficient_fp16", False):

@@ -493,7 +493,7 @@ class GeneratorInterface:
         task = tasks.setup_task(self.cfg.task)
 
         def _build_model(cfg, task):
-            model = task.build_model(cfg.model).half().cuda()
+            model = task.build_model(cfg.model).bfloat16().cuda()
             model.make_generation_fast_()
             return fsdp_wrap(model)
 
@@ -552,6 +552,7 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
+        skip_special_tokens=False,
     ):
         """
         Generate from sequences.
