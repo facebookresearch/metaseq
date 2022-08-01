@@ -107,10 +107,21 @@ class SequenceGenerator(nn.Module):
         )
         net_input = sample["net_input"]
 
-        assert "src_tokens" in net_input
-        src_tokens = net_input["src_tokens"]
-        # length of the source text being the character length except EndOfSentence and pad
-        src_lengths = src_tokens.ne(self.pad).long().sum(dim=1) - 1
+        if "src_tokens" in net_input:
+            src_tokens = net_input["src_tokens"]
+            # length of the source text being the character length except EndOfSentence and pad
+            src_lengths = (
+                (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
+            ) - 1
+        elif "source" in net_input:
+            src_tokens = net_input["source"]
+            src_lengths = (
+                net_input["padding_mask"].size(-1) - net_input["padding_mask"].sum(-1)
+                if net_input["padding_mask"] is not None
+                else torch.tensor(src_tokens.size(-1)).to(src_tokens)
+            )
+        else:
+            raise Exception("expected src_tokens or source in net input")
 
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
@@ -214,6 +225,7 @@ class SequenceGenerator(nn.Module):
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
+                lprobs[:, self.eos] = 1
 
             # already ended beams should only do eos
             lprobs[eos_mask, : self.eos] = -math.inf
