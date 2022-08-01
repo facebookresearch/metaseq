@@ -102,7 +102,7 @@ def worker_main(cfg: MetaseqConfig):
     task = tasks.setup_task(cfg.task)
 
     def _build_model(cfg, task):
-        # hardcoded to cpu & fp16
+        cfg.model.tensor_parallel_init_model_on_gpu = True
         model = task.build_model(cfg.model).cuda()
         return fsdp_wrap(model)
 
