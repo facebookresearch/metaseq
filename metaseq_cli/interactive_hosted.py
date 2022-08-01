@@ -128,11 +128,13 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                         "echo",
                         "logprobs",
                         "stop",
+                        "seed",
                     ]:
                         if key in ro:
                             request_object[key] = ro[key]
                 # do the actual generations
-                request_object["seed"] = random.randint(1, 20000)
+                if "seed" not in request_object or request_object["seed"] is None:
+                    request_object["seed"] = random.randint(1, 20000)
                 distributed_utils.broadcast_object(
                     request_object,
                     src_rank=0,

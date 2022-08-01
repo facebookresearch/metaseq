@@ -37,6 +37,7 @@ class WorkItem:
                 "temperature": self.data["temperature"],
                 "top_p": self.data["top_p"],
                 "n": self.data["n"],
+                "seed": self.data.get("seed", None),
             }
         )
 
