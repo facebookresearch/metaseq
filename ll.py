@@ -42,7 +42,8 @@ from metaseq.models.transformer_lm import TransformerLanguageModel
 
 
 caption = "A man riding a wave on a"
-prompt1 = f'<img alt=\"{caption}\"'
+# prompt1 = f'<img alt=\"{caption}\"'
+prompt1 = caption
 
 from metaseq import options
 from metaseq.hub_utils import GeneratorInterface
@@ -55,15 +56,11 @@ args = options.parse_args_and_arch(
         '--task',
         'cm3_language_modeling_inference_for_models_trained_with_streaming',
         '--spm-path',
-        # '/shared/home/roller/V262144_I8192_S512_M512_R1024.json',
-        '/shared/home/roller/V65536_I8192_S512_M512_R1024.json',
+        '/shared/home/roller/V262144_I8192_S512_M512_R1024.json',
+        # '/shared/home/roller/V65536_I8192_S512_M512_R1024.json',
         '--path',
-        # '/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt',
-        '/shared/home/roller/michi.pt',
-        # '--beam',
-        # '1',
-        # '--temperature',
-        # '0.0',
+        '/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt',
+        # '/shared/home/roller/michi.pt',
         '--bpe',
         'hf_cm3_unigram',
         '/tmp',
@@ -74,9 +71,7 @@ cfg = convert_namespace_to_omegaconf(args)
 gi = GeneratorInterface(cfg)
 gi.load_model()
 text_tokens = list(gi.bpe.bpe.encode(prompt1).ids)
-text_tokens = [2] + text_tokens
-# text_tokens += [1] * (255 - len(text_tokens))
-# img_tokens = list(gi.bpe.bpe.encode(prompt2).ids)
+text_tokens = [0] + text_tokens
 tokens_orig = text_tokens
 print(tokens_orig)
 print(len(tokens_orig))
@@ -95,9 +90,12 @@ output_text, output_tokens = (
     .replace("<sentinel:0>", "")
     .replace('">', '')
     .replace('  ', ' ')
-    .split('src="')
+    # .split('src="')
+    .split('.')
 )
 print(response[0][0]['text'][:60])
+if ')' in output_tokens:
+    output_tokens = output_tokens[output_tokens.rindex(')') + 1 :]
 output_image_tokens = output_tokens.split()
 print(len(output_image_tokens))
 while len(output_image_tokens) < 1024:
