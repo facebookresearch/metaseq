@@ -143,6 +143,15 @@ class GeneratorHubInterface(nn.Module):
         self.src_dict = self.task.source_dictionary
         self.tgt_dict = self.task.target_dictionary
 
+        # store special token indices for
+        self._pad_token_ind = self.tgt_dict.pad_index
+        self._special_token_inds = {
+            self.tgt_dict.eos_index,
+            self.tgt_dict.pad_index,
+            self.tgt_dict.bos_index,
+            self.tgt_dict.unk_index,
+        }
+
         if "langs" in self.cfg.task:
             self.langs = self.cfg.task.langs
             lang_tokens = [
@@ -200,6 +209,7 @@ class GeneratorHubInterface(nn.Module):
 
         # this is useful for determining the device
         self.register_buffer("_float_tensor", torch.tensor([0], dtype=torch.float))
+
 
     @property
     def device(self):
@@ -299,7 +309,7 @@ class GeneratorHubInterface(nn.Module):
                     beams = []
                     for j in range(0, translations["tokens"].size(1)):
 
-                        tokens, scores, distributions = GeneratorInterface._filter_special(translations["tokens"][i][j], translations["scores"][i][j], distributions=None)
+                        tokens, scores, distributions = GeneratorInterface._filter_special(self._pad_token_ind, self._special_token_inds, translations["tokens"][i][j], translations["scores"][i][j], distributions=None)
                         beams.append({
                             "id": id,
                             "tokens": [x.item() for x in list(tokens)],
@@ -345,6 +355,7 @@ class GeneratorHubInterface(nn.Module):
                                 )
                             )
                         )
+
         return outputs
 
     def get_sentence_and_language(self, sentence: str):
@@ -683,6 +694,7 @@ class GeneratorInterface:
                     prompt_len = lengths[i]
 
                     tokens, scores, distributions = self._filter_special(
+                        self._pad_token_ind, self._special_token_inds,
                         tokens, scores, distributions
                     )
 
@@ -748,8 +760,10 @@ class GeneratorInterface:
         )
         return retval
 
+    @staticmethod
     def _filter_special(
-        self,
+        pad_token_ind,
+        special_token_inds,
         tokens: List[int],
         scores: List[float],
         distributions,
@@ -765,11 +779,11 @@ class GeneratorInterface:
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):
-            if t == self._pad_token_ind:
+            if t == pad_token_ind:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t in self._special_token_inds and i > 0:
+            if t in special_token_inds and i > 0:
                 # and other special tokens should end things
                 mask.append(False)
                 break
