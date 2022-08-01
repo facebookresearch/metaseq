@@ -112,7 +112,7 @@ class SequenceGenerator(nn.Module):
             # length of the source text being the character length except EndOfSentence and pad
             src_lengths = (
                 (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
-            ) - 1
+            )
         elif "source" in net_input:
             src_tokens = net_input["source"]
             src_lengths = (
@@ -225,7 +225,6 @@ class SequenceGenerator(nn.Module):
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
-                lprobs[:, self.eos] = 1
 
             # already ended beams should only do eos
             lprobs[eos_mask, : self.eos] = -math.inf

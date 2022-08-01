@@ -288,6 +288,9 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                 # flexible soluton.
             ),
         )
+        src_dataset = MultiplePadDataset(
+            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+        )
         tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
         return NestedDictionaryDataset(
             {
@@ -318,11 +321,12 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "Constrained decoding with the language_modeling task is not supported"
                 )
 
+            # SequenceGenerator doesn't use src_tokens directly, we need to
+            # pass the `prefix_tokens` argument instead
             if prefix_tokens is None and sample["net_input"]["src_tokens"].nelement():
                 prefix_tokens = sample["net_input"]["src_tokens"]
                 if prefix_tokens[:, 0].eq(bos_token).all():
                     prefix_tokens = prefix_tokens[:, 1:]
-                    sample["net_input"]["src_tokens"] = prefix_tokens
 
             return generator.generate(
                 models, sample, prefix_tokens=prefix_tokens, bos_token=bos_token

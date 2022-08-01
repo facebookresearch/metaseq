@@ -80,7 +80,7 @@ cfg = convert_namespace_to_omegaconf(args)
 
 gi = GeneratorInterface(cfg)
 gi.load_model()
-text_tokens = [2] + list(gi.bpe.bpe.encode(prompt1).ids)
+text_tokens = list(gi.bpe.bpe.encode(prompt1).ids)
 tokens_orig = text_tokens
 print(tokens_orig)
 print(len(tokens_orig))
