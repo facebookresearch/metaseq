@@ -41,9 +41,13 @@ import torch
 from metaseq.models.transformer_lm import TransformerLanguageModel
 
 
+MICHI = False
+
 caption = "A man riding a wave on a"
-# prompt1 = f'<img alt=\"{caption}\"'
-prompt1 = caption
+if MICHI:
+    prompt1 = f'<img alt=\"{caption}\"'
+else:
+    prompt1 = caption
 
 from metaseq import options
 from metaseq.hub_utils import GeneratorInterface
@@ -56,11 +60,17 @@ args = options.parse_args_and_arch(
         '--task',
         'cm3_language_modeling_inference_for_models_trained_with_streaming',
         '--spm-path',
-        '/shared/home/roller/V262144_I8192_S512_M512_R1024.json',
-        # '/shared/home/roller/V65536_I8192_S512_M512_R1024.json',
+        (
+            '/shared/home/roller/V65536_I8192_S512_M512_R1024.json'
+            if MICHI
+            else '/shared/home/roller/V262144_I8192_S512_M512_R1024.json'
+        ),
         '--path',
-        '/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt',
-        # '/shared/home/roller/michi.pt',
+        (
+            '/shared/home/roller/michi.pt'
+            if MICHI
+            else '/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt'
+        ),
         '--bpe',
         'hf_cm3_unigram',
         '/tmp',
@@ -70,8 +80,7 @@ cfg = convert_namespace_to_omegaconf(args)
 
 gi = GeneratorInterface(cfg)
 gi.load_model()
-text_tokens = list(gi.bpe.bpe.encode(prompt1).ids)
-text_tokens = [0] + text_tokens
+text_tokens = [2] + list(gi.bpe.bpe.encode(prompt1).ids)
 tokens_orig = text_tokens
 print(tokens_orig)
 print(len(tokens_orig))
