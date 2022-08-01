@@ -103,7 +103,7 @@ def worker_main(cfg: MetaseqConfig):
 
     def _build_model(cfg, task):
         # hardcoded to cpu & fp16
-        model = task.build_model(cfg.model).half().cuda()
+        model = task.build_model(cfg.model).cuda()
         return fsdp_wrap(model)
 
     with fsdp_enable_wrap(
