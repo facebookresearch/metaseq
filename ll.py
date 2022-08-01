@@ -37,19 +37,12 @@ def load_tokenizer():
 tokenizer = load_tokenizer()
 
 
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-
-
 import torch
 from metaseq.models.transformer_lm import TransformerLanguageModel
 
 
-caption = "A man riding a wave on a surfboard at the beach."
-prompt1 = f'<s><img alt=\"{caption}\" src=\"'
+caption = "A man riding a wave on a"
+prompt1 = f'<img alt=\"{caption}\"'
 
 from metaseq import options
 from metaseq.hub_utils import GeneratorInterface
@@ -88,4 +81,25 @@ tokens_orig = text_tokens
 print(tokens_orig)
 print(len(tokens_orig))
 
-print(gi.generate(inputs=[tokens_orig], temperature=0.0, echo=True, max_tokens=32))
+response = gi.generate(
+    inputs=[tokens_orig],
+    echo=True,
+    max_tokens=[1080],
+    temperature=0.85,
+    top_p=1.0,
+    seed=random.randint(1, 2000),
+)
+# print(json.dumps(response, indent=2))
+output_text, output_tokens = (
+    response[0][0]['text']
+    .replace("<sentinel:0>", "")
+    .replace('">', '')
+    .replace('  ', ' ')
+    .split('src="')
+)
+print(response[0][0]['text'][:60])
+output_image_tokens = output_tokens.split()
+print(len(output_image_tokens))
+while len(output_image_tokens) < 1024:
+    output_image_tokens.append("I0")
+print(" ".join(output_image_tokens))
