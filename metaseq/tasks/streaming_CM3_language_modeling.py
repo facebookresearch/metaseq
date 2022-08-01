@@ -204,7 +204,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 [
                     pre_tokenizers.Split(Regex(r"[\r\n]+"), "isolated"),
                     pre_tokenizers.Split(Regex(r"(I|S)(\d{1,4}) "), "isolated"),
-                    ByteLevel(use_regex=True),
+                    ByteLevel(),
                     Digits(individual_digits=True),
                 ]
             )
