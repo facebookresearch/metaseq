@@ -49,8 +49,8 @@ args = options.parse_args_and_arch(
         '/tmp',
     ],
 )
-args.tensor_parallel_init_model_on_gpu = False
 cfg = convert_namespace_to_omegaconf(args)
+# stupid hack around for FSDP & gpu initialization in this singleton script
 cfg.common_eval.model_overrides = '{"tensor_parallel_init_model_on_gpu": False}'
 
 gi = GeneratorInterface(cfg)
