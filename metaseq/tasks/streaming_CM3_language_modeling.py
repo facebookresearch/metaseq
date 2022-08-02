@@ -118,7 +118,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         suffix = '">'
 
         src = 'src="'
-        src_index = text.find(src)
+        src_index = text.rfind(src)
 
         error = (
             f'Expected value in <img alt="..." src="..."> format, instead got {text}'
@@ -196,6 +196,9 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 [ByteLevel(), Digits(individual_digits=True)]
             )
             tokenizer.decoder = decoders.ByteLevel()
+            logger.error(
+                "Using V1.3 Tokenizer. Please double check you are using the right tokenizer."
+            )
             return tokenizer
         elif "1.4" in args.spm_path:
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
