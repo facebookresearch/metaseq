@@ -389,7 +389,7 @@ class TransformerDecoder(IncrementalDecoder):
             )
             std = self.output_embed_dim**-0.5
             nn.init.trunc_normal_(
-                self.output_projection.weight, mean=0, std=std, a=-2 * std, b=2 * std
+                self.output_projection.weight, mean=0, std=std, a=-4 * std, b=4 * std
             )
             if initialize_params_on_gpu:
                 self.output_projection = utils.floating_point_precision_convertor(
@@ -773,7 +773,7 @@ def Embedding(
     dtype = torch.half if initialize_params_on_gpu else torch.float
     weight = torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype)
     std = embedding_dim**-0.5
-    nn.init.trunc_normal_(weight, mean=0, std=std, a=-2 * std, b=2 * std)
+    nn.init.trunc_normal_(weight, mean=0, std=std, a=-4 * std, b=4 * std)
     nn.init.constant_(weight[padding_idx], 0)
     m = nn.Embedding(
         num_embeddings, embedding_dim, padding_idx=padding_idx, _weight=weight

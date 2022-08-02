@@ -42,7 +42,7 @@ def init_method_normal_trunc(sigma):
 
     def init_(tensor):
         return torch.nn.init.trunc_normal_(
-            tensor, mean=0.0, std=sigma, a=-2 * sigma, b=2 * sigma
+            tensor, mean=0.0, std=sigma, a=-4 * sigma, b=4 * sigma
         )
 
     return init_
@@ -54,7 +54,7 @@ def scaled_init_method_normal_trunc(sigma, num_layers):
 
     def init_(tensor):
         return torch.nn.init.trunc_normal_(
-            tensor, mean=0.0, std=std, a=-2 * std, b=2 * std
+            tensor, mean=0.0, std=std, a=-4 * std, b=4 * std
         )
 
     return init_

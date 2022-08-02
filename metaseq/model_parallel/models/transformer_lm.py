@@ -74,12 +74,12 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
         def _vocab_init(tensor, **kwargs):
             std = embed_dim**-0.5
-            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-2 * std, b=2 * std)
+            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-4 * std, b=4 * std)
             nn.init.constant_(tensor[1], 0)
 
         def _vocab_init_megatron(tensor, **kwargs):
             std = getattr(args, "megatron_init_sigma", 0.006)
-            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-2 * std, b=2 * std)
+            nn.init.trunc_normal_(tensor, mean=0, std=std, a=-4 * std, b=4 * std)
             nn.init.constant_(tensor[1], 0)
 
         if getattr(args, "memory_efficient_fp16", False):

@@ -30,7 +30,7 @@ def PositionalEmbedding(
         std = embedding_dim**-0.5
         if full_megatron_init:
             std = megatron_init_sigma
-        nn.init.trunc_normal_(m.weight, mean=0, std=std, a=-2 * std, b=2 * std)
+        nn.init.trunc_normal_(m.weight, mean=0, std=std, a=-4 * std, b=4 * std)
         if padding_idx is not None:
             nn.init.constant_(m.weight[padding_idx], 0)
     elif learned_sinusoidal:
