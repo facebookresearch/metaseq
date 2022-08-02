@@ -500,15 +500,19 @@ class GeneratorInterface:
         # Load the model
         overrides = ast.literal_eval(self.cfg.common_eval.model_overrides)
         logger.info("loading model(s) from {}".format(self.cfg.common_eval.path))
-        models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
-            utils.split_paths(self.cfg.common_eval.path),
-            arg_overrides=overrides,
-            task=task,
-            suffix=self.cfg.checkpoint.checkpoint_suffix,
-            strict=(self.cfg.checkpoint.checkpoint_shard_count == 1),
-            num_shards=self.cfg.checkpoint.checkpoint_shard_count,
-            build_model_hook=_build_model,
-        )
+        with fsdp_enable_wrap(
+            self.cfg.distributed_training,
+            use_sharded_state=self.cfg.distributed_training.use_sharded_state,
+        ):
+            models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
+                utils.split_paths(self.cfg.common_eval.path),
+                arg_overrides=overrides,
+                task=task,
+                suffix=self.cfg.checkpoint.checkpoint_suffix,
+                strict=(self.cfg.checkpoint.checkpoint_shard_count == 1),
+                num_shards=self.cfg.checkpoint.checkpoint_shard_count,
+                build_model_hook=_build_model,
+            )
         # Set dictionaries
         src_dict = task.source_dictionary
         tgt_dict = task.target_dictionary

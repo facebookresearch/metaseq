@@ -6,39 +6,11 @@ python -m metaseq.scripts.consolidate_fsdp_shards $model_dir/checkpoint_last --n
 
 
 import random
-import json, os, re
-import numpy as np
-from tqdm import tqdm
-from typing import Any, Dict, Iterator, List, Optional
-from tokenizers import (
-    ByteLevelBPETokenizer,
-    Tokenizer,
-    decoders,
-    models,
-    normalizers,
-    pre_tokenizers,
-)
-from tokenizers.pre_tokenizers import ByteLevel, Digits
-from metaseq.service.utils import encode_fn
+import torch.distributed as dist
 
-TOKENIZER_FILE = "/shared/home/roller/V262144_I8192_S512_M512_R1024.json"
-
-
-def load_tokenizer():
-    tokenizer = Tokenizer(models.Unigram()).from_file(TOKENIZER_FILE)
-    tokenizer.normalizer = normalizers.NFKC()
-    tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
-        [ByteLevel(), Digits(individual_digits=True)]
-    )
-    tokenizer.decoder = decoders.ByteLevel()
-    return tokenizer
-
-
-tokenizer = load_tokenizer()
-
-
-import torch
-from metaseq.models.transformer_lm import TransformerLanguageModel
+from metaseq import options
+from metaseq.hub_utils import GeneratorInterface
+from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 
 
 MICHI = False
@@ -49,9 +21,10 @@ if MICHI:
 else:
     prompt1 = caption
 
-from metaseq import options
-from metaseq.hub_utils import GeneratorInterface
-from metaseq.dataclass.utils import convert_namespace_to_omegaconf
+
+dist.init_process_group(
+    backend="nccl", init_method="tcp://localhost:13000", world_size=1, rank=0
+)
 
 parser = options.get_generation_parser()
 args = options.parse_args_and_arch(
@@ -74,6 +47,8 @@ args = options.parse_args_and_arch(
         '--bpe',
         'hf_cm3_unigram',
         '/tmp',
+        '--bf16',
+        '--fp16',
     ],
 )
 cfg = convert_namespace_to_omegaconf(args)
@@ -99,8 +74,7 @@ output_text, output_tokens = (
     .replace("<sentinel:0>", "")
     .replace('">', '')
     .replace('  ', ' ')
-    # .split('src="')
-    .split('.')
+    .split('src="' if MICHI else ".")
 )
 print(response[0][0]['text'][:60])
 if ')' in output_tokens:

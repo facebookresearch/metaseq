@@ -210,7 +210,19 @@ def recursively_cast_dictconfigs(cfg):
 
 
 def torch_load_cpu(path):
-    return torch.load(path, map_location=torch.device("cpu"))
+    state = torch.load(path, map_location=torch.device("cpu"))
+    # If model was trained with fp16, model from loaded state_dict can be moved to fp16
+    if not isinstance(state, dict):
+        return state
+    if "cfg" in state:
+        state["cfg"] = recursively_cast_dictconfigs(state["cfg"])
+        if (
+            state["cfg"]["common"]["fp16"]
+            or state["cfg"]["common"]["memory_efficient_fp16"]
+        ):
+            state["model"] = {k: v.half() for k, v in state["model"].items()}
+
+    return state
 
 
 def save_json(content, path, indent=4):
