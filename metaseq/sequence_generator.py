@@ -145,7 +145,7 @@ class SequenceGenerator(nn.Module):
             torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
         )
 
-        # notes:
+        # Notes:
         # - scores \in FloatTensor(bsz * beam_size, max_len)
         # - tokens \in LongTensor(bsz * beam_size, max_len)
         # - src_tokens \in LongTensor(bsz, prompt_len)
