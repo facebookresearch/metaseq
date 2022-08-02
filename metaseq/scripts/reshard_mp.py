@@ -98,7 +98,6 @@ def reshard_mp(
 
     local_state_dicts: List[dict] = [{} for _ in range(target_ddp_size)]
     for k, v in model_state.items():
-        v = v.half()
         if "flat_param" not in k:
             dummy_model_state[k] = v
             continue
