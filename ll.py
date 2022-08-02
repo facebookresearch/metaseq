@@ -47,11 +47,11 @@ args = options.parse_args_and_arch(
         '--bpe',
         'hf_cm3_unigram',
         '/tmp',
-        '--bf16',
-        '--fp16',
     ],
 )
+args.tensor_parallel_init_model_on_gpu = False
 cfg = convert_namespace_to_omegaconf(args)
+cfg.common_eval.model_overrides = '{"tensor_parallel_init_model_on_gpu": False}'
 
 gi = GeneratorInterface(cfg)
 gi.load_model()
