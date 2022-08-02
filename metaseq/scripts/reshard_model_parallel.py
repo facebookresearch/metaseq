@@ -15,7 +15,6 @@ import torch
 from tqdm import tqdm
 
 from metaseq.distributed.stitch_fsdp_ckpt import find_num_parts, reshard_megatron_parts
-from metaseq.distributed.fully_sharded_data_parallel import FSDP as FSDP
 from metaseq.file_io import load_and_pop_last_optimizer_state
 
 logger = logging.getLogger(__name__)
