@@ -227,10 +227,20 @@ def train(
 ) -> Tuple[List[Optional[float]], bool]:
     """Train the model for one epoch and return validation losses."""
     # Initialize data iterator
-    itr = epoch_itr.next_epoch_itr(
-        fix_batches_to_gpus=cfg.distributed_training.fix_batches_to_gpus,
-        shuffle=True,
-    )
+    # itr = epoch_itr.next_epoch_itr(
+    #     fix_batches_to_gpus=cfg.distributed_training.fix_batches_to_gpus,
+    #     shuffle=True,
+    # )
+    if "train_data_shuffle" in cfg.interpret_info and cfg.interpret_info["train_data_shuffle"] == "no":
+        itr = epoch_itr.next_epoch_itr(
+            fix_batches_to_gpus=True,
+            shuffle=False,
+        )
+    else:
+        itr = epoch_itr.next_epoch_itr(
+            fix_batches_to_gpus=cfg.distributed_training.fix_batches_to_gpus,
+            shuffle=True,
+        )
     update_freq = (
         cfg.optimization.update_freq[epoch_itr.epoch - 1]
         if epoch_itr.epoch <= len(cfg.optimization.update_freq)

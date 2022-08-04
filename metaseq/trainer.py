@@ -26,6 +26,7 @@ from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 
 import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -845,9 +846,9 @@ class Trainer(object):
                     grad_sim_return = self.grad_sim(
                         -1,
                         self.interpret_info,
-                    )
+                    ) # Han: our gradient dot product function doesn't apply _multiply_factor inside
 
-                with torch.autograd.profiler.record_function("clip-grads"):
+                with torch.autograd.profiler.record_function("clip-grads"): # Han: clip_grad_norm applies _multiply_factor inside
                     # clip grads
                     grad_norm = self.clip_grad_norm(
                         -1,
@@ -861,8 +862,15 @@ class Trainer(object):
                     # check local gradnorm single GPU case, trigger NanDetector
                     raise FloatingPointError("gradients are Nan/Inf")
 
-                final_grad_sim = grad_sim_return / grad_norm
-                logger.info(final_grad_sim.item())
+                final_grad_sim = grad_sim_return / grad_norm * self.optimizer._multiply_factor # Han: compensate for _multiply_factor
+
+                if distributed_utils.get_global_rank() == 0:
+                    if "cleared_train_grads_fn" in self.interpret_info:
+                        with open(os.path.join(self.interpret_info["cleared_test_grads_dir"], self.interpret_info["cleared_train_grads_fn"]), 'a') as fd:
+                            fd.write(f'{final_grad_sim.item()}\n')
+                    else:
+                        logger.info(final_grad_sim.item())
+                distributed_utils.global_barrier()
 
                 # Han: manually disable gradient update
                 with torch.autograd.profiler.record_function("clear-grads"):
@@ -894,7 +902,7 @@ class Trainer(object):
                         ignore_grad=False,
                     )
             raise
-        except OverflowError as e:
+        except OverflowError as e: # TODO(Han): jump to the next example without affecting the saving of other data-score pairs
             raise ValueError("Han: disabled for now")
             overflow = True
             logger.info(
