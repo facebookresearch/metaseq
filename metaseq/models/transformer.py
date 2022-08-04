@@ -724,7 +724,7 @@ class TransformerDecoder(IncrementalDecoder):
         if need_to_make_new_mask:
             self._future_mask = torch.triu(
                 utils.fill_with_neg_inf(torch.zeros([max_seq_len, max_seq_len])), 1
-            )
+            ).to(tensor)
             if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
                 # Code to accomodate dynamic attention when document seperator is used
                 assert input_tokens is not None
