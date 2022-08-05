@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
-
+import time
 from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
@@ -723,8 +723,11 @@ class TransformerDecoder(IncrementalDecoder):
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
         if need_to_make_new_mask:
             self._future_mask = torch.triu(
-                utils.fill_with_neg_inf(torch.zeros([max_seq_len, max_seq_len])), 1
-            ).to(tensor)
+                utils.fill_with_neg_inf(
+                    torch.zeros([max_seq_len, max_seq_len], device=tensor.device)
+                ),
+                1,
+            )
             if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
                 # Code to accomodate dynamic attention when document seperator is used
                 assert input_tokens is not None
