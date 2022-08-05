@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
-import time
 from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
