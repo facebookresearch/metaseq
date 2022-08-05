@@ -436,6 +436,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state=None,
         need_weights=False,
         attn_mask=None,
+        static_masked_tokens=None
     ):
         x, attn, (prev_k, prev_v) = self.self_attn(
             query=query,
@@ -445,6 +446,7 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             need_weights=need_weights,
             attn_mask=attn_mask,
+            static_masked_tokens=static_masked_tokens,
         )
         if self.c_attn is not None:
             tgt_len, bsz = x.size(0), x.size(1)

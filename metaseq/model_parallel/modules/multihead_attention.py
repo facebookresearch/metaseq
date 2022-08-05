@@ -293,18 +293,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                 assert value is not None
                 assert src_len, bsz == value.shape[:2]
 
-        # if incremental_state is not None:
-        #     saved_state = self._get_input_buffer(incremental_state)
-        #     if saved_state is not None and "prev_key" in saved_state:
-        #         # previous time steps are cached - no need to recompute
-        #         # key and value if they are static
-        #         if static_kv:
-        #             assert self.encoder_decoder_attention and not self.self_attention
-        #             key = value = None
-        # else:
-        #     saved_state = None
-
-        # logger.info("query:" + str(query.float().norm().item()))
         if self.self_attention:
             if self.combine_qkv_proj:
                 kvq, _ = self.qkv_proj(query)
@@ -417,8 +405,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                 )
             new_k, new_v = k, v
             if incremental_state is not None:
-                # saved states are stored with shape (bsz, num_heads_partition, seq_len, head_dim)
-
                 if "prev_key" in incremental_state:
                     _prev_key = incremental_state["prev_key"]
                     assert _prev_key is not None

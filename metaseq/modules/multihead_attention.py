@@ -141,6 +141,7 @@ class MultiheadAttention(nn.Module):
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
         need_head_weights: bool = False,
+        static_masked_tokens=None,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -172,50 +173,6 @@ class MultiheadAttention(nn.Module):
                 assert key_bsz == bsz
                 assert value is not None
                 assert src_len, bsz == value.shape[:2]
-
-        if (
-            not self.onnx_trace
-            and incremental_state is None
-            and not static_kv
-            # A workaround for quantization to work. Otherwise JIT compilation
-            # treats bias in linear module as method.
-            and not torch.jit.is_scripting()
-        ):
-            assert key is not None and value is not None
-            return F.multi_head_attention_forward(
-                query,
-                key,
-                value,
-                self.embed_dim,
-                self.num_heads,
-                torch.empty([0]),
-                torch.cat((self.q_proj.bias, self.k_proj.bias, self.v_proj.bias)),
-                self.bias_k,
-                self.bias_v,
-                self.add_zero_attn,
-                self.dropout_module.p,
-                self.out_proj.weight,
-                self.out_proj.bias,
-                self.training or self.dropout_module.apply_during_inference,
-                key_padding_mask,
-                need_weights,
-                attn_mask,
-                use_separate_proj_weight=True,
-                q_proj_weight=self.q_proj.weight,
-                k_proj_weight=self.k_proj.weight,
-                v_proj_weight=self.v_proj.weight,
-            )
-
-        if incremental_state is not None:
-            saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_kv:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    key = value = None
-        else:
-            saved_state = None
 
         if self.self_attention:
             q = self.q_proj(query)
@@ -272,46 +229,35 @@ class MultiheadAttention(nn.Module):
                 .view(-1, bsz * self.num_heads, self.head_dim)
                 .transpose(0, 1)
             )
-
-        if saved_state is not None:
-            # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
-            if "prev_key" in saved_state:
-                _prev_key = saved_state["prev_key"]
+        new_k, new_v = k, v
+        if incremental_state is not None:
+            if "prev_key" in incremental_state:
+                _prev_key = incremental_state["prev_key"]
                 assert _prev_key is not None
-                prev_key = _prev_key.view(bsz * self.num_heads, -1, self.head_dim)
+                prev_key = _prev_key.view(
+                    bsz * self.num_heads, -1, self.head_dim
+                )
                 if static_kv:
                     k = prev_key
                 else:
                     assert k is not None
-                    k = torch.cat([prev_key, k], dim=1)
+                    prev_key.masked_scatter_(static_masked_tokens, k)
+                    k = prev_key
+
                 src_len = k.size(1)
-            if "prev_value" in saved_state:
-                _prev_value = saved_state["prev_value"]
+            if "prev_value" in incremental_state:
+                _prev_value = incremental_state["prev_value"]
                 assert _prev_value is not None
-                prev_value = _prev_value.view(bsz * self.num_heads, -1, self.head_dim)
+                prev_value = _prev_value.view(
+                    bsz * self.num_heads, -1, self.head_dim
+                )
                 if static_kv:
                     v = prev_value
                 else:
                     assert v is not None
-                    v = torch.cat([prev_value, v], dim=1)
-            prev_key_padding_mask: Optional[Tensor] = None
-            if "prev_key_padding_mask" in saved_state:
-                prev_key_padding_mask = saved_state["prev_key_padding_mask"]
-            assert k is not None and v is not None
-            key_padding_mask = MultiheadAttention._append_prev_key_padding_mask(
-                key_padding_mask=key_padding_mask,
-                prev_key_padding_mask=prev_key_padding_mask,
-                batch_size=bsz,
-                src_len=k.size(1),
-                static_kv=static_kv,
-            )
+                    prev_value.masked_scatter_(static_masked_tokens, v)
+                    v = prev_value
 
-            saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
-            saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
-            saved_state["prev_key_padding_mask"] = key_padding_mask
-            # In this branch incremental_state is never None
-            assert incremental_state is not None
-            incremental_state = self._set_input_buffer(incremental_state, saved_state)
         assert k is not None
         assert k.size(1) == src_len
 
@@ -324,25 +270,6 @@ class MultiheadAttention(nn.Module):
             assert key_padding_mask.size(0) == bsz
             assert key_padding_mask.size(1) == src_len
 
-        if self.add_zero_attn:
-            assert v is not None
-            src_len += 1
-            k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
-            v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
-            if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
-                )
-            if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        torch.zeros(key_padding_mask.size(0), 1).type_as(
-                            key_padding_mask
-                        ),
-                    ],
-                    dim=1,
-                )
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
@@ -396,88 +323,7 @@ class MultiheadAttention(nn.Module):
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
 
-        return attn, attn_weights
-
-    @staticmethod
-    def _append_prev_key_padding_mask(
-        key_padding_mask: Optional[Tensor],
-        prev_key_padding_mask: Optional[Tensor],
-        batch_size: int,
-        src_len: int,
-        static_kv: bool,
-    ) -> Optional[Tensor]:
-        # saved key padding masks have shape (bsz, seq_len)
-        if prev_key_padding_mask is not None and static_kv:
-            new_key_padding_mask = prev_key_padding_mask
-        elif prev_key_padding_mask is not None and key_padding_mask is not None:
-            new_key_padding_mask = torch.cat(
-                [prev_key_padding_mask.float(), key_padding_mask.float()], dim=1
-            )
-        # During incremental decoding, as the padding token enters and
-        # leaves the frame, there will be a time when prev or current
-        # is None
-        elif prev_key_padding_mask is not None:
-            if src_len > prev_key_padding_mask.size(1):
-                filler = torch.zeros(
-                    (batch_size, src_len - prev_key_padding_mask.size(1)),
-                    device=prev_key_padding_mask.device,
-                )
-                new_key_padding_mask = torch.cat(
-                    [prev_key_padding_mask.float(), filler.float()], dim=1
-                )
-            else:
-                new_key_padding_mask = prev_key_padding_mask.float()
-        elif key_padding_mask is not None:
-            if src_len > key_padding_mask.size(1):
-                filler = torch.zeros(
-                    (batch_size, src_len - key_padding_mask.size(1)),
-                    device=key_padding_mask.device,
-                )
-                new_key_padding_mask = torch.cat(
-                    [filler.float(), key_padding_mask.float()], dim=1
-                )
-            else:
-                new_key_padding_mask = key_padding_mask.float()
-        else:
-            new_key_padding_mask = prev_key_padding_mask
-        return new_key_padding_mask
-
-    @torch.jit.export
-    def reorder_incremental_state(
-        self,
-        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
-        new_order: Tensor,
-    ):
-        """Reorder buffered internal state (for incremental generation)."""
-        input_buffer = self._get_input_buffer(incremental_state)
-        if input_buffer is not None:
-            for k in input_buffer.keys():
-                input_buffer_k = input_buffer[k]
-                if input_buffer_k is not None:
-                    if self.encoder_decoder_attention and input_buffer_k.size(
-                        0
-                    ) == new_order.size(0):
-                        break
-                    input_buffer[k] = input_buffer_k.index_select(0, new_order)
-            incremental_state = self._set_input_buffer(incremental_state, input_buffer)
-        return incremental_state
-
-    def _get_input_buffer(
-        self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
-    ) -> Dict[str, Optional[Tensor]]:
-        result = self.get_incremental_state(incremental_state, "attn_state")
-        if result is not None:
-            return result
-        else:
-            empty_result: Dict[str, Optional[Tensor]] = {}
-            return empty_result
-
-    def _set_input_buffer(
-        self,
-        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
-        buffer: Dict[str, Optional[Tensor]],
-    ):
-        return self.set_incremental_state(incremental_state, "attn_state", buffer)
+        return attn, attn_weights, (new_k, new_v)
 
     def apply_sparse_mask(self, attn_weights, tgt_len: int, src_len: int, bsz: int):
         return attn_weights
