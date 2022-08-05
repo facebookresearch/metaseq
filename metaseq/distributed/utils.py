@@ -124,10 +124,22 @@ def distributed_init(cfg: MetaseqConfig):
 
         cfg = convert_namespace_to_omegaconf(cfg)
 
+    # set global log level
+    if is_master(cfg.distributed_training):
+        logging.getLogger().setLevel(logging.INFO)
+    else:
+        logging.getLogger().setLevel(logging.WARNING)
+    # silence distributed initialization warnings
+    logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.WARNING)
+
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         warnings.warn("Distributed is already initialized, cannot initialize twice!")
     else:
-        logger.info(
+        if cfg.distributed_training.distributed_rank == 0:
+            nodelist = os.environ.get("SLURM_STEP_NODELIST")
+            if nodelist:
+                logger.info(f"SLURM nodelist: {nodelist}")
+        logger.debug(
             "distributed init (rank {}): {}".format(
                 cfg.distributed_training.distributed_rank,
                 cfg.distributed_training.distributed_init_method,
@@ -139,7 +151,7 @@ def distributed_init(cfg: MetaseqConfig):
             world_size=cfg.distributed_training.distributed_world_size,
             rank=cfg.distributed_training.distributed_rank,
         )
-        logger.info(
+        logger.warning(
             "initialized host {} as rank {}".format(
                 socket.gethostname(),
                 cfg.distributed_training.distributed_rank,
@@ -151,11 +163,6 @@ def distributed_init(cfg: MetaseqConfig):
             dist.all_reduce(torch.zeros(1).cuda())
 
     cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
-
-    if is_master(cfg.distributed_training):
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.getLogger().setLevel(logging.WARNING)
 
     if cfg.common.model_parallel_size > 1:
         try:
