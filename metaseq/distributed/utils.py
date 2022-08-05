@@ -157,13 +157,13 @@ def distributed_init(cfg: MetaseqConfig):
         if torch.cuda.is_available():
             dist.all_reduce(torch.zeros(1).cuda())
 
+    cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
+
     # set global log level
     if is_master(cfg.distributed_training):
         logging.getLogger().setLevel(logging.INFO)
     else:
         logging.getLogger().setLevel(logging.WARNING)
-
-    cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
 
     if cfg.common.model_parallel_size > 1:
         try:
