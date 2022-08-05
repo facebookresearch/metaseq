@@ -12,7 +12,6 @@ import signal
 import socket
 import struct
 import subprocess
-import warnings
 from argparse import Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
