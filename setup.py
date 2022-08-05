@@ -181,7 +181,7 @@ def do_setup(package_data):
         extras_require={
             "dev": [
                 "flake8==3.9.2",
-                "black==22.1.0",
+                "black==22.3.0",
                 # test deps
                 "iopath",
                 "transformers",
