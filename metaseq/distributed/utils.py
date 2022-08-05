@@ -124,16 +124,11 @@ def distributed_init(cfg: MetaseqConfig):
 
         cfg = convert_namespace_to_omegaconf(cfg)
 
-    # set global log level
-    if is_master(cfg.distributed_training):
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.getLogger().setLevel(logging.WARNING)
-    # silence distributed initialization warnings
+    # silence torch's distributed initialization info
     logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.WARNING)
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        warnings.warn("Distributed is already initialized, cannot initialize twice!")
+        logger.warning("Distributed is already initialized, cannot initialize twice!")
     else:
         if cfg.distributed_training.distributed_rank == 0:
             nodelist = os.environ.get("SLURM_STEP_NODELIST")
@@ -151,7 +146,7 @@ def distributed_init(cfg: MetaseqConfig):
             world_size=cfg.distributed_training.distributed_world_size,
             rank=cfg.distributed_training.distributed_rank,
         )
-        logger.warning(
+        logger.info(
             "initialized host {} as rank {}".format(
                 socket.gethostname(),
                 cfg.distributed_training.distributed_rank,
@@ -161,6 +156,12 @@ def distributed_init(cfg: MetaseqConfig):
         # perform a dummy all-reduce to initialize the NCCL communicator
         if torch.cuda.is_available():
             dist.all_reduce(torch.zeros(1).cuda())
+
+    # set global log level
+    if is_master(cfg.distributed_training):
+        logging.getLogger().setLevel(logging.INFO)
+    else:
+        logging.getLogger().setLevel(logging.WARNING)
 
     cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
 
