@@ -226,7 +226,7 @@ def train(
     cfg: DictConfig, trainer: Trainer, task: tasks.BaseTask, epoch_itr
 ) -> Tuple[List[Optional[float]], bool]:
     """Train the model for one epoch and return validation losses."""
-    # Initialize data iterator
+    # Initialize data iterator # Han: check trainer.get_train_iterator() for more info
     # itr = epoch_itr.next_epoch_itr(
     #     fix_batches_to_gpus=cfg.distributed_training.fix_batches_to_gpus,
     #     shuffle=True,

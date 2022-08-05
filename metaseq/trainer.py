@@ -27,6 +27,7 @@ from metaseq.optim import lr_scheduler
 
 import json
 import os
+from flufl.lock import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -676,6 +677,13 @@ class Trainer(object):
         #         self.cfg.optimization.clip_norm_type,
         #     )
         # breakpoint() # breakpoint() for srun session or kill_now("scancel -p <partition> -u <username>") for sbatch session
+        
+        # print(distributed_utils.get_global_rank(), samples[0])
+        # if distributed_utils.get_global_rank() == 0:
+        #     tokenizer = self.task.tokenizer
+        #     ids = samples[0]['net_input']['src_tokens'][0].tolist()
+        #     breakpoint()
+        # distributed_utils.global_barrier()
 
         mode = self.interpret_info["mode"] # train, interpret_objective, or interpret_evidence
 
@@ -864,13 +872,23 @@ class Trainer(object):
 
                 final_grad_sim = grad_sim_return / grad_norm * self.optimizer._multiply_factor # Han: compensate for _multiply_factor
 
-                if distributed_utils.get_global_rank() == 0:
-                    if "cleared_train_grads_fn" in self.interpret_info:
+                # if distributed_utils.get_global_rank() == 0:
+                #     if "cleared_train_grads_fn" in self.interpret_info:
+                #         with open(os.path.join(self.interpret_info["cleared_test_grads_dir"], self.interpret_info["cleared_train_grads_fn"]), 'a') as fd:
+                #             fd.write(f'{final_grad_sim.item()}\n')
+                #     else:
+                #         logger.info(final_grad_sim.item())
+                # distributed_utils.global_barrier()
+
+                if "cleared_train_grads_fn" in self.interpret_info:
+                    with Lock(os.path.join(self.interpret_info["cleared_test_grads_dir"], f'{self.interpret_info["cleared_train_grads_fn"]}.lock'), lifetime=60):
                         with open(os.path.join(self.interpret_info["cleared_test_grads_dir"], self.interpret_info["cleared_train_grads_fn"]), 'a') as fd:
-                            fd.write(f'{final_grad_sim.item()}\n')
-                    else:
-                        logger.info(final_grad_sim.item())
-                distributed_utils.global_barrier()
+                            ids = samples[0]['net_input']['src_tokens'][0].tolist()
+                            # TODO(Han): decode and encode would give different number of tokens, which is problematic for continuing pretraining
+                            fd.write(json.dumps({"score": final_grad_sim.item(), "text": self.task.tokenizer.decode(ids), "info": f"step{self.get_num_updates()}-rank{distributed_utils.get_global_rank()}"}))
+                            fd.write("\n")
+                else:
+                    logger.info(final_grad_sim.item())
 
                 # Han: manually disable gradient update
                 with torch.autograd.profiler.record_function("clear-grads"):
