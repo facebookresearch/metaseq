@@ -139,7 +139,7 @@ def do_setup(package_data):
             "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
-            "black==22.1.0",
+            "black==22.3.0",
             "click==8.0.4",
             "cython",
             'dataclasses; python_version<"3.7"',
@@ -181,7 +181,7 @@ def do_setup(package_data):
         extras_require={
             "dev": [
                 "flake8==3.9.2",
-                "black==22.1.0",
+                "black==22.3.0",
                 # test deps
                 "iopath",
                 "transformers",
