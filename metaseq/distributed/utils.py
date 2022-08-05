@@ -130,10 +130,6 @@ def distributed_init(cfg: MetaseqConfig):
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         logger.warning("Distributed is already initialized, cannot initialize twice!")
     else:
-        if cfg.distributed_training.distributed_rank == 0:
-            nodelist = os.environ.get("SLURM_STEP_NODELIST")
-            if nodelist:
-                logger.info(f"SLURM nodelist: {nodelist}")
         logger.debug(
             "distributed init (rank {}): {}".format(
                 cfg.distributed_training.distributed_rank,
@@ -164,6 +160,10 @@ def distributed_init(cfg: MetaseqConfig):
         logging.getLogger().setLevel(logging.INFO)
     else:
         logging.getLogger().setLevel(logging.WARNING)
+
+    nodelist = os.environ.get("SLURM_STEP_NODELIST")
+    if nodelist:
+        logger.info(f"SLURM nodelist: {nodelist}")
 
     if cfg.common.model_parallel_size > 1:
         try:
