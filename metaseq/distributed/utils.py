@@ -36,7 +36,7 @@ def is_master(cfg: DistributedTrainingConfig):
     return cfg.distributed_rank == 0
 
 
-def infer_init_method(cfg: DistributedTrainingConfig, force_distributed=False):
+def infer_init_method(cfg: DistributedTrainingConfig):
     if cfg.distributed_init_method is not None:
         return
 
@@ -49,7 +49,7 @@ def infer_init_method(cfg: DistributedTrainingConfig, force_distributed=False):
     ):
         # support torch.distributed.launch
         _infer_torch_distributed_launch_init(cfg)
-    elif cfg.distributed_world_size > 1 or force_distributed:
+    else:
         # fallback for single node with multiple GPUs
         _infer_single_node_init(cfg)
 
