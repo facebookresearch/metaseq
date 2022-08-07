@@ -29,7 +29,7 @@ class Linear(Module):
         out_features: int,
         bias: bool = True,
         initialize_params_on_gpu: bool = False,
-        dtype: torch.dtype = None
+        dtype: torch.dtype = None,
     ) -> None:
         super(Linear, self).__init__()
         self.in_features = in_features

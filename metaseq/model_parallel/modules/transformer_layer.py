@@ -8,6 +8,7 @@ import math
 import torch
 from torch import nn, Tensor
 
+import metaseq.utils as utils
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
 
