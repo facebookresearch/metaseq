@@ -390,7 +390,7 @@ class TransformerDecoder(IncrementalDecoder):
 
         self.output_projection = None
         if self.share_input_output_embed:
-            self.output_projection = nn.Linear(
+            self.output_projection = Linear(
                 self.embed_tokens.weight.shape[1],
                 self.embed_tokens.weight.shape[0],
                 bias=False,
@@ -399,7 +399,7 @@ class TransformerDecoder(IncrementalDecoder):
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
-            self.output_projection = nn.Linear(
+            self.output_projection = Linear(
                 self.output_embed_dim,
                 len(dictionary),
                 bias=False,
