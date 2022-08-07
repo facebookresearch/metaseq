@@ -165,6 +165,7 @@ class TransformerLanguageModel(LanguageModel):
     @classmethod
     def build_model(cls, args, task):
         """Build a new model instance."""
+        base_lm_architecture(args)
 
         if getattr(args, "max_target_positions", None) is None:
             args.max_target_positions = getattr(
@@ -191,6 +192,7 @@ class TransformerLanguageModel(LanguageModel):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
 

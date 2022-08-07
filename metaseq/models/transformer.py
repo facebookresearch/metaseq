@@ -22,6 +22,7 @@ from metaseq.modules import (
     PositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
+    Linear,
 )
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
 
@@ -269,17 +270,23 @@ class TransformerDecoder(IncrementalDecoder):
         self.embed_tokens = embed_tokens
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
+        initialize_params_on_gpu = getattr(
+            args, "tensor_parallel_init_model_on_gpu", False
+        )
         self.project_in_dim = (
-            Linear(input_embed_dim, embed_dim, bias=False)
+            Linear(
+                input_embed_dim,
+                embed_dim,
+                bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=utils.get_model_init_dtype(args),
+            )
             if embed_dim != input_embed_dim
             else None
         )
         self.use_alibi: bool = getattr(args, "alibi", False)
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
-        )
-        initialize_params_on_gpu = getattr(
-            args, "tensor_parallel_init_model_on_gpu", False
         )
 
         self.embed_positions = (
@@ -370,7 +377,13 @@ class TransformerDecoder(IncrementalDecoder):
             self.layer_norm = None
 
         self.project_out_dim = (
-            Linear(embed_dim, self.output_embed_dim, bias=False)
+            Linear(
+                embed_dim,
+                self.output_embed_dim,
+                bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=utils.get_model_init_dtype(args),
+            )
             if embed_dim != self.output_embed_dim
             else None
         )
@@ -381,11 +394,17 @@ class TransformerDecoder(IncrementalDecoder):
                 self.embed_tokens.weight.shape[1],
                 self.embed_tokens.weight.shape[0],
                 bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=utils.get_model_init_dtype(args),
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
             self.output_projection = nn.Linear(
-                self.output_embed_dim, len(dictionary), bias=False
+                self.output_embed_dim,
+                len(dictionary),
+                bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=utils.get_model_init_dtype(args),
             )
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim**-0.5
@@ -758,23 +777,20 @@ class TransformerDecoder(IncrementalDecoder):
 
 
 def Embedding(
-    num_embeddings, embedding_dim, padding_idx, initialize_params_on_gpu=False
+    num_embeddings,
+    embedding_dim,
+    padding_idx,
+    initialize_params_on_gpu=False,
+    dtype: Optional[torch.dtype] = None,
 ):
     # Passing weights initialized on GPU.
     device = torch.cuda.current_device() if initialize_params_on_gpu else None
-    dtype = torch.half if initialize_params_on_gpu else torch.float
+    if dtype is None:
+        dtype = torch.float
     weight = torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype)
     nn.init.normal_(weight, mean=0, std=embedding_dim**-0.5)
     nn.init.constant_(weight[padding_idx], 0)
     m = nn.Embedding(
         num_embeddings, embedding_dim, padding_idx=padding_idx, _weight=weight
     )
-    return m
-
-
-def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
-    if bias:
-        nn.init.constant_(m.bias, 0.0)
     return m

@@ -138,7 +138,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def build_encoder_attention(self, embed_dim, args, **unused_kwargs):
@@ -152,7 +152,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def forward_attention(

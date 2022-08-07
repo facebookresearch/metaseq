@@ -638,6 +638,12 @@ def floating_point_precision_convertor(
         return x.half()
 
 
+def get_model_init_dtype(args):
+    if getattr(args, "memory_efficient_fp16", False):
+        return torch.bfloat16 if getattr(args, "bf16", False) else torch.half
+    return torch.float32
+
+
 def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:
     return (
         epoch - 1 + (count + 1) / float(iterator_size)

@@ -274,7 +274,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
         )
 
         self.fc2 = self.build_fc2(
@@ -284,7 +284,7 @@ class TransformerDecoderLayer(nn.Module):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim)
@@ -299,24 +299,25 @@ class TransformerDecoderLayer(nn.Module):
         self.onnx_trace = False
         self.args = args
 
-    def _get_model_init_dtype(self):
-        if getattr(self.args, "memory_efficient_fp16", False):
-            return torch.bfloat16 if getattr(self.args, "bf16", False) else torch.half
-        return torch.float32
-
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
         self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu
+            input_dim,
+            output_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_fc2(
         self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu
+            input_dim,
+            output_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_self_attention(
@@ -336,6 +337,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def build_encoder_attention(self, embed_dim, args):
@@ -349,6 +351,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def prepare_for_onnx_export_(self):
