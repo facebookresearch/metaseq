@@ -15,7 +15,7 @@ gpu: &gpu
 # -------------------------------------------------------------------------------------
 # Re-usable commands
 # -------------------------------------------------------------------------------------
-cache_key: &cache_key cache-key-{{ .Environment.CIRCLE_JOB }}-{{ checksum ".circleci/config.yml" }}-{{ checksum "setup.py"}}
+cache_key: &cache_key cache-key-{{ .Environment.CIRCLE_JOB }}-{{ checksum ".circleci/config.yml" }}-{{ checksum "setup.py"}}-2
 
 install_dep_common: &install_dep_common
   - run:
@@ -68,29 +68,15 @@ install_fairscale: &install_fairscale
             cd ~/
         fi
 
-install_dep_pt19: &install_dep_pt19
+install_dep_pt: &install_dep_pt
   - run:
       name: Install Pytorch Dependencies
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+        conda install pytorch~=1.12.1 torchvision torchaudio cudatoolkit=11.3 -c pytorch
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
-
-install_pytorch_dep: &install_pytorch_dep
-  - parameters:
-        version_str:
-          type: string
-          default: "/dev/non_exist"  # Default to error out
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        echo "<<parameters.version_str>>"
-        pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
 
 install_repo: &install_repo
   - run:
@@ -177,14 +163,14 @@ commands:
 
 jobs:
 
-  gpu_tests_pt19:
+  gpu_tests_pt:
     <<: *gpu
 
     working_directory: ~/metaseq
 
     steps:
       - gpu_pre
-      - <<: *install_dep_pt19
+      - <<: *install_dep_pt
       - gpu_post
 
 
@@ -192,4 +178,4 @@ workflows:
   version: 2
   build:
     jobs:
-      - gpu_tests_pt19
+      - gpu_tests_pt
