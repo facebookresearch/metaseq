@@ -38,16 +38,19 @@ install_dep_fused_ops: &install_dep_fused_ops
       # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
       command: |
         source activate metaseq
-        if ! python -c 'import apex'; then
-          git clone https://github.com/NVIDIA/apex
-          cd apex
-          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
-          # prevent the cuda mismatch error and compile through it anyway
-          sed -i '32 i \ \ \ \ return' setup.py
-          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
-          cd ~/
-        fi
-        if ! python -c 'import megatron_lm'; then
+        # if ! python -c 'import apex'; then
+        #   conda install -c conda-forge gcc_linux-64==7.5.0
+        #   conda install -c conda-forge gxx_linux-64==7.5.0
+
+        #   git clone https://github.com/NVIDIA/apex
+        #   cd apex
+        #   git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
+        #   # prevent the cuda mismatch error and compile through it anyway
+        #   sed -i '32 i \ \ \ \ return' setup.py
+        #   pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
+        #   cd ~/
+        # fi
+        if ! python -c 'import megatron'; then
           git clone --depth=1 --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
           cd Megatron-LM
           pip install -r requirements.txt
@@ -76,7 +79,7 @@ install_dep_pt: &install_dep_pt
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        conda install pytorch~=1.12.1 torchvision torchaudio cudatoolkit=11.3 -c pytorch
+        conda install pytorch~=1.12.1 cudatoolkit=11.3 -c pytorch
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
