@@ -42,6 +42,8 @@ install_dep_fused_ops: &install_dep_fused_ops
           git clone https://github.com/NVIDIA/apex
           cd apex
           git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
+          # prevent the cuda mismatch error and compile through it anyway
+          sed -i '32 i \ \ \ \ return' setup.py
           pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
           cd ~/
         fi
