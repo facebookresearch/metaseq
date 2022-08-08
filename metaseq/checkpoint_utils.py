@@ -794,3 +794,49 @@ def _get_pad_info(state_dict: Dict) -> Dict[str, int]:
             assert full_key not in res, f"collision: {full_key} already in {res}"
             res[full_key] = v["padding"]
     return res
+
+
+def load_ema_from_checkpoint(fpath):
+    """Loads exponential moving averaged (EMA) checkpoint from input and
+    returns a model with ema weights.
+
+    Args:
+      fpath: A string path of checkpoint to load from.
+
+    Returns:
+      A dict of string keys mapping to various values. The 'model' key
+      from the returned dict should correspond to an OrderedDict mapping
+      string parameter names to torch Tensors.
+    """
+    params_dict = collections.OrderedDict()
+    new_state = None
+
+    with PathManager.open(fpath, 'rb') as f:
+        new_state = torch.load(
+            f,
+            map_location=(
+                lambda s, _: torch.serialization.default_restore_location(s, 'cpu')
+            ),
+        )
+
+        # EMA model is stored in a separate "extra state"
+        model_params = new_state['extra_state']['ema']
+
+        for key in list(model_params.keys()):
+            p = model_params[key]
+            if isinstance(p, torch.HalfTensor):
+                p = p.float()
+            if key not in params_dict:
+                params_dict[key] = p.clone()
+                # NOTE: clone() is needed in case of p is a shared parameter
+            else:
+                raise ValueError("Key {} is repeated in EMA model params.".format(key))
+
+        if len(params_dict) == 0:
+            raise ValueError(
+                f"Input checkpoint path '{fpath}' does not contain "
+                "ema model weights, is this model trained with EMA?"
+            )
+
+    new_state['model'] = params_dict
+    return new_state
