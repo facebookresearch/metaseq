@@ -39,8 +39,6 @@ install_dep_fused_ops: &install_dep_fused_ops
       command: |
         source activate metaseq
         # if ! python -c 'import apex'; then
-        #   conda install -c conda-forge gcc_linux-64==7.5.0
-        #   conda install -c conda-forge gxx_linux-64==7.5.0
 
         #   git clone https://github.com/NVIDIA/apex
         #   cd apex
@@ -51,6 +49,8 @@ install_dep_fused_ops: &install_dep_fused_ops
         #   cd ~/
         # fi
         if ! python -c 'import megatron'; then
+          conda install -c conda-forge gcc_linux-64==8.5.0
+          conda install -c conda-forge gxx_linux-64==8.5.0
           git clone --depth=1 --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
           cd Megatron-LM
           pip install -r requirements.txt
