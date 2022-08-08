@@ -56,7 +56,7 @@ class DummyLMTask(BaseTask):
         """
         dataset_size = self.cfg.dataset_size
         if self.cfg.batch_size is not None:
-            if split == 'train' or self.cfg.batch_size_valid is None:
+            if split == "train" or self.cfg.batch_size_valid is None:
                 bsz = self.cfg.batch_size
             else:
                 bsz = self.cfg.batch_size_valid
