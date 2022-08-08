@@ -41,7 +41,7 @@ install_dep_fused_ops: &install_dep_fused_ops
         if ! python -c 'import apex'; then
           git clone https://github.com/NVIDIA/apex
           cd apex
-          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
+          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
           pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
           cd ~/
         fi
