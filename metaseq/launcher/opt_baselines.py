@@ -143,6 +143,9 @@ def get_grid(args):
             hyperparam(
                 "--dict-size", 51200 - 4
             ),  # TODO(susan): what is this -4 sorcery? relic of more nmt things?
+            hyperparam(
+                "--no-save"
+            ),
         ]
         total_updates = 50
         warmup_updates = 50
