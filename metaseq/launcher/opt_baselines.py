@@ -157,7 +157,11 @@ def get_grid(args):
     args.snapshot_code = True
 
     if args.data is None and not args.benchmark:
-        grid += [hyperparam("--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets))]
+        grid += [
+            hyperparam(
+                "--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets)
+            )
+        ]
 
     grid += [
         hyperparam("--train-subset", "train"),
