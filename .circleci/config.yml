@@ -39,7 +39,6 @@ install_dep_fused_ops: &install_dep_fused_ops
       command: |
         source activate metaseq
         # if ! python -c 'import apex'; then
-
         #   git clone https://github.com/NVIDIA/apex
         #   cd apex
         #   git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea

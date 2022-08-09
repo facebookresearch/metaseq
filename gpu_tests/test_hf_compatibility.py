@@ -101,12 +101,12 @@ class TestHFCompatibility(unittest.TestCase):
             },
         )
 
-        model = checkpoint[0][0].eval()
+        model = checkpoint[0][0].cuda().half().eval()
 
-        hf_model = OPTForCausalLM.from_pretrained(model_path)
+        hf_model = OPTForCausalLM.from_pretrained(model_path).cuda().half()
 
         for prompt in prompts:
-            input_ids = tensorize_input(tokenizer, prompt)
+            input_ids = tensorize_input(tokenizer, prompt).cuda()
             with torch.no_grad():
                 logits_metaseq = model(input_ids)[0]
                 logits_hf = hf_model(input_ids)[0]
@@ -115,6 +115,7 @@ class TestHFCompatibility(unittest.TestCase):
             hf_next_token = get_next_token(logits_hf, tokenizer)
 
             # Assert that HF and metaseq versions of the same model predict the same logits
+            __import__("pdb").set_trace()  # FIXME
             self.assertTrue(
                 torch.allclose(logits_metaseq.cpu(), logits_hf.cpu(), atol=1e-3)
             )
@@ -140,10 +141,10 @@ class TestHFCompatibility(unittest.TestCase):
                 "merges_filename": merges_file,
             },
         )
-        model = checkpoint[0][0].eval()
+        model = checkpoint[0][0].cuda().eval()
 
         for prompt, logits_mp in zip(prompts, mp_logits_list):
-            input_ids = tensorize_input(tokenizer, prompt)
+            input_ids = tensorize_input(tokenizer, prompt).cuda()
             with torch.no_grad():
                 logits_metaseq = model(input_ids)[0]
 
