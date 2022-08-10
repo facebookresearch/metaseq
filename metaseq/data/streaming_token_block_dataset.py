@@ -55,6 +55,10 @@ class StreamingTokenBlockDataset(torch.utils.data.IterableDataset):
             self.block_iterator = yield_single_sentences_pad_8
         elif break_mode == "complete":
             self.block_iterator = yield_doc_blocks
+        elif break_mode == "untruncated_complete":
+            self.block_iterator = yield_untruncated_doc_blocks
+        elif break_mode == "strict_none":
+            self.block_iterator = yield_strict_token_blocks
         else:
             raise ValueError(
                 f'Invalid value for break_mode = {break_mode}. Available options are "none", "eos_pad_8" or "complete".'
@@ -227,13 +231,75 @@ def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
                 cur_block_ids = []
                 cur_block_remain = block_size
 
-    if not drop_last and len(cur_block) > 0:
-        if cur_block_remain > 0:
-            padding = cur_block[-1].new_full((cur_block_remain,), padding_idx)
-            cur_block.append(padding)
+    # if not drop_last and len(cur_block) > 0:
+    #     if cur_block_remain > 0:
+    #         padding = cur_block[-1].new_full((cur_block_remain,), padding_idx)
+    #         cur_block.append(padding)
+    #     block = torch.cat(cur_block)
+    #     assert block.numel() == block_size
+    #     yield {
+    #         "ids": torch.LongTensor(cur_block_ids),
+    #         "block": block,
+    #     } # Han: removed to enforce drop_last
+
+
+def yield_strict_token_blocks(iterable, block_size, drop_last, padding_idx):
+    """Sample break mode = None. (Pre-Training default)."""
+    cur_block = []
+    cur_block_ids = []
+    for idx, item in enumerate(iterable):
+        cur_block_ids.append(idx)
+        assert item.numel() == block_size # Han: since we pass in processed data
+        cur_block.append(item)
         block = torch.cat(cur_block)
-        assert block.numel() == block_size
         yield {
             "ids": torch.LongTensor(cur_block_ids),
-            "block": block,
+            "block": block[:block_size],
         }
+        cur_block = []
+        cur_block_ids = []
+    if len(cur_block) > 0:
+        raise ValueError("check processed instance length")
+
+
+def yield_untruncated_doc_blocks(iterable, block_size, drop_last, padding_idx):
+    cur_block = []
+    cur_block_ids = []
+    cur_block_remain = block_size
+    for idx, item in enumerate(iterable):
+        cur_block_ids.append(idx)
+        while item.numel() > 0:
+            num_to_take = min(item.numel(), cur_block_remain)
+
+            cur_block.append(item[:num_to_take])
+            item = item[num_to_take:]  # remainder
+
+            cur_block_remain -= num_to_take
+            assert cur_block_remain >= 0
+
+            if cur_block_remain == 0: # doc is too long
+                assert len(cur_block) == 1
+                block = torch.cat(cur_block)
+                assert block.numel() == block_size
+                yield {
+                    "ids": torch.LongTensor(cur_block_ids),
+                    "block": block[:block_size],
+                }
+
+                cur_block = []
+                cur_block_ids = []
+                cur_block_remain = block_size
+            else: # doc is too short
+                padding = cur_block[-1].new_full((cur_block_remain,), padding_idx)
+                cur_block.append(padding)
+                assert len(cur_block) == 2
+                block = torch.cat(cur_block)
+                assert block.numel() == block_size
+                yield {
+                    "ids": torch.LongTensor(cur_block_ids),
+                    "block": block,
+                }
+
+                cur_block = []
+                cur_block_ids = []
+                cur_block_remain = block_size

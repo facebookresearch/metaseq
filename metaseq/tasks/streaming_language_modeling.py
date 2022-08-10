@@ -170,6 +170,11 @@ class StreamingLanguageModelingTask(LegacyTask):
         return cls(args)
 
     def _tokenize_one_json(self, json):
+        if "tids" in json: # Han: tids (processed token ids) have priority over text
+            return torch.LongTensor(
+                # append an end-of-document symbol after each document
+                json["tids"]
+            )
         text = json["text"]
         return torch.LongTensor(
             # append an end-of-document symbol after each document
