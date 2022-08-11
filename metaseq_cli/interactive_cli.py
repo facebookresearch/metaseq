@@ -27,6 +27,7 @@ from metaseq.service.constants import (
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
 )
+
 from metaseq.service.utils import encode_fn, build_logger
 
 logger = build_logger()
@@ -102,8 +103,12 @@ def cli_main():
     # dumb defaults overriding
     parser.set_defaults(lr_scheduler=None, criterion=None)
     flat_launch_args = []
-    for s in LAUNCH_ARGS:
-        flat_launch_args += s.split()
+    for k, v in LAUNCH_ARGS.items():
+        k = k.replace("_", "-")
+        if k != "data":
+            flat_launch_args.append(f"--{k}")
+        if str(v) != "True":
+            flat_launch_args.append(str(v))
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
     cfg = convert_namespace_to_omegaconf(args)
