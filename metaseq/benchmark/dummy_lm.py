@@ -27,6 +27,7 @@ class DummyLMConfig(MetaseqDataclass):
     )
     add_bos_token: bool = False
     batch_size: Optional[int] = II("dataset.batch_size")
+    batch_size_valid: Optional[int] = II("dataset.batch_size_valid")
     max_tokens: Optional[int] = II("dataset.max_tokens")
     max_target_positions: int = II("task.tokens_per_sample")
 
@@ -53,8 +54,13 @@ class DummyLMTask(BaseTask):
         Args:
             split (str): name of the split (e.g., train, valid, test)
         """
+        dataset_size = self.cfg.dataset_size
         if self.cfg.batch_size is not None:
-            bsz = self.cfg.batch_size
+            if split == "train" or self.cfg.batch_size_valid is None:
+                bsz = self.cfg.batch_size
+            else:
+                bsz = self.cfg.batch_size_valid
+                dataset_size = 1
         else:
             bsz = max(1, self.cfg.max_tokens // self.cfg.tokens_per_sample)
         self.datasets[split] = DummyDataset(
@@ -70,7 +76,7 @@ class DummyLMTask(BaseTask):
                 "nsentences": bsz,
                 "ntokens": bsz * self.cfg.tokens_per_sample,
             },
-            num_items=self.cfg.dataset_size,
+            num_items=dataset_size,
             item_size=self.cfg.tokens_per_sample,
         )
 

@@ -74,10 +74,10 @@ def add_extra_options_func(parser):
 def get_grid(args):
     # Infer data path if not given
     DATA_ROOT = ""
+    valid_subsets = VALID_SUBSETS
     if args.data is None and not args.benchmark:
         cluster_env = get_env_from_args(args)
         data_loc_by_env = DATA_LOCATIONS[cluster_env]
-        valid_subsets = VALID_SUBSETS
         if args.circleci:
             data_loc_by_env = "./gpu_tests/circleci"
             valid_subsets = ["BookCorpusFair"]
@@ -143,6 +143,7 @@ def get_grid(args):
             hyperparam(
                 "--dict-size", 51200 - 4
             ),  # TODO(susan): what is this -4 sorcery? relic of more nmt things?
+            hyperparam("--no-save"),
         ]
         total_updates = 50
         warmup_updates = 50

@@ -15,7 +15,7 @@ gpu: &gpu
 # -------------------------------------------------------------------------------------
 # Re-usable commands
 # -------------------------------------------------------------------------------------
-cache_key: &cache_key cache-key-{{ .Environment.CIRCLE_JOB }}-{{ checksum ".circleci/config.yml" }}-{{ checksum "setup.py"}}
+cache_key: &cache_key cache-key-{{ checksum ".circleci/config.yml" }}-{{ checksum "setup.py"}}
 
 install_dep_common: &install_dep_common
   - run:

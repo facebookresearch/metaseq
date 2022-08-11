@@ -48,6 +48,7 @@ def save_checkpoint(
         save_checkpoint.best = best_function(val_loss, prev_best)
 
     if cfg.no_save:
+        logger.warning(f"Not saving checkpoints.")
         return
 
     trainer.consolidate_optimizer()  # TODO(SS): we dont need if no_save_optimizer_state
