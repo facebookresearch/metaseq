@@ -31,7 +31,7 @@ from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import ByteLevelBPETokenizer, Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -47,6 +47,9 @@ DEFAULT_MULTICORPUS_MAX = -1
 class StreamingLanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory with JSONL files"}
+    )
+    hf_tokenizer: Optional[str] = field(
+        default="", metadata={"help": "path to a HF tokenizer json file."}
     )
     vocab_filename: Optional[str] = field(
         default="", metadata={"help": "path to bpe-vocab.json"}
@@ -124,9 +127,12 @@ class StreamingLanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        self.tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename, args.merges_filename
-        )
+        if args.hf_tokenizer:
+            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            self.tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
