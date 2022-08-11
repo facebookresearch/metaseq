@@ -189,7 +189,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         return tokenizer
 
     def _initialize_unigram_tokenizer(self, args):
-        if "1.3" in args.spm_path:
+        # if "1.3" in args.spm_path:
+        if "1.4" not in args.spm_path: # tokenizers for 1.3 and previous
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
@@ -200,7 +201,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
                 "Using V1.3 Tokenizer. Please double check you are using the right tokenizer."
             )
             return tokenizer
-        elif "1.4" in args.spm_path:
+        # elif "1.4" in args.spm_path:
+        else: # 1.4 tokenizers
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
@@ -213,7 +215,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             )
             tokenizer.decoder = decoders.ByteLevel()
             return tokenizer
-        raise ValueError("What tokenizer are you trying to use?")
+        #raise ValueError("What tokenizer are you trying to use?")
 
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
