@@ -12,6 +12,7 @@ See docs/api.md for more information.
 """
 
 import os
+import sys
 import queue
 import pkg_resources
 import random
@@ -45,7 +46,6 @@ app = Flask(__name__)
 
 # global state (mutable!)
 cfg = None
-port = DEFAULT_PORT
 BATCH_QUEUE = PriorityQueueRingShard()
 
 logger = build_logger()
@@ -334,7 +334,7 @@ def completions(engine=None):
 @app.route("/")
 def index():
     # TODO(roller): decouple demopage.html
-    fn = pkg_resources.resource_filename("metaseq", "service/index.html")
+    fn = pkg_resources.resource_filename("metaseq", "service/cm3_index.html")
     with open(fn) as f:
         return f.read()
 
@@ -350,8 +350,34 @@ def cli_main():
     # dumb defaults overriding
     parser.set_defaults(lr_scheduler=None, criterion=None)
     flat_launch_args = []
-    for s in LAUNCH_ARGS:
-        flat_launch_args += s.split()
+    if len(sys.argv) > 1:
+        try:
+            from metaseq_internal.constants import TRAINED_MODEL_CONFIG
+        except ImportError:
+            TRAINED_MODEL_CONFIG = {}
+        model_name = sys.argv[1]
+        env_name = "azure" if len(sys.argv) < 3 else sys.argv[2]
+        try:
+            model_config = TRAINED_MODEL_CONFIG[env_name][model_name]
+        except KeyError:
+            print(
+                f"{model_name} on {env_name} config not found, please add that in metaseq_internal.constants"
+            )
+        logger.info("model config overide")
+        logger.info(model_config)
+        DEFAULT_PORT = model_config["lauch_port"]
+        del model_config["lauch_port"]
+        LAUNCH_ARGS.update(model_config)
+
+    for k, v in LAUNCH_ARGS.items():
+        k = k.replace("_", "-")
+        if k != "data":
+            flat_launch_args.append(f"--{k}")
+        if str(v) != "True":
+            flat_launch_args.append(str(v))
+    logger.info("Api launching config")
+    logger.info(flat_launch_args)
+
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
     port = DEFAULT_PORT

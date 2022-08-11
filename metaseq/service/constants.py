@@ -11,7 +11,7 @@ MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 4
 TOTAL_WORLD_SIZE = 4
-
+MAX_BEAM = 16
 
 CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/causal_one_image/resharded"
 # where to store them on SSD for faster loading

@@ -24,7 +24,6 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.constants import (
-    TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
 )
 from metaseq.service.utils import encode_fn, build_logger
@@ -102,12 +101,37 @@ def cli_main():
     # dumb defaults overriding
     parser.set_defaults(lr_scheduler=None, criterion=None)
     flat_launch_args = []
-    for s in LAUNCH_ARGS:
-        flat_launch_args += s.split()
+    if len(sys.argv) > 1:
+        try:
+            from metaseq_internal.constants import TRAINED_MODEL_CONFIG
+        except ImportError:
+            TRAINED_MODEL_CONFIG = {}
+        model_name = sys.argv[1]
+        env_name = "azure" if len(sys.argv) < 3 else sys.argv[2]
+        try:
+            model_config = TRAINED_MODEL_CONFIG[env_name][model_name]
+        except KeyError:
+            print(
+                f"{model_name} on {env_name} config not found, please add that in metaseq_internal.constants"
+            )
+        del model_config["lauch_port"]
+        print(model_config)
+        LAUNCH_ARGS.update(model_config)
+    for k, v in LAUNCH_ARGS.items():
+        k = k.replace("_", "-")
+        if k != "data":
+            flat_launch_args.append(f"--{k}")
+        if str(v) != "True":
+            flat_launch_args.append(str(v))
+
+    print("Api launching config")
+    print(flat_launch_args)
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
     cfg = convert_namespace_to_omegaconf(args)
-    cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
+    cfg.distributed_training.distributed_world_size = model_config[
+            "distributed_world_size"
+        ]
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
