@@ -678,9 +678,15 @@ class GeneratorInterface:
                                 : max_tokens[i]
                             ]
 
-                    # cut off the starting token
+                    # cut off the starting </s> token and the first token, and attach
+                    # a None at the beginning.
+                    # So, if the tokens are </s>, The, nice, cat
+                    # scores are            -0.5, -0.3, -0.2, -0.1
+                    # We would remove the scores for </s> and the first word "The"
+                    # and attach a None to signify the score for "The"
+                    # This is in line with how the OpenAI API operates.
                     tokens_no_eos = tokens[1:] if echo else tokens
-                    scores_with_eos = [None] + scores[1:] if echo else scores
+                    scores_no_eos = [None] + scores[2:] if echo else scores
                     # turn it into a string
                     text = self.bpe.bpe.decode(tokens_no_eos)
                     # re-encode it so we get offsets
@@ -688,11 +694,11 @@ class GeneratorInterface:
 
                     result = {
                         "text": text,
-                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
+                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens_no_eos],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
-                        "token_scores": scores_with_eos,
+                        "token_scores": scores_no_eos,
                     }
                     if logprobs > 0:
                         # final result is a List[Dict[str, float]]
@@ -710,8 +716,10 @@ class GeneratorInterface:
                             }
                             out_logprobs.append(lp)
                         if echo:
-                            # use null instead of giving bunk probs for EOS token
-                            result["top_logprobs"] = [None] + out_logprobs[1:]
+                            # use null instead of giving bunk probs for the first token
+                            # in echo mode. Similar to how we handle scores in echo mode
+                            # above.
+                            result["top_logprobs"] = [None] + out_logprobs[2:]
                         else:
                             result["top_logprobs"] = out_logprobs
 
