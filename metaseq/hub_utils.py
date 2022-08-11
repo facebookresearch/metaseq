@@ -685,6 +685,8 @@ class GeneratorInterface:
                     # We would remove the scores for </s> and the first word "The"
                     # and attach a None to signify the score for "The"
                     # This is in line with how the OpenAI API operates.
+                    assert tokens[0] == self.task.target_dictionary.eos_index
+
                     tokens_no_eos = tokens[1:] if echo else tokens
                     scores_no_eos = [None] + scores[2:] if echo else scores
                     # turn it into a string
