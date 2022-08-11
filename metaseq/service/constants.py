@@ -17,26 +17,22 @@ CHECKPOINT_FOLDER = "/data/gpt-z/cm3/models/ablations/causal_one_image/resharded
 # where to store them on SSD for faster loading
 CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "2.7B", "resharded", "reshard.pt")
 
-LAUNCH_ARGS = [
-    f"--model-parallel-size {MODEL_PARALLEL}",
-    f"--distributed-world-size {TOTAL_WORLD_SIZE}",
-    "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
-    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V262144_I8192_S512_M512_R1024.json",
-    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
-    "--beam 1 --nbest 1",
-    "--bpe hf_cm3_unigram",
-    # "--final-vocab-size 65536",
-    "--distributed-port 13000",
-    "--checkpoint-shard-count 1",
-    "--use-sharded-state",
-    f"--batch-size {BATCH_SIZE}",
-    f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
-    f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
-    "--image-tokens 8192",
-    "--speech-tokens 512",
-    # "--decoder-layers 40",
-    # "--decoder-embed-dim 5120",
-    # f"--decoder-ffn-embed-dim {5120*4}",
-    # "--decoder-attention-heads 40",
-    "/tmp",  # required "data" argument.
-]
+LAUNCH_ARGS = {
+    "model_parallel_size": MODEL_PARALLEL,
+    "distributed_world_size": TOTAL_WORLD_SIZE,
+    "task": "cm3_language_modeling_inference_for_models_trained_with_streaming",
+    "spm_path": "/data/gpt-z/cm3/v1.2/tokenizers/V262144_I8192_S512_M512_R1024.json",
+    "path": f"{CHECKPOINT_FOLDER}/reshard_no_os/reshard.pt",
+    "beam": 1,
+    "nbest": 1,
+    "bpe": "hf_cm3_unigram",
+    "distributed_port": 13000,
+    "checkpoint_shard_count": 1,
+    "use_sharded_state": True,
+    "batch_size": BATCH_SIZE,
+    "buffer_size": BATCH_SIZE * MAX_SEQ_LEN,
+    "max_tokens": BATCH_SIZE * MAX_SEQ_LEN,
+    "image-tokens": 8192,
+    "speech-tokens": 512,
+    "data": "/tmp",  # required "data" argument.
+}
