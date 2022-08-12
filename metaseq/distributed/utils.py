@@ -133,6 +133,11 @@ def distributed_init(cfg: MetaseqConfig):
                 cfg.distributed_training.distributed_init_method,
             )
         )
+        # print("="*20)
+        # print("distributed_backend: ",cfg.distributed_training.distributed_backend)
+        # print("distributed_init_method: ",cfg.distributed_training.distributed_init_method)
+        # print("distributed_world_size: ",cfg.distributed_training.distributed_world_size)
+        # print("distributed_rank: ",cfg.distributed_training.distributed_rank)
         dist.init_process_group(
             backend=cfg.distributed_training.distributed_backend,
             init_method=cfg.distributed_training.distributed_init_method,

@@ -93,6 +93,11 @@ class JsonlDataset(torch.utils.data.Dataset):
         f = self._get_mmap()
         f.seek(self.offsets[subshard_idx])
         item = f.readline().decode("utf-8")
+        # print("="*20)
+        # print("item",item)
+        # print("f",f)
+        # print("offsets",self.offsets[subshard_idx])
+        # breakpoint()
         item = json.loads(item)
         if self.tokenizer is not None:
             item = self.tokenizer(item)
