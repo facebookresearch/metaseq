@@ -39,6 +39,7 @@ from metaseq.trainer import Trainer
 
 from omegaconf import open_dict
 import json
+from flufl.lock import Lock
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -166,11 +167,13 @@ def main(cfg: DictConfig) -> None:
     max_epoch = cfg.optimization.max_epoch or math.inf
     train_meter = meters.StopwatchMeter()
     train_meter.start()
+    went_over_one_epoch = False
     while epoch_itr.next_epoch_idx <= max_epoch:
         # train for one epoch
         valid_losses, should_stop = train(cfg, trainer, task, epoch_itr)
         if should_stop:
             break
+        went_over_one_epoch = True
 
         # only use first validation loss to update the learning rate
         trainer.lr_step(epoch_itr.epoch, valid_losses[0])
@@ -180,8 +183,19 @@ def main(cfg: DictConfig) -> None:
             # don't cache epoch iterators for sharded datasets
             disable_iterator_cache=True,
         )
+    if went_over_one_epoch and trainer.interpret_info["mode"] != "train": # Han: non-train (interpret) mode should only have 1 epoch
+        raise ValueError("interpret mode should only go over the data once")
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
+
+    # Han: export the evidence json file here, if applicable
+    if len(trainer.interpret_info["evidence_export_buffer"]) > 0:
+        save_fn = trainer.interpret_info["cleared_train_grads_fn"] # Han: cleared_train_grads_fn has the full path in the new version (220816)
+        with Lock(f"{save_fn}.lock", lifetime=180):
+            with open(save_fn, 'a') as fd:
+                for line in trainer.interpret_info["evidence_export_buffer"]:
+                    fd.write(line)
+                    fd.write("\n")
 
     # ioPath implementation to wait for all asynchronous file writes to complete.
     if cfg.checkpoint.write_checkpoints_asynchronously:
@@ -328,9 +342,9 @@ def train(
             with profiler.profile() as prof:
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
-            prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
-            )
+            # prof.export_chrome_trace(
+            #     os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+            # ) # Han: we probably don't need this
         else:
             valid_losses, should_stop = train(i, samples)
         if should_stop:
@@ -417,7 +431,7 @@ def validate_and_save(
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save or should_stop:
+    if (do_save or should_stop) and trainer.interpret_info["mode"] == "train":
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
@@ -598,6 +612,7 @@ def cli_main(
         cfg.interpret_info = json.loads(cfg.interpret_notes)
         cfg.interpret_info["mode"] = cfg.interpret_mode
         cfg.interpret_info["cache_test_grads"] = None
+        cfg.interpret_info["evidence_export_buffer"] = list()
 
     if cfg.common.use_plasma_view:
         server = PlasmaStore(path=cfg.common.plasma_path)

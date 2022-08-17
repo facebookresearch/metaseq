@@ -407,6 +407,9 @@ class Trainer(object):
         self, filename, extra_state, training_finished=False, async_callback_fn=None
     ):
         """Save all training state in a checkpoint file."""
+        if self.interpret_info["mode"] != "train": # Han: disable saving checkpoint for interpret mode
+            return
+
         # call state_dict on all ranks in case it needs internal communication
         state_dicts = self.state_dict(filename, training_finished)
         for filename, state_dict in state_dicts.items():
@@ -690,7 +693,6 @@ class Trainer(object):
         #     ids = samples[0]['net_input']['src_tokens'][0].tolist() + [samples[0]['target'][0].tolist()[-1]]
         #     text = self.task.tokenizer.decode(ids)
         #     breakpoint()
-        #     # TODO(Han): save 2049 token ids as to a json file with field "tids" is okay
         # distributed_utils.global_barrier()
 
         mode = self.interpret_info["mode"] # train, interpret_objective, or interpret_evidence
@@ -888,22 +890,31 @@ class Trainer(object):
                 #         logger.info(final_grad_sim.item())
                 # distributed_utils.global_barrier()
 
-                # TODO(Han): this should be accelerated, store a buffer of data and export them in one batch
-                if "cleared_train_grads_fn" in self.interpret_info:
-                    save_fn = os.path.join(self.interpret_info["cleared_test_grads_dir"], f'rank{distributed_utils.get_global_rank()}_{self.interpret_info["cleared_train_grads_fn"]}')
-                    with Lock(f"{save_fn}.lock", lifetime=60):
-                        with open(save_fn, 'a') as fd:
-                            # ids = samples[0]['net_input']['src_tokens'][0].tolist()
-                            # fd.write(json.dumps({"score": final_grad_sim.item(), "text": self.task.tokenizer.decode(ids), "info": f"step{self.get_num_updates()}-rank{distributed_utils.get_global_rank()}"}))
+                if "cleared_train_grads_fn" in self.interpret_info and distributed_utils.get_model_parallel_rank() == 0: # note the difference between mp (megatron) and dp (fsdp)
+                    # # save_fn = os.path.join(self.interpret_info["cleared_test_grads_dir"], f'rank{distributed_utils.get_global_rank()}_{self.interpret_info["cleared_train_grads_fn"]}')
+                    # save_fn = self.interpret_info["cleared_train_grads_fn"] # Han: cleared_train_grads_fn has the full path in the new version (220816)
+                    # with Lock(f"{save_fn}.lock", lifetime=60):
+                    #     with open(save_fn, 'a') as fd:
+                    #         # ids = samples[0]['net_input']['src_tokens'][0].tolist()
+                    #         # fd.write(json.dumps({"score": final_grad_sim.item(), "text": self.task.tokenizer.decode(ids), "info": f"step{self.get_num_updates()}-rank{distributed_utils.get_global_rank()}"}))
                             
-                            # Han: write token ids (block size + 1) to json file
-                            ids = samples[0]['net_input']['src_tokens'][0].tolist() + [samples[0]['target'][0].tolist()[-1]]
-                            if "no_text" in self.interpret_info["cleared_train_grads_fn"]:
-                                fd.write(json.dumps({"score": final_grad_sim.item(), "tids": ids}))
-                            else:
-                                text = self.task.tokenizer.decode(ids)
-                                fd.write(json.dumps({"score": final_grad_sim.item(), "tids": ids, "text": text}))
-                            fd.write("\n")
+                    #         # # Han: write token ids (block size + 1) to json file
+                    #         # ids = samples[0]['net_input']['src_tokens'][0].tolist() + [samples[0]['target'][0].tolist()[-1]]
+                    #         # if "no_text" in self.interpret_info["cleared_train_grads_fn"]:
+                    #         #     fd.write(json.dumps({"score": final_grad_sim.item(), "tids": ids}))
+                    #         # else:
+                    #         #     text = self.task.tokenizer.decode(ids)
+                    #         #     fd.write(json.dumps({"score": final_grad_sim.item(), "tids": ids, "text": text}))
+                    #         # fd.write("\n")
+                    # ABOVE DEPRECATED (220816)
+
+                    # Han: save token ids (block size + 1) to an export buffer
+                    ids = samples[0]['net_input']['src_tokens'][0].tolist() + [samples[0]['target'][0].tolist()[-1]]
+                    if "no_text" in self.interpret_info["cleared_train_grads_fn"]:
+                        self.interpret_info["evidence_export_buffer"].append(json.dumps({"score": final_grad_sim.item(), "tids": ids}))
+                    else:
+                        text = self.task.tokenizer.decode(ids)
+                        self.interpret_info["evidence_export_buffer"].append(json.dumps({"score": final_grad_sim.item(), "tids": ids, "text": text}))
                 else:
                     logger.info(final_grad_sim.item())
 
@@ -938,7 +949,7 @@ class Trainer(object):
                     )
             raise
         except OverflowError as e: # TODO(Han): jump to the next example without affecting the saving of other data-score pairs
-            raise ValueError("Han: disabled for now")
+            # raise ValueError("Han: disabled for now")
             overflow = True
             logger.info(
                 f"NOTE: gradient overflow detected, ignoring gradient, {str(e)}"
