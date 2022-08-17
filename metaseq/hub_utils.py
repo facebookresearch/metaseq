@@ -552,6 +552,13 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
+        omega_bound: float = 0.3,
+        lambda_decay: float = -1,
+        alpha_presence: float = 0.0,
+        alpha_frequency: float = 0.0,
+        alpha_presence_src: float = 0.0,
+        alpha_frequency_src: float = 0.0,
+        alpha_src_penalty_end_idx: int = -1,
     ):
         """
         Generate from sequences.
@@ -628,10 +635,21 @@ class GeneratorInterface:
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
+            extra_args = {
+                "stop": stop,
+                "need_logprobs": need_logprobs,
+                "omega_bound": omega_bound,
+                "lambda_decay": lambda_decay,
+                "alpha_presence": alpha_presence,
+                "alpha_frequency": alpha_frequency,
+                "alpha_presence_src": alpha_presence_src,
+                "alpha_frequency_src": alpha_frequency_src,
+                "alpha_src_penalty_end_idx": alpha_src_penalty_end_idx,
+            }
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
+                extra_gen_cls_kwargs=extra_args,
             )
 
             # okay actually generate
