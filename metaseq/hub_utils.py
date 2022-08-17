@@ -635,7 +635,7 @@ class GeneratorInterface:
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
-            extra_args = {
+            extra_gen_cls_kwargs = {
                 "stop": stop,
                 "need_logprobs": need_logprobs,
                 "omega_bound": omega_bound,
@@ -649,7 +649,7 @@ class GeneratorInterface:
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs=extra_args,
+                extra_gen_cls_kwargs=extra_gen_cls_kwargs,
             )
 
             # okay actually generate

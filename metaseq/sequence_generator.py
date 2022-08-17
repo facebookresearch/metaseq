@@ -89,15 +89,17 @@ class SequenceGenerator(nn.Module):
         self.model.eval()
         self.profile = profile
 
-        # factual/decaying nucleus
+        # factual nucleus
         buffer = torch.zeros(beam_size)
         self.sampling_topp = max(0, topp)
-        self.sampling_topp_tensor = buffer.clone().fill_(self.sampling_topp).unsqueeze(1)
+        self.sampling_topp_tensor = (
+            buffer.clone().fill_(self.sampling_topp).unsqueeze(1)
+        )
         self.init_p = self.sampling_topp_tensor.clone()
         self.lambda_decay = lambda_decay
         self.omega_bound = torch.tensor([omega_bound])
         self.toks_since_reset = buffer.clone()
-        self.full_stop_list = torch.tensor([tgt_dict.index(w) for w in ['.', '?', '!']])
+        self.full_stop_list = torch.tensor([tgt_dict.index(w) for w in [".", "?", "!"]])
 
         # repetition reduction
         self.alpha_presence = alpha_presence
@@ -177,7 +179,12 @@ class SequenceGenerator(nn.Module):
         new_order = new_order.to(src_tokens.device).long()
 
         # initialize buffers
-        scores, tokens, count_tokens, count_tokens_src = self._initialize_generation_buffers(
+        (
+            scores,
+            tokens,
+            count_tokens,
+            count_tokens_src,
+        ) = self._initialize_generation_buffers(
             bsz, beam_size, int(max_len), src_tokens
         )
 
@@ -265,7 +272,9 @@ class SequenceGenerator(nn.Module):
                 lprobs[:, self.eos + 1 :] = -math.inf
 
             # apply repetition penalties
-            lprobs = self._apply_repetition_penalties(lprobs, count_tokens, count_tokens_src)
+            lprobs = self._apply_repetition_penalties(
+                lprobs, count_tokens, count_tokens_src
+            )
 
             # already ended beams should only do eos
             lprobs[eos_mask, : self.eos] = -math.inf
@@ -324,7 +333,9 @@ class SequenceGenerator(nn.Module):
 
     def _initialize_generation_buffers(
         self, bsz: int, beam_size: int, max_len: int, src_tokens: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
+    ]:
         """
         Initialize buffers for use during generation.
 
@@ -355,12 +366,16 @@ class SequenceGenerator(nn.Module):
             float_src_tokens = src_tokens.float()
             if self.alpha_src_penalty_end_idx > 0 and not (bsz > 1):
                 # ignore this parameter if we're in a batch. sorry!
-                float_src_tokens = float_src_tokens[:, :self.alpha_src_penalty_end_idx]
-            count_tokens_src = torch.zeros(bsz * beam_size, self.vocab_size).to(src_tokens)
+                float_src_tokens = float_src_tokens[:, : self.alpha_src_penalty_end_idx]
+            count_tokens_src = torch.zeros(bsz * beam_size, self.vocab_size).to(
+                src_tokens
+            )
             for i in range(bsz * beam_size):
                 # histc constructs a histogram counting frequencies of occuring values
                 # and buckets into vocab_size bins
-                count_tokens_src[i] = torch.histc(float_src_tokens[i], self.vocab_size, min=0, max=self.vocab_size)
+                count_tokens_src[i] = torch.histc(
+                    float_src_tokens[i], self.vocab_size, min=0, max=self.vocab_size
+                )
         if self.lambda_decay > 0:
             # need to reset the buffers
             self.toks_since_reset = self.toks_since_reset.unsqueeze(0).repeat(bsz, 1)
@@ -392,7 +407,11 @@ class SequenceGenerator(nn.Module):
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= (self.sampling_topp if self.lambda_decay <= 0 else self.sampling_topp_tensor.expand(sprobs.size()).to(sprobs.device))
+        mask = (sprobs.cumsum(dim=-1) - sprobs) >= (
+            self.sampling_topp
+            if self.lambda_decay <= 0
+            else self.sampling_topp_tensor.expand(sprobs.size()).to(sprobs.device)
+        )
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
@@ -420,7 +439,11 @@ class SequenceGenerator(nn.Module):
                     else:
                         self.toks_since_reset[batch_i, beam_i] += 1
                     decay_factor = max(0, self.toks_since_reset[batch_i, beam_i] - 1)
-                    self.sampling_topp_tensor[batch_i, beam_i] = torch.max(self.omega_bound, self.init_p[batch_i, beam_i] * (self.lambda_decay ** (decay_factor)))
+                    self.sampling_topp_tensor[batch_i, beam_i] = torch.max(
+                        self.omega_bound,
+                        self.init_p[batch_i, beam_i]
+                        * (self.lambda_decay ** (decay_factor)),
+                    )
             else:
                 t = toks
                 if self.full_stop_list.to(tokens.device).eq(t).sum() > 0:
@@ -428,7 +451,10 @@ class SequenceGenerator(nn.Module):
                 else:
                     self.toks_since_reset[batch_i] += 1
                 decay_factor = max(0, self.toks_since_reset[batch_i] - 1)
-                self.sampling_topp_tensor[batch_i] = torch.max(self.omega_bound, self.init_p[batch_i] * (self.lambda_decay ** (decay_factor)))
+                self.sampling_topp_tensor[batch_i] = torch.max(
+                    self.omega_bound,
+                    self.init_p[batch_i] * (self.lambda_decay ** (decay_factor)),
+                )
 
     def _apply_repetition_penalties(
         self,
@@ -462,14 +488,24 @@ class SequenceGenerator(nn.Module):
         """
         if self.alpha_frequency > 0 or self.alpha_presence > 0:
             assert count_tokens is not None
-            lprobs = lprobs - (count_tokens * self.alpha_frequency) - (count_tokens.gt(0) * self.alpha_presence)
+            lprobs = (
+                lprobs
+                - (count_tokens * self.alpha_frequency)
+                - (count_tokens.gt(0) * self.alpha_presence)
+            )
         if self.alpha_frequency_src > 0 or self.alpha_presence_src > 0:
             assert count_tokens_src is not None
-            lprobs = lprobs - (count_tokens_src * self.alpha_frequency_src) - (count_tokens_src.gt(0) * self.alpha_presence_src)
+            lprobs = (
+                lprobs
+                - (count_tokens_src * self.alpha_frequency_src)
+                - (count_tokens_src.gt(0) * self.alpha_presence_src)
+            )
 
         return lprobs
 
-    def _update_repetition_counts(self, tokens: torch.Tensor, count_tokens: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def _update_repetition_counts(
+        self, tokens: torch.Tensor, count_tokens: Optional[torch.Tensor]
+    ) -> Optional[torch.Tensor]:
         """
         Update the repetition counts
 

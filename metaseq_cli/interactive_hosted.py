@@ -134,7 +134,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                         "alpha_frequency",
                         "alpha_presence_src",
                         "alpha_frequency_src",
-                        "alpha_src_penalty_end_idx"
+                        "alpha_src_penalty_end_idx",
                     ]:
                         if key in ro:
                             request_object[key] = ro[key]
@@ -313,16 +313,21 @@ def completions(engine=None):
     else:
         generation_args["logprobs"] = 0
 
+    # factual nucleus omega bound
     if "omega_bound" in generation_args:
         generation_args["omega_bound"] = round(float(generation_args["omega_bound"]), 1)
     else:
         generation_args["omega_bound"] = 0.3
 
+    # factual nucleus lambda decay
     if "lambda_decay" in generation_args:
-        generation_args["lambda_decay"] = round(float(generation_args["lambda_decay"]), 1)
+        generation_args["lambda_decay"] = round(
+            float(generation_args["lambda_decay"]), 1
+        )
     else:
         generation_args["lambda_decay"] = -1
 
+    # repetition penalties
     for key in ["alpha_frequency", "alpha_presence"]:
         for suffix in ["", "_src"]:
             _gen_arg = f"{key}{suffix}"
@@ -332,7 +337,9 @@ def completions(engine=None):
                 generation_args[_gen_arg] = 0
 
     if "alpha_src_penalty_end_idx" in generation_args:
-        generation_args["alpha_src_penalty_end_idx"] = int(generation_args["alpha_src_penalty_end_idx"])
+        generation_args["alpha_src_penalty_end_idx"] = int(
+            generation_args["alpha_src_penalty_end_idx"]
+        )
     else:
         generation_args["alpha_src_penalty_end_idx"] = -1
 
