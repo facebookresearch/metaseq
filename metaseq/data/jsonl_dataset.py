@@ -42,12 +42,15 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{path}.fairseq.idx.npy")
-        if self.cache.exists() and not recache:
-            self.offsets = np.load(self.cache)
-        else:
-            self.offsets = self._build_index(path)
-            np.save(self.cache, self.offsets)
-        # print(f'n offsets: {len(self.offsets)}')
+        # if self.cache.exists() and not recache:
+        #     self.offsets = np.load(self.cache)
+        # else:
+        #     self.offsets = self._build_index(path)
+        #     np.save(self.cache, self.offsets)
+        # # print(f'n offsets: {len(self.offsets)}')
+
+        # Han: np loading and saving may lead to problems in multi-node setup, so disabling it
+        self.offsets = self._build_index(path)
 
     def _get_mmap(self):
         if not hasattr(self.threadlocal, "handles"):
