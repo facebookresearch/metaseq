@@ -349,6 +349,7 @@ def cli_main():
 
     global port, MODE, cfg
     parser = options.get_generation_parser()
+    port = DEFAULT_PORT
 
     # dumb defaults overriding
     parser.set_defaults(lr_scheduler=None, criterion=None)
@@ -369,7 +370,7 @@ def cli_main():
             )
         logger.info("model config overide")
         logger.info(model_config)
-        DEFAULT_PORT = model_config["lauch_port"]
+        port = model_config["lauch_port"]
         del model_config["lauch_port"]
         LAUNCH_ARGS.update(model_config)
 
@@ -383,7 +384,6 @@ def cli_main():
     logger.info(flat_launch_args)
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
-    port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
