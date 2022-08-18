@@ -931,23 +931,29 @@ class Trainer(object):
             else:
                 raise ValueError(f"Unknown mode {mode}")
 
-        except FloatingPointError:
-            raise ValueError("Han: disabled for now")
-            # re-run the forward and backward pass with hooks attached to print
-            # out where it fails
+        except FloatingPointError as e: # mimic the overflow case to jump over failed examples
+            # raise ValueError("Han: disabled for now")
+            overflow = True
+            logger.info(
+                f"NOTE: floating point error detected, ignoring gradient, {str(e)}"
+            )
+            grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
-            with NanDetector(self.get_model()):
-                for _, sample in enumerate(samples):
-                    sample, _ = self._prepare_sample(sample)
-                    self.task.train_step(
-                        sample,
-                        self.model,
-                        self.criterion,
-                        self.optimizer,
-                        self.get_num_updates(),
-                        ignore_grad=False,
-                    )
-            raise
+            # # re-run the forward and backward pass with hooks attached to print
+            # # out where it fails
+            # self.zero_grad()
+            # with NanDetector(self.get_model()):
+            #     for _, sample in enumerate(samples):
+            #         sample, _ = self._prepare_sample(sample)
+            #         self.task.train_step(
+            #             sample,
+            #             self.model,
+            #             self.criterion,
+            #             self.optimizer,
+            #             self.get_num_updates(),
+            #             ignore_grad=False,
+            #         )
+            # raise
         except OverflowError as e: # TODO(Han): jump to the next example without affecting the saving of other data-score pairs
             # raise ValueError("Han: disabled for now")
             overflow = True
