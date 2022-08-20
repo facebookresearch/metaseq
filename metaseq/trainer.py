@@ -638,7 +638,7 @@ class Trainer(object):
         self._dummy_batch = batch
 
     @metrics.aggregate("train")
-    def train_step(self, samples, raise_oom=False):
+    def train_step(self, samples):
         """Do forward, backward and parameter update."""
         self._set_seed()
         self.model.train()
@@ -648,7 +648,7 @@ class Trainer(object):
         metrics.log_start_time("train_wall", priority=800, round=0)
 
         # forward and backward pass
-        logging_outputs, sample_size, ooms = [], 0, 0
+        logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
             sample, is_dummy_batch = self._prepare_sample(sample)
 
@@ -695,17 +695,7 @@ class Trainer(object):
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
-                    if raise_oom:
-                        raise e
-                    logger.warning(
-                        "attempting to recover from OOM in forward/backward pass"
-                    )
-                    ooms += 1
-                    self.zero_grad()
-                    if self.cuda:
-                        torch.cuda.empty_cache()
-                    if self.cfg.distributed_training.distributed_world_size == 1:
-                        return None
+                    raise e
                 else:
                     raise e
 
@@ -725,10 +715,9 @@ class Trainer(object):
             train_time = self._local_cumulative_training_time()
             logging_outputs, (
                 sample_size,
-                ooms,
                 total_train_time,
             ) = self._aggregate_logging_outputs(
-                logging_outputs, sample_size, ooms, train_time, ignore=is_dummy_batch
+                logging_outputs, sample_size, train_time, ignore=is_dummy_batch
             )
             self._cumulative_training_time = (
                 total_train_time / self.data_parallel_world_size
