@@ -91,9 +91,20 @@ class JsonlDataset(torch.utils.data.Dataset):
         if subshard_idx < 0 or subshard_idx >= len(self.offsets):
             raise IndexError
         f = self._get_mmap()
-        f.seek(self.offsets[subshard_idx])
+        position = self.offsets[subshard_idx]
+        f.seek(position)
         item = f.readline().decode("utf-8")
-        item = json.loads(item)
+        try:
+            item = json.loads(item)
+        except json.decoder.JSONDecodeError:
+            raise json.decoder.JSONDecodeError(
+                doc=self.path,
+                pos=position,
+                msg=(
+                    f"Error while loading JSONL line in file {self.path} at byte "
+                    f"{position}. Contents of line:\n{item}"
+                ),
+            )
         if self.tokenizer is not None:
             item = self.tokenizer(item)
         return item
@@ -128,15 +139,6 @@ class JsonlDataset(torch.utils.data.Dataset):
         line_num = 0
         while True:
             line = f.readline()
-            if line != b"":
-                try:
-                    json.loads(line)
-                except json.decoder.JSONDecodeError:
-                    raise json.decoder.JSONDecodeError(
-                        doc=path,
-                        pos=line_num,
-                        msg=f"Error while loading JSONL file {path} at line {line_num + 1}",
-                    )
             if line == b"":
                 break
             offsets.append(cur)
