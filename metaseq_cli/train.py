@@ -50,6 +50,13 @@ logger = logging.getLogger("metaseq_cli.train")
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
 
+    if distributed_utils.is_master(cfg.distributed_training):
+        # save a (vaguely human readable) copy of the training config
+        OmegaConf.save(
+            config=_flatten_config(cfg),
+            f=os.path.join(cfg.checkpoint.save_dir, "config.yml"),
+        )
+
     if (
         distributed_utils.is_master(cfg.distributed_training)
         and "job_logging_cfg" in cfg
