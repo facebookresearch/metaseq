@@ -199,13 +199,6 @@ class CommonConfig(MetaseqDataclass):
     new_profiler: bool = field(
         default=False, metadata={"help": "use pytorch profiler (v2)"}
     )
-    dont_log_param_and_grad_norm: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Don't log grad/param norms for each parameter.",
-            "argparse_alias": "--quiet",
-        },
-    )
 
 
 @dataclass
