@@ -46,9 +46,6 @@ class Trainer(object):
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
-        self.dont_log_param_and_grad_norm = getattr(
-            cfg.common, "dont_log_param_and_grad_norm", False
-        )
         if self.cuda:
             self.device = torch.device("cuda")
         else:
@@ -1186,38 +1183,6 @@ class Trainer(object):
                 )
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
-        # perform a bunch of arch-specific gradient metrics
-        for name, param in self.model.named_parameters():
-            if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
-                break
-            if param.grad is None:
-                continue
-            nice_name = name.replace("module._fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("_fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("._fsdp_wrapped_module.flat_param_0", "")
-            nice_name = nice_name.replace("decoder.layers.", "layer")
-            # threshold for near zeros
-            threshold = torch.finfo(param.grad.dtype).tiny * 2
-            with torch.no_grad():
-                g = param.grad
-                if hasattr(self.optimizer, "_multiply_factor"):
-                    g = self.optimizer._multiply_factor * g
-                norm = g.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = g.max()
-                nz = ((g > -threshold) & (g < threshold)).sum() / g.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"gnorm_{nice_name}", norm, priority=10)
-            metrics.log_scalar(f"gmax_{nice_name}", max_, priority=11)
-            metrics.log_scalar(f"gzero_{nice_name}", nz, priority=12)
-            with torch.no_grad():
-                norm = param.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = param.max()
-                nz = ((param > -threshold) & (param < threshold)).sum() / param.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"pnorm_{nice_name}", norm, priority=13)
-            metrics.log_scalar(f"pmax_{nice_name}", max_, priority=14)
-            metrics.log_scalar(f"pzero_{nice_name}", nz, priority=15)
-
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
