@@ -278,7 +278,9 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert min(shards.keys()) == 0
         assert max(shards.keys()) == len(shards) - 1
 
-        shard_idx = ((epoch - 1) // self.args.data_subshard_count) % len(shards)
+        data_subshard_count = self.args.data_subshard_count if split == "train" else 1
+
+        shard_idx = ((epoch - 1) // data_subshard_count) % len(shards)
         cur_shard_str = shards[shard_idx]
         return cur_shard_str
 
@@ -310,6 +312,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
+        data_subshard_count = self.args.data_subshard_count if split == "train" else 1
         for file in sorted(
             os.listdir(os.path.join(self.args.data, split, cur_shard_str))
         ):
@@ -320,7 +323,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
                     epoch=epoch,
-                    data_subshard_count=self.args.data_subshard_count,
+                    data_subshard_count=data_subshard_count,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
