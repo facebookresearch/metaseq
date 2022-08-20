@@ -939,47 +939,6 @@ class Trainer(object):
         """Get the (non-wrapped) criterion instance."""
         return self._criterion
 
-    def get_meter(self, name):
-        """[deprecated] Get a specific meter by name."""
-        from metaseq import meters
-
-        if "get_meter" not in self._warn_once:
-            self._warn_once.add("get_meter")
-            utils.deprecation_warning(
-                "Trainer.get_meter is deprecated. Please use metaseq.metrics instead."
-            )
-
-        train_meters = metrics.get_meters("train")
-        if train_meters is None:
-            train_meters = {}
-
-        if name == "train_loss" and "loss" in train_meters:
-            return train_meters["loss"]
-        elif name == "train_nll_loss":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = train_meters.get("nll_loss", None)
-            return m or meters.AverageMeter()
-        elif name == "wall":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = metrics.get_meter("default", "wall")
-            return m or meters.TimeMeter()
-        elif name == "wps":
-            m = metrics.get_meter("train", "wps")
-            return m or meters.TimeMeter()
-        elif name in {"valid_loss", "valid_nll_loss"}:
-            # support for legacy train.py, which assumed these meters
-            # are always initialized
-            k = name[len("valid_") :]
-            m = metrics.get_meter("valid", k)
-            return m or meters.AverageMeter()
-        elif name == "oom":
-            return meters.AverageMeter()
-        elif name in train_meters:
-            return train_meters[name]
-        return None
-
     def get_num_updates(self):
         """Get the number of parameters updates."""
         return self._num_updates
