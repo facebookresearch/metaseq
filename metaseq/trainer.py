@@ -695,9 +695,7 @@ class Trainer(object):
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
-                    raise e
-                else:
-                    raise e
+                raise e
 
         if is_dummy_batch:
             if torch.is_tensor(sample_size):
