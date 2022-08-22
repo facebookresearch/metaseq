@@ -351,11 +351,6 @@ def train(
         if should_stop:
             break
 
-    # log end-of-epoch stats
-    logger.info("end of epoch {} (average epoch stats below)".format(epoch_itr.epoch))
-    stats = get_training_stats(metrics.get_smoothed_values("train"))
-    progress.print(stats, tag="train", step=num_updates)
-
     # reset epoch-level meters
     metrics.reset_meters("train")
     return valid_losses, should_stop
