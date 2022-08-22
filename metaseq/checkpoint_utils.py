@@ -70,15 +70,15 @@ def save_checkpoint(
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
-    checkpoint_conds["checkpoint{}{}.pt".format(epoch, suffix)] = (
+    checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = (
         end_of_epoch and not cfg.no_epoch_checkpoints and epoch % cfg.save_interval == 0
     )
-    checkpoint_conds["checkpoint_{}_{}{}.pt".format(epoch, updates, suffix)] = (
+    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = (
         not end_of_epoch
         and cfg.save_interval_updates > 0
         and updates % cfg.save_interval_updates == 0
     )
-    checkpoint_conds["checkpoint_best{}.pt".format(suffix)] = (
+    checkpoint_conds["checkpoint_best{suffix}.pt"] = (
         val_loss is not None
         and (
             not hasattr(save_checkpoint, "best")
@@ -96,9 +96,7 @@ def save_checkpoint(
         ] = not hasattr(save_checkpoint, "best") or is_better(
             val_loss, save_checkpoint.best
         )
-    checkpoint_conds[
-        "checkpoint_last{}.pt".format(suffix)
-    ] = not cfg.no_last_checkpoints
+    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = not cfg.no_last_checkpoints
 
     extra_state = {"train_iterator": epoch_itr.state_dict(), "val_loss": val_loss}
     if hasattr(save_checkpoint, "best"):
