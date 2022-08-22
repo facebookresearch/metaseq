@@ -363,9 +363,6 @@ class DatasetConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "do not raise error if valid subsets are ignored"},
     )
-    validate_interval: int = field(
-        default=1, metadata={"help": "validate every N epochs"}
-    )
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
     )
