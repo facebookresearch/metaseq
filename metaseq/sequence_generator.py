@@ -39,6 +39,9 @@ class SequenceGenerator(nn.Module):
     ):
         """Generates translations of a given source sentence.
 
+        For discussion of repetition penalties, see
+        https://github.com/facebookresearch/metaseq/pull/306
+
         Args:
             models: ensemble of models
             beam_size (int, optional): beam width (default: 1)
@@ -54,6 +57,7 @@ class SequenceGenerator(nn.Module):
                 every timestep of the search.
             omega_bound (float, optional): lower p-bound when decaying nucleus
             lamda_decay (float, optional): decay factor for decaying p in nucleus sampling
+                default -1 disables.
             alpha_presence (float, optional): repetition penalty for token presence in
                 current generation
             alpha_frequency (float, optional): repetition penalty for token frequency in
@@ -407,11 +411,15 @@ class SequenceGenerator(nn.Module):
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= (
-            self.sampling_topp
-            if self.lambda_decay <= 0
-            else self.sampling_topp_tensor.expand(sprobs.size()).to(sprobs.device)
-        )
+        if self.lambda_decay <= 0:
+            # normal nucleus sampling
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        else:
+            # factual/decayed nucleus sampling. each batch item may have
+            # a different topp value, so the mask is different for each
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp_tensor.expand(
+                sprobs.size()
+            ).to(sprobs.device)
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))

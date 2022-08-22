@@ -564,6 +564,10 @@ class GeneratorInterface:
         Generate from sequences.
         Parameters match those of the OpenAI API.
         https://beta.openai.com/docs/api-reference/completions/create
+
+        For discussion of repetition penalties, see
+        https://github.com/facebookresearch/metaseq/pull/306
+
         inputs: a list of pre-tokenized prompts
         min_tokens: blocks EOS until at least this many tokens is provided
         max_tokens: forces EOS after this many tokens
@@ -577,6 +581,19 @@ class GeneratorInterface:
         stop: a list of terminating tokens
         seed: an integer if desired
         use_cuda: should we use GPUs.
+        omega_bound: lower p-bound when decaying nucleus
+        lamda_decay: decay factor for decaying p in nucleus sampling
+            default -1 disables.
+        alpha_presence: repetition penalty for token presence in
+            current generation
+        alpha_frequency: repetition penalty for token frequency in
+            current generation
+        alpha_presence_src: repetition penalty for token presence in
+            incoming context
+        alpha_frequency_src: repetition penalty for token frequency in
+            incoming context
+        alpha_src_penalty_end_idx: index of the last token in incoming
+            context to consider for repetition penalty
         """
         if seed:
             utils.set_torch_seed(seed)
