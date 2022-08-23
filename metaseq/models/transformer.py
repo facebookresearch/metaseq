@@ -356,7 +356,10 @@ class TransformerDecoder(IncrementalDecoder):
         self.num_layers = len(self.layers)
 
         if args.decoder_normalize_before:
-            self.layer_norm = LayerNorm(embed_dim)
+            self.layer_norm = LayerNorm(
+                embed_dim,
+                elementwise_affine=not getattr(args, "disable_affine_ln", False),
+            )
             if initialize_params_on_gpu:
                 self.layer_norm = utils.floating_point_precision_convertor(
                     self.layer_norm.cuda(),

@@ -148,6 +148,9 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             " note this doesn't remove bias from layernorm"
         },
     )
+    disable_affine_ln: Optional[bool] = field(
+        default=False, metadata={"help": "disable weight and bias of layer norm"}
+    )
 
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
