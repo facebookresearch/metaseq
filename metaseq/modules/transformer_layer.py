@@ -32,7 +32,12 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module):
     # apex fused bias gelu is not yet supported with megatron model parallel
     # TODO [namangoyal]: Find better way to do this
     model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
-    if model_parallel and activation_fn == gelu and has_fused_bias_gelu and fc1.bias is not None:
+    if (
+        model_parallel
+        and activation_fn == gelu
+        and has_fused_bias_gelu
+        and fc1.bias is not None
+    ):
         # here, we do the bias computation outside fc1 and fc2 to take advantage of fused_bias_gelu
         assert fc1.skip_bias_add
         x, bias_fc1 = fc1(x)
@@ -277,17 +282,33 @@ class TransformerDecoderLayer(nn.Module):
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, disable_bias=False, **unused_args
+        self,
+        input_dim,
+        output_dim,
+        initialize_params_on_gpu=False,
+        disable_bias=False,
+        **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu, bias=not disable_bias,
+            input_dim,
+            output_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            bias=not disable_bias,
         )
 
     def build_fc2(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, disable_bias=False, **unused_args
+        self,
+        input_dim,
+        output_dim,
+        initialize_params_on_gpu=False,
+        disable_bias=False,
+        **unused_args
     ):
         return Linear(
-            input_dim, output_dim, initialize_params_on_gpu=initialize_params_on_gpu, bias=not disable_bias,
+            input_dim,
+            output_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            bias=not disable_bias,
         )
 
     def build_self_attention(
@@ -308,8 +329,10 @@ class TransformerDecoderLayer(nn.Module):
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
             bias=not getattr(
-                args, "disable_bias", False,
-            )
+                args,
+                "disable_bias",
+                False,
+            ),
         )
 
     def build_encoder_attention(self, embed_dim, args):

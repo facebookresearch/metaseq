@@ -142,10 +142,11 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False, metadata={"help": "Avoid emb dropout for decoder"}
     )
     disable_bias: Optional[bool] = field(
-        default=False, metadata={
+        default=False,
+        metadata={
             "help": "Remove biases from all matrix projection, similar to PaLM paper,"
             " note this doesn't remove bias from layernorm"
-        }
+        },
     )
 
     # options from other parts of the config

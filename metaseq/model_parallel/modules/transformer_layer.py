@@ -102,7 +102,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         megatron_init_sigma,
         num_layers,
         dtype,
-        disable_bias=False
+        disable_bias=False,
     ):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
