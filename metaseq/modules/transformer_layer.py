@@ -210,7 +210,12 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
-        self.self_attn_layer_norm = LayerNorm(self.embed_dim)
+
+        affine_ln = not getattr(args, "disable_affine_ln", False)
+
+        self.self_attn_layer_norm = LayerNorm(
+            self.embed_dim, elementwise_affine=affine_ln
+        )
 
         if initialize_params_on_gpu:
             self.self_attn_layer_norm = utils.floating_point_precision_convertor(
@@ -263,7 +268,7 @@ class TransformerDecoderLayer(nn.Module):
             disable_bias=getattr(args, "disable_bias", False),
         )
 
-        self.final_layer_norm = LayerNorm(self.embed_dim)
+        self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         if initialize_params_on_gpu:
             self.final_layer_norm = utils.floating_point_precision_convertor(
                 self.final_layer_norm.cuda(),
