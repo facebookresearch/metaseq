@@ -141,6 +141,13 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     no_emb_dropout: Optional[bool] = field(
         default=False, metadata={"help": "Avoid emb dropout for decoder"}
     )
+    disable_bias: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Remove biases from all matrix projection, similar to PaLM paper,"
+            " note this doesn't remove bias from layernorm"
+        },
+    )
 
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")

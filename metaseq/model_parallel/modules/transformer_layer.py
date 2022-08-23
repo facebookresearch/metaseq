@@ -6,7 +6,7 @@
 import math
 
 import torch
-from torch import nn, Tensor
+from torch import nn
 
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
@@ -66,6 +66,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         full_megatron_init,
         megatron_init_sigma,
         dtype,
+        disable_bias=False,
     ):
         def _init_method_bias(bias):
             fan_in = input_dim
@@ -89,6 +90,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             init_method_bias=init_method_bias,
             use_cpu_initialization=not initialize_params_on_gpu,
             dtype=dtype,
+            bias=not disable_bias,
         )
 
     def build_fc2(
@@ -100,6 +102,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         megatron_init_sigma,
         num_layers,
         dtype,
+        disable_bias=False,
     ):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
@@ -116,6 +119,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             init_method=init_method_weights,
             skip_bias_add=skip_bias_add,
             use_cpu_initialization=not initialize_params_on_gpu,
+            bias=not disable_bias,
             dtype=dtype,
         )
         if not full_megatron_init:
@@ -139,6 +143,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=self._get_model_init_dtype(),
+            bias=not getattr(args, "disable_bias", False),
         )
 
     def build_encoder_attention(self, embed_dim, args, **unused_kwargs):
@@ -175,37 +180,17 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             need_weights=need_weights,
             attn_mask=attn_mask,
         )
-        if self.training:
-            bias_dropout_add_func = bias_dropout_add_fused_train
-        else:
-            bias_dropout_add_func = bias_dropout_add_fused_inference
-        x = bias_dropout_add_func(
-            attn_output, attn_bias.view(1, 1, -1), residual, self.args.dropout
+        # Note [naman]: got rid off fused bias, dropout and residual cause
+        # now we dont use dropout. And we dont use jit scripting also cause
+        # it seems to use additional gpu memory for activations for dropout
+        # even when its disabled.
+        if attn_bias is not None:
+            attn_output = attn_output + attn_bias.view(1, 1, -1)
+
+        x = torch.nn.functional.dropout(
+            attn_output,
+            p=self.args.dropout,
+            training=self.training,
         )
+        x = x + residual
         return x, attn_weights
-
-
-def bias_dropout_add(x, bias, residual, prob, training):
-    # type: (Tensor, Tensor, Tensor, float, bool) -> Tensor
-    out = torch.nn.functional.dropout(x + bias, p=prob, training=training)
-    out = residual + out
-    return out
-
-
-def get_bias_dropout_add(training):
-    def _bias_dropout_add(x, bias, residual, prob):
-        return bias_dropout_add(x, bias, residual, prob, training)
-
-    return _bias_dropout_add
-
-
-@torch.jit.script
-def bias_dropout_add_fused_train(x, bias, residual, prob):
-    # type: (Tensor, Tensor, Tensor, float) -> Tensor
-    return bias_dropout_add(x, bias, residual, prob, True)
-
-
-@torch.jit.script
-def bias_dropout_add_fused_inference(x, bias, residual, prob):
-    # type: (Tensor, Tensor, Tensor, float) -> Tensor
-    return bias_dropout_add(x, bias, residual, prob, False)
