@@ -40,6 +40,7 @@ from metaseq.trainer import Trainer
 from omegaconf import open_dict
 import json
 from flufl.lock import Lock
+# from filelock import FileLock
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -191,7 +192,7 @@ def main(cfg: DictConfig) -> None:
     # Han: export the evidence json file here, if applicable
     if len(trainer.interpret_info["evidence_export_buffer"]) > 0:
         save_fn = trainer.interpret_info["cleared_train_grads_fn"] # Han: cleared_train_grads_fn has the full path in the new version (220816)
-        with Lock(f"{save_fn}.lock", lifetime=180):
+        with Lock(f"{save_fn}.lock", lifetime=60):
             with open(save_fn, 'a') as fd:
                 for line in trainer.interpret_info["evidence_export_buffer"]:
                     fd.write(line)
@@ -301,9 +302,10 @@ def train(
         i,
         samples,
     ):
-        with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
-            "train_step-%d" % i
-        ):
+        # with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
+        #     "train_step-%d" % i
+        # ):
+        with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
             log_output = trainer.train_step(samples)
@@ -333,20 +335,21 @@ def train(
         return valid_losses, should_stop
 
     for i, samples in enumerate(progress):
-        if (
-            distributed_utils.get_global_rank() == 0
-            and cfg.common.new_profiler
-            and i == 5
-        ):
-            logger.info("STARTING PROFILER")
-            with profiler.profile() as prof:
-                valid_losses, should_stop = train(i, samples)
-            torch.cuda.synchronize()
-            # prof.export_chrome_trace(
-            #     os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
-            # ) # Han: we probably don't need this
-        else:
-            valid_losses, should_stop = train(i, samples)
+        # if (
+        #     distributed_utils.get_global_rank() == 0
+        #     and cfg.common.new_profiler
+        #     and i == 5
+        # ):
+        #     logger.info("STARTING PROFILER")
+        #     with profiler.profile() as prof:
+        #         valid_losses, should_stop = train(i, samples)
+        #     torch.cuda.synchronize()
+        #     # prof.export_chrome_trace(
+        #     #     os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+        #     # ) # Han: we probably don't need this
+        # else:
+        #     valid_losses, should_stop = train(i, samples)
+        valid_losses, should_stop = train(i, samples)
         if should_stop:
             break
 
@@ -620,13 +623,15 @@ def cli_main(
             f"Started plasma server pid {server.server.pid} {cfg.common.plasma_path}"
         )
 
-    if args.profile:
-        with torch.cuda.profiler.profile():
-            with torch.autograd.profiler.emit_nvtx():
-                distributed_utils.call_main(cfg, main)
-    else:
-        distributed_utils.call_main(cfg, main)
+    # if args.profile:
+    #     with torch.cuda.profiler.profile():
+    #         with torch.autograd.profiler.emit_nvtx():
+    #             distributed_utils.call_main(cfg, main)
+    # else:
+    #     distributed_utils.call_main(cfg, main)
+    distributed_utils.call_main(cfg, main)
 
 
 if __name__ == "__main__":
     cli_main()
+    logger.info("exiting metaseq_cli.train")

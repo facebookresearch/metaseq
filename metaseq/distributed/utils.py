@@ -256,7 +256,7 @@ def call_main(cfg: MetaseqConfig, main, **kwargs):
 
     if cfg.distributed_training.distributed_init_method is not None:
         # distributed training
-        if not cfg.distributed_training.distributed_no_spawn:
+        if not cfg.distributed_training.distributed_no_spawn: # Han: this is being used
             start_rank = cfg.distributed_training.distributed_rank
             cfg.distributed_training.distributed_rank = None  # assign automatically
             kwargs["start_rank"] = start_rank
