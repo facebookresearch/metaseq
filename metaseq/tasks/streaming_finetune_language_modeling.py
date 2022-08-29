@@ -101,7 +101,9 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
             block_size=self.args.tokens_per_sample + 1,
-            break_mode=self.args.sample_break_mode,
+            break_mode=self.args.sample_break_mode
+            if split == "train"
+            else "eos_pad_8",  # eos mode for val/test to get accuracies
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),

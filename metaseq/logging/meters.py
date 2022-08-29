@@ -63,6 +63,45 @@ def safe_round(number, ndigits):
         return number
 
 
+class HistoryMeter(Meter):
+    """Keeps history and current value"""
+
+    def __init__(self, round: Optional[int] = None):
+        self.round = round
+        self.reset()
+
+    def reset(self):
+        self.history = []  # history from all updates
+
+    def update(self, val):
+        assert type(val) is list
+        self.history.extend(val)
+
+    def state_dict(self):
+        return {
+            "history": self.history,
+            "round": self.round,
+        }
+
+    def load_state_dict(self, state_dict):
+        self.history = state_dict["history"]
+        self.round = state_dict.get("round", None)
+
+    @property
+    def avg(self):
+        if type(self.history[0]) is tuple:
+            return sum([h for i, h in self.history])
+        else:
+            return sum(self.history)
+
+    @property
+    def smoothed_value(self) -> float:
+        val = self.avg
+        if self.round is not None and val is not None:
+            val = safe_round(val, self.round)
+        return val
+
+
 class AverageMeter(Meter):
     """Computes and stores the average and current value"""
 

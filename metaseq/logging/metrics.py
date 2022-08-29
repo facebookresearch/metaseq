@@ -22,6 +22,7 @@ from .meters import (
     OrderedDict,
     MetersDict,
     AverageMeter,
+    HistoryMeter,
     TimeMeter,
     StopwatchMeter,
     Meter,
@@ -137,6 +138,26 @@ def log_scalar(
         if key not in agg:
             agg.add_meter(key, AverageMeter(round=round), priority)
         agg[key].update(value, weight)
+
+
+def log_history(
+    key: str,
+    value: list,
+    priority: int = 10,
+    round: Optional[int] = None,
+):
+    """Log a scalar value.
+
+    Args:
+        key (str): name of the field to log
+        value (list): value to log
+        priority (int): smaller values are logged earlier in the output
+        round (Optional[int]): number of digits to round to when displaying
+    """
+    for agg in get_active_aggregators():
+        if key not in agg:
+            agg.add_meter(key, HistoryMeter(round=round), priority)
+        agg[key].update(value)
 
 
 def log_derived(key: str, fn: Callable[[MetersDict], float], priority: int = 20):

@@ -746,6 +746,7 @@ def validate(
 
     trainer.begin_valid_epoch(epoch_itr.epoch)
     valid_losses = []
+    valid_losses_per_example = {}
     with metrics.aggregate(new_root=True) as combined_agg:
         for subset in subsets:
             logger.info(
@@ -815,8 +816,30 @@ def validate(
                     trainer.valid_step(sample, num_step=i)
             # log validation stats
             stats = add_num_updates_to_stats(trainer, agg.get_smoothed_values())
+            if "batch_loss" in stats:
+                del stats["batch_loss"]
+                if subset in ["valid_pos", "valid_neg"]:
+                    valid_losses_per_example[subset] = agg["batch_loss"].history
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
     stats = add_num_updates_to_stats(trainer, combined_agg.get_smoothed_values())
+    if "batch_loss" in stats:
+        del stats["batch_loss"]
+        if "valid_pos" in subsets and "valid_neg" in subsets:
+            pos_valid_losses_per_example = {
+                id: loss for id, loss in valid_losses_per_example["valid_pos"]
+            }
+            neg_valid_losses_per_example = {
+                id: loss for id, loss in valid_losses_per_example["valid_neg"]
+            }
+            assert len(pos_valid_losses_per_example.keys()) == len(
+                neg_valid_losses_per_example.keys()
+            )
+            correct = 0
+            for id, loss in pos_valid_losses_per_example.items():
+                if loss < neg_valid_losses_per_example[id]:
+                    correct += 1
+            accuracy = correct / len(pos_valid_losses_per_example)
+            stats["accuracy"] = accuracy
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 

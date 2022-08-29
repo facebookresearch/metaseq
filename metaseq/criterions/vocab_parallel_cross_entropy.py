@@ -9,7 +9,6 @@ import torch
 from metaseq import metrics, utils
 from metaseq.criterions import BaseCriterion, register_criterion
 
-
 try:
     from megatron.mpu.cross_entropy import (
         vocab_parallel_cross_entropy,
@@ -44,6 +43,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
         if has_pad:
             loss = loss * (target != self.padding_idx)
+        batch_loss = loss.mean(-1)
         loss = loss.sum()
         # When using target loss only, use num tokens in target only as the sample_size
         # See StreamingSrcTgtDataset
@@ -58,6 +58,9 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
         }
+        if not model.training:
+            logging_output.update({"batch_loss": batch_loss})
+            logging_output.update({"id": sample["id"].tolist()})
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
         if (
@@ -90,6 +93,14 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        if logging_outputs[0].get("batch_loss", None) is not None:
+            batch_loss = []
+            ids = []
+            for log in logging_outputs:
+                batch_loss += log.get("batch_loss", [])
+                ids += log.get("id", [])
+        else:
+            batch_loss = None
 
         for type_ in ("actv", "pos", "tok", "emb"):
             key = f"{type_}_norm"
@@ -111,6 +122,10 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
         )
+        if batch_loss is not None:
+            metrics.log_history(
+                "batch_loss", [(id, l) for id, l in zip(ids, batch_loss)], 1, round=3
+            )
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:
@@ -119,4 +134,4 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         across workers prior to calling `reduce_metrics`. Setting this
         to True will improve distributed training speed.
         """
-        return True
+        return False  # Since not all metrics are scalar, setting this to False to make it work.
