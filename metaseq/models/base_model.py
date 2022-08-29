@@ -67,15 +67,8 @@ class BaseModel(nn.Module):
         """Get normalized probabilities (or log probs) from a net's output."""
         if hasattr(self, "decoder"):
             return self.decoder.get_normalized_probs(logits, log_probs)
-        elif torch.is_tensor(net_output):
-            # syntactic sugar for simple models which don't have a decoder
-            # (e.g., the classification tutorial)
-            logits = net_output.float()
-            if log_probs:
-                return F.log_softmax(logits, dim=-1)
-            else:
-                return F.softmax(logits, dim=-1)
-        raise NotImplementedError
+        else:
+            raise NotImplementedError
 
     def extract_features(self, *args, **kwargs):
         """Similar to *forward* but only return features."""
