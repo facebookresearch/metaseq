@@ -164,7 +164,9 @@ class SequenceGenerator(nn.Module):
         # need to handle normalization and prep for bookkeeping of incremental
         # decoding
         start_step = src_tokens.shape[1]
-        print(f"sample_id={sample['id'][0].item()} gpu_rank={torch.distributed.get_rank()} start_step={start_step}")
+        print(
+            f"sample_id={sample['id'][0].item()} gpu_rank={torch.distributed.get_rank()} start_step={start_step}"
+        )
         # set all the forced tokens
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
