@@ -335,7 +335,9 @@ class ModelParallelMultiheadAttention(nn.Module):
         # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
         # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
         # we have seq_lens not power of 2.
-        CHANGES = False # not getattr(self, "inference", False)
+        CHANGES = (
+            self.training
+        )  # not getattr(self, "inference", False) # Don't use megatron for eval because of internal assert errors.
 
         if CHANGES:
             output_size = (
