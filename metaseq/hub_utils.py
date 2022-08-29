@@ -210,7 +210,6 @@ class GeneratorHubInterface(nn.Module):
         # this is useful for determining the device
         self.register_buffer("_float_tensor", torch.tensor([0], dtype=torch.float))
 
-
     @property
     def device(self):
         return self._float_tensor.device
@@ -305,16 +304,30 @@ class GeneratorHubInterface(nn.Module):
             else:
                 # For Sequence Generator
 
-                for id, i in zip(batch["id"].tolist(), range(translations["tokens"].size(0))):
+                for id, i in zip(
+                    batch["id"].tolist(), range(translations["tokens"].size(0))
+                ):
                     beams = []
                     for j in range(0, translations["tokens"].size(1)):
 
-                        tokens, scores, distributions = GeneratorInterface._filter_special(self._pad_token_ind, self._special_token_inds, translations["tokens"][i][j], translations["scores"][i][j], distributions=None)
-                        beams.append({
-                            "id": id,
-                            "tokens": [x.item() for x in list(tokens)],
-                            "positional_scores": [s.item() for s in list(scores)],
-                            })
+                        (
+                            tokens,
+                            scores,
+                            distributions,
+                        ) = GeneratorInterface._filter_special(
+                            self._pad_token_ind,
+                            self._special_token_inds,
+                            translations["tokens"][i][j],
+                            translations["scores"][i][j],
+                            distributions=None,
+                        )
+                        beams.append(
+                            {
+                                "id": id,
+                                "tokens": [x.item() for x in list(tokens)],
+                                "positional_scores": [s.item() for s in list(scores)],
+                            }
+                        )
 
                     results.append((id, beams))
 
@@ -694,8 +707,11 @@ class GeneratorInterface:
                     prompt_len = lengths[i]
 
                     tokens, scores, distributions = self._filter_special(
-                        self._pad_token_ind, self._special_token_inds,
-                        tokens, scores, distributions
+                        self._pad_token_ind,
+                        self._special_token_inds,
+                        tokens,
+                        scores,
+                        distributions,
                     )
 
                     if echo:
