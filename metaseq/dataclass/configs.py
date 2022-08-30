@@ -363,9 +363,6 @@ class DatasetConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "do not raise error if valid subsets are ignored"},
     )
-    validate_interval: int = field(
-        default=1, metadata={"help": "validate every N epochs"}
-    )
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
     )
@@ -515,7 +512,7 @@ class CheckpointConfig(MetaseqDataclass):
         default=False, metadata={"help": "don't save models or checkpoints"}
     )
     no_epoch_checkpoints: bool = field(
-        default=False, metadata={"help": "only store last and best checkpoints"}
+        default=False, metadata={"help": "don't store checkpoints at epoch boundaries"}
     )
     no_last_checkpoints: bool = field(
         default=False, metadata={"help": "don't store last checkpoints"}
