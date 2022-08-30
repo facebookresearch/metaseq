@@ -278,12 +278,11 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         itr_pos = state_dict.get("iterations_in_epoch", 0)
         if itr_pos > 0:
             # fast-forward epoch iterator
-            logger.warning(f"Fast-forwarding dataloader by {itr_pos} batches...")
+            logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
             t0 = time.time()
             next(itertools.islice(self._itr, itr_pos, itr_pos), None)
-            logger.warning(
-                f"done fast-forwarding dataloader in {time.time() - t0:.1f} seconds"
-            )
+            t1 = time.time()
+            logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
 
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:
