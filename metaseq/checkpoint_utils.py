@@ -78,7 +78,7 @@ def save_checkpoint(
         and cfg.save_interval_updates > 0
         and updates % cfg.save_interval_updates == 0
     )
-    checkpoint_conds["checkpoint_best{suffix}.pt"] = (
+    checkpoint_conds[f"checkpoint_best{suffix}.pt"] = (
         val_loss is not None
         and (
             not hasattr(save_checkpoint, "best")
