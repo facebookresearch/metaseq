@@ -512,7 +512,7 @@ class CheckpointConfig(MetaseqDataclass):
         default=False, metadata={"help": "don't save models or checkpoints"}
     )
     no_epoch_checkpoints: bool = field(
-        default=False, metadata={"help": "only store last and best checkpoints"}
+        default=False, metadata={"help": "don't store checkpoints at epoch boundaries"}
     )
     no_last_checkpoints: bool = field(
         default=False, metadata={"help": "don't store last checkpoints"}
