@@ -37,22 +37,23 @@ BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
 
-LAUNCH_ARGS = [
-    f"--model-parallel-size {MODEL_PARALLEL}",
-    f"--distributed-world-size {TOTAL_WORLD_SIZE}",
-    "--task language_modeling",
-    f"--bpe-merges {BPE_MERGES}",
-    f"--bpe-vocab {BPE_VOCAB}",
-    "--bpe hf_byte_bpe",
-    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
-    "--beam 1 --nbest 1",
-    "--distributed-port 13000",
-    "--checkpoint-shard-count 1",
-    "--use-sharded-state",
-    f"--batch-size {BATCH_SIZE}",
-    f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
-    f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
-    "/tmp",  # required "data" argument.
-]
+LAUNCH_ARGS = {
+    "model_parallel_size": MODEL_PARALLEL,
+    "distributed_world_size": TOTAL_WORLD_SIZE,
+    "task": "language_modeling",
+    "bpe_merges": BPE_MERGES,
+    "bpe_vocab": BPE_VOCAB,
+    "bpe": "hf_byte_bpe",
+    "merges_filename": BPE_MERGES,  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    "vocab_filename": BPE_VOCAB,  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    "path": f"{CHECKPOINT_FOLDER}/reshard_no_os/reshard.pt",
+    "beam": 1,
+    "nbest": 1,
+    "distributed_port": 13000,
+    "checkpoint_shard_count": 1,
+    "use_sharded_state": True,
+    "batch_size": BATCH_SIZE,
+    "buffer_size": BATCH_SIZE * MAX_SEQ_LEN,
+    "max_tokens": BATCH_SIZE * MAX_SEQ_LEN,
+    "data": "/tmp",  # required "data" argument.
+}
