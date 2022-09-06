@@ -241,6 +241,8 @@ class _FP16OptimizerMixin(object):
 
         if self.scaler is not None:
             self._multiply_factor = 1.0 / float(self.scaler.loss_scale)
+        else:
+            self._multiply_factor = 1.0
 
 
 class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
