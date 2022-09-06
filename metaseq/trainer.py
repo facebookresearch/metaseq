@@ -79,7 +79,10 @@ class Trainer(object):
         self._criterion = criterion
         self._model = model
         if not self.is_fsdp:
-            if cfg.common.fp16:
+            if cfg.common.bf16:
+                self._criterion = self._criterion.bfloat16()
+                self._model = self._model.bfloat16()
+            elif cfg.common.fp16:
                 self._criterion = self._criterion.half()
                 self._model = self._model.half()
         if (
