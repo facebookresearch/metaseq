@@ -244,6 +244,7 @@ class _FP16OptimizerMixin(object):
         else:
             self._multiply_factor = 1.0
 
+
 class FP16Optimizer(_FP16OptimizerMixin, optim.BaseOptimizer):
     """
     Wrap an *optimizer* to support FP16 (mixed precision) training.
