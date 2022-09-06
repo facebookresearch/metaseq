@@ -187,6 +187,8 @@ def distributed_init(cfg: MetaseqConfig):
 
 
 def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
+    # don't use MKL/OMP to avoid conflicting processes
+    torch.set_num_threads(1)
     if not cfg.distributed_training.distributed_no_spawn:
         # if in local spawning, i is offset by -1 since torch.multiprocessing.spawn
         # always starts at rank 0
