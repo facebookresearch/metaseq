@@ -714,11 +714,6 @@ class TransformerDecoder(IncrementalDecoder):
             self._future_mask.size(0) == 0
             or (not self._future_mask.device == tensor.device)
             or self._future_mask.size(1) < max_seq_len
-            or (
-                self.use_alibi
-                and self._future_mask.size(0)
-                != (batch_size * self.args.decoder_attention_heads)
-            )
             or (self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP)
         )
 
@@ -746,16 +741,17 @@ class TransformerDecoder(IncrementalDecoder):
                     ] = float("-inf")
 
             if self.use_alibi:
-                alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
-                self._future_mask = self._future_mask.unsqueeze(0) + alibi
+                self._future_mask = (
+                    self._future_mask.unsqueeze(0)
+                    .expand(self.args.decoder_attention_heads, max_seq_len, max_seq_len)
+                    .contiguous()
+                    + self.alibi
+                )
 
         self._future_mask = self._future_mask.to(tensor)
         if self.use_alibi:
-            return self._future_mask[
-                : batch_size * self.args.decoder_attention_heads,
-                :cur_seq_len,
-                :cur_seq_len,
-            ]
+            future_mask = self._future_mask[:, :cur_seq_len, :cur_seq_len]
+            return future_mask.repeat(batch_size, 1, 1)
         elif self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             return self._future_mask
         else:
