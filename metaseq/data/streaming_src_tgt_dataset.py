@@ -53,6 +53,8 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
             self.block_iterator = yield_src_tgt_blocks
         elif break_mode == "eos_pad_8":  # Single example per sequence
             self.block_iterator = yield_src_tgt_single_sentences_pad_8
+        elif break_mode == "eos_neg_pad_8":
+            self.block_iterator = yield_src_tgt_single_sentences_withneg_pad_8
         else:
             raise NotImplementedError(f"Unknown break mode: {break_mode}")
 
@@ -123,6 +125,9 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
     cur_tgt_block = []
     cur_block_remain = block_size
     for idx, (src, tgt) in enumerate(iterable):
+        if isinstance(src, tuple):
+            src = src[0]
+            tgt = tgt[0]
         if src.numel() > block_size:
             # truncate right side
             # TODO: Switch this to left truncate so that the target isnt ever truncated
@@ -178,6 +183,9 @@ def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, paddin
     """
 
     for idx, (src, tgt) in enumerate(iterable):
+        if isinstance(src, tuple):
+            src = src[0]
+            tgt = tgt[0]
         cur_src_block = []
         cur_src_block_ids = []
         cur_tgt_block = []
@@ -207,3 +215,49 @@ def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, paddin
             "src_block": torch.cat(cur_src_block),
             "tgt_block": torch.cat(cur_tgt_block),
         }
+
+
+def yield_src_tgt_single_sentences_withneg_pad_8(
+    iterable, block_size, drop_last, padding_idx
+):
+    """
+    Mimics sample-break-mode eos_pad_8 with additionally adding negative candidates.
+    """
+    counter = 0
+    for all_src, all_tgt in iterable:
+        if not isinstance(all_src, tuple):
+            all_src = (all_src,)
+            all_tgt = (all_tgt,)
+        for idx, (src, tgt) in enumerate(zip(all_src, all_tgt)):
+            cur_src_block = []
+            cur_src_block_ids = []
+            cur_tgt_block = []
+            if src.numel() > block_size:
+                # truncate right side
+                # TODO: Enable left side truncation
+                src = src[:block_size]
+                tgt = tgt[:block_size]
+
+            cur_src_block.append(src)
+            cur_src_block_ids.append(counter)
+            cur_tgt_block.append(tgt)
+            counter += 1
+
+            # We round up to a multiple of 8 + 1, because later on
+            # one element is removed for src/target tensor creation
+            # which brings it back to a multiple of 8. block_size is
+            # already passed with + 1 included.
+            # cur_block_remain = int(min(math.pow(2, math.ceil(math.log(src.numel(), 2))) + 1, block_size))
+            cur_block_remain = min(int(math.ceil(src.numel() / 8)) * 8 + 1, block_size)
+            cur_block_remain -= src.numel()
+            padding = cur_src_block[-1].new_full((cur_block_remain,), padding_idx)
+            cur_src_block.append(padding)
+            cur_tgt_block.append(padding)
+
+            yield {
+                "ids": torch.LongTensor(cur_src_block_ids),
+                "src_block": torch.cat(cur_src_block),
+                "tgt_block": torch.cat(cur_tgt_block),
+                "is_positive": torch.tensor([1 if idx == 0 else 0]).bool(),
+                "num_cands": torch.LongTensor([len(all_src)]),
+            }

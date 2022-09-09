@@ -33,15 +33,34 @@ logger = logging.getLogger(__name__)
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
     def _tokenize_src_tgt_json(self, json):
-        src = json["src"].rstrip(" ")
-        tgt = json["tgt"].rstrip()
-        full_tokens = torch.LongTensor(
-            self.tokenizer.encode(" ".join([src, tgt])).ids + [self.eod]
-        )
-        src_tokens_len = len(self.tokenizer.encode(src).ids)
-        tgt_tokens = torch.clone(full_tokens)
-        tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
-        return (full_tokens, tgt_tokens)
+        if "candidates" in json and len(json["candidates"]) > 0:
+            src = json["src"].rstrip(" ")
+            src_tokens_len = len(self.tokenizer.encode(src).ids)
+            tgt = json["tgt"].rstrip()
+            pos = ()
+            neg = []
+            for cand in json["candidates"]:
+                cand = cand.rstrip()
+                full_tokens = torch.LongTensor(
+                    self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
+                )
+                cand_tokens = torch.clone(full_tokens)
+                cand_tokens[:src_tokens_len] = self.dictionary.pad_index
+                if cand == tgt:
+                    pos = (full_tokens, cand_tokens)
+                else:
+                    neg.append((full_tokens, cand_tokens))
+            return zip(*([pos] + neg))
+        else:
+            src = json["src"].rstrip(" ")
+            tgt = json["tgt"].rstrip()
+            full_tokens = torch.LongTensor(
+                self.tokenizer.encode(" ".join([src, tgt])).ids + [self.eod]
+            )
+            src_tokens_len = len(self.tokenizer.encode(src).ids)
+            tgt_tokens = torch.clone(full_tokens)
+            tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
+            return (full_tokens, tgt_tokens)
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
@@ -91,7 +110,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         if (
             self.args.multicorpus_sampling_alpha != 1
             or self.args.multicorpus_sampling_maximum > 0
-        ):
+        ) and (split == "train"):
             datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
@@ -106,7 +125,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             block_size=self.args.tokens_per_sample + 1,
             break_mode=self.args.sample_break_mode
             if split == "train"
-            else "eos_pad_8",  # eos mode for val/test to get accuracies
+            else self.args.valid_sample_break_mode,  # use diferent mode for val/test
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
@@ -144,7 +163,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             )
 
         # metaseq expects batches to have the following structure
-        return {
+        collate_data = {
             "id": ids,
             "net_input": {
                 "src_tokens": input,
@@ -154,3 +173,21 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             "ntokens": input.ne(self.dictionary.pad()).sum(),
             "ntokens_target": target.ne(self.dictionary.pad()).sum(),
         }
+
+        if "is_positive" in items[0]:
+            is_positive = torch.cat([x["is_positive"] for x in items if x is not None])
+            collate_data.update({"is_positive": is_positive})
+            num_cands = torch.cat([x["num_cands"] for x in items if x is not None])
+            collate_data.update({"num_cands": num_cands})
+            # update ntokens_target
+            true_bsz = is_positive.size(0)
+            collate_data.update(
+                {
+                    "ntokens_target": (
+                        target[:true_bsz, :].ne(self.dictionary.pad())
+                        * is_positive.unsqueeze(1).repeat(1, target.size(1))
+                    ).sum()
+                }
+            )
+
+        return collate_data
