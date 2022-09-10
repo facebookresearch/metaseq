@@ -413,9 +413,7 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
             state = torch_load_cpu(local_path)
     except Exception as error:
         logger.error(
-            f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}"
-        )
-        logger.error(
+            f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."
             "If you are not meaning to --restore-file, remove the command explictly."
         )
         raise error
