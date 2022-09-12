@@ -746,7 +746,6 @@ def validate(
 
     trainer.begin_valid_epoch(epoch_itr.epoch)
     valid_losses = []
-    valid_losses_per_example = {}
     with metrics.aggregate(new_root=True) as combined_agg:
         for subset in subsets:
             logger.info(
@@ -818,28 +817,40 @@ def validate(
             stats = add_num_updates_to_stats(trainer, agg.get_smoothed_values())
             if "batch_loss" in stats:
                 del stats["batch_loss"]
-                if subset in ["valid_pos", "valid_neg"]:
-                    valid_losses_per_example[subset] = agg["batch_loss"].history
+                acc = []
+                all_losses = agg["batch_loss"].history
+                all_losses_dict = {}
+                for item in all_losses:
+                    all_losses_dict[item["id"]] = item
+
+                for idx in all_losses_dict.keys():
+                    if all_losses_dict[idx]["is_positive"]:
+                        num_cands = all_losses_dict[idx]["num_cands"]
+                        # 1. check if there are negative examples
+                        # 2. examples ids are ordered such that if Nth is a positive
+                        # example, then example ids with N+1, N+2, N+k are the k negative examples
+                        # 3. score postive with negative examples.
+                        # 4. If number of negative examples are less than intended, this is a problem
+                        # that arises when we set --max-valid-steps that abruptly cuts examples and there
+                        # are still some in the buffer. In such cases, ignore that whole examples (both postive and negative)
+                        if num_cands > 1:
+                            pos_loss = all_losses_dict[idx]["value"]
+                            neg_losses = []
+                            for i in range(1, num_cands):
+                                if all_losses_dict.get(idx + i) is not None:
+                                    neg_losses.append(all_losses_dict[idx + i]["value"])
+                            if len(neg_losses) == num_cands - 1:
+                                acc.append(
+                                    int(
+                                        all(
+                                            True if pos_loss < l else False
+                                            for l in neg_losses
+                                        )
+                                    )
+                                )
+                stats["accuracy"] = float(sum(acc)) / (len(acc) + 1e-6)
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
     stats = add_num_updates_to_stats(trainer, combined_agg.get_smoothed_values())
-    if "batch_loss" in stats:
-        del stats["batch_loss"]
-        if "valid_pos" in subsets and "valid_neg" in subsets:
-            pos_valid_losses_per_example = {
-                id: loss for id, loss in valid_losses_per_example["valid_pos"]
-            }
-            neg_valid_losses_per_example = {
-                id: loss for id, loss in valid_losses_per_example["valid_neg"]
-            }
-            assert len(pos_valid_losses_per_example.keys()) == len(
-                neg_valid_losses_per_example.keys()
-            )
-            correct = 0
-            for id, loss in pos_valid_losses_per_example.items():
-                if loss < neg_valid_losses_per_example[id]:
-                    correct += 1
-            accuracy = correct / len(pos_valid_losses_per_example)
-            stats["accuracy"] = accuracy
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 

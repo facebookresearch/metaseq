@@ -43,7 +43,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
         if has_pad:
             loss = loss * (target != self.padding_idx)
-        batch_loss = loss.mean(-1)
+        batch_loss = loss.sum(-1)  # TODO: length normalize?
         loss = loss.sum()
         # When using target loss only, use num tokens in target only as the sample_size
         # See StreamingSrcTgtDataset
@@ -58,9 +58,18 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
         }
-        if not model.training:
+        if not model.training and "is_positive" in sample:
+            # ignore dummy batches added to make the batch size consistent
+            batch_loss = batch_loss[: sample["is_positive"].size(0)]
             logging_output.update({"batch_loss": batch_loss})
             logging_output.update({"id": sample["id"].tolist()})
+            logging_output.update({"is_positive": sample["is_positive"].tolist()})
+            logging_output.update({"num_cands": sample["num_cands"].tolist()})
+            # ignore negative examples for logging loss
+            logging_output.update(
+                {"loss": (batch_loss * sample["is_positive"]).sum().data}
+            )
+
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
         if (
@@ -96,9 +105,13 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         if logging_outputs[0].get("batch_loss", None) is not None:
             batch_loss = []
             ids = []
+            is_positive = []
+            num_cands = []
             for log in logging_outputs:
                 batch_loss += log.get("batch_loss", [])
                 ids += log.get("id", [])
+                is_positive += log.get("is_positive", [])
+                num_cands += log.get("num_cands", [])
         else:
             batch_loss = None
 
@@ -123,8 +136,15 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
         )
         if batch_loss is not None:
+            # history accepts a single value or a dictionary which contains "value" key
             metrics.log_history(
-                "batch_loss", [(id, l) for id, l in zip(ids, batch_loss)], 1, round=3
+                "batch_loss",
+                [
+                    {"id": id, "is_positive": is_p, "num_cands": nc, "value": l}
+                    for id, is_p, nc, l in zip(ids, is_positive, num_cands, batch_loss)
+                ],
+                1,
+                round=3,
             )
 
     @staticmethod
