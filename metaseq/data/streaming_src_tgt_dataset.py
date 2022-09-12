@@ -123,9 +123,9 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
     cur_tgt_block = []
     cur_block_remain = block_size
     for idx, (src, tgt) in enumerate(iterable):
-        if isinstance(
-            src, tuple
-        ):  # Adding negative examples not supported in this mode
+        if isinstance(src, tuple):
+            # When we get a tuple it means that we are also processing negative candidates
+            # Adding negative examples not supported in this mode
             src = src[0]
             tgt = tgt[0]
         if src.numel() > block_size:
@@ -185,6 +185,8 @@ def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, paddin
     no_neg_examples = False
     for all_src, all_tgt in iterable:
         if not isinstance(all_src, tuple):
+            # When its not a tuple, example doesn't come with negative candidates
+            # So yield the blocks accordingly.
             no_neg_examples = True
             all_src = (all_src,)
             all_tgt = (all_tgt,)
