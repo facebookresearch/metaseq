@@ -9,7 +9,8 @@ on-the-fly tokenization.
 
 import logging
 import os
-from typing import Any, Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -28,10 +29,53 @@ from metaseq.tasks import register_task
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
+    valid_sample_break_mode: Optional[str] = field(
+        default="none",
+        metadata={"help": "control break model specific to valid splits"},
+    )
+    report_valid_accuracy: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Read negative examples while reading data for evaluations"
+            "This is useful to calculate validation accuracy during training"
+        },
+    )
+
+
 @register_task(
-    "streaming_finetune_language_modeling", dataclass=StreamingLanguageModelingConfig
+    "streaming_finetune_language_modeling", dataclass=StreamingFinetuneLanguageModelingConfig
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
+    """
+    Fine-tune a language model on a stream of data with a source/input and a target/output
+    """
+
+    def _tokenize_src_tgt_withcands_json(self, json):
+        assert "candidates" in json and isinstance(json["candidates"], list)
+        src = json["src"].rstrip(" ")
+        src_tokens_len = len(self.tokenizer.encode(src).ids)
+        tgt = json["tgt"].rstrip()
+        pos = None
+        neg = []
+        cands = json["candidates"]
+        if len(cands) == 0:
+            cands = [tgt]
+        for cand in cands:
+            cand = cand.rstrip()
+            full_tokens = torch.LongTensor(
+                self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
+            )
+            cand_tokens = torch.clone(full_tokens)
+            cand_tokens[:src_tokens_len] = self.dictionary.pad_index
+            if cand == tgt:
+                pos = (full_tokens, cand_tokens)
+            else:
+                neg.append((full_tokens, cand_tokens))
+        assert pos is not None
+        return zip(*([pos] + neg))
+
     def _tokenize_src_tgt_json(self, json):
         src = json["src"].rstrip(" ")
         tgt = json["tgt"].rstrip()
@@ -82,7 +126,9 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self._tokenize_src_tgt_json,
+                    tokenizer=self._tokenize_src_tgt_withcands_json
+                    if (split != "train" and self.args.report_valid_accuracy)
+                    else self._tokenize_src_tgt_json,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -91,7 +137,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         if (
             self.args.multicorpus_sampling_alpha != 1
             or self.args.multicorpus_sampling_maximum > 0
-        ):
+        ) and (split == "train"):
             datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
@@ -103,7 +149,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             block_size=self.args.tokens_per_sample + 1,
             break_mode=self.args.sample_break_mode
             if split == "train"
-            else "eos_pad_8",  # eos mode for val/test to get accuracies
+            else self.args.valid_sample_break_mode,  # use diferent mode for val/test
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
@@ -139,7 +185,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             )
 
         # metaseq expects batches to have the following structure
-        return {
+        collate_data = {
             "id": ids,
             "net_input": {
                 "src_tokens": input,
@@ -149,3 +195,21 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             "ntokens": input.ne(self.dictionary.pad()).sum(),
             "ntokens_target": target.ne(self.dictionary.pad()).sum(),
         }
+
+        if "is_positive" in items[0]:
+            is_positive = torch.cat([x["is_positive"] for x in items if x is not None])
+            collate_data.update({"is_positive": is_positive})
+            num_cands = torch.cat([x["num_cands"] for x in items if x is not None])
+            collate_data.update({"num_cands": num_cands})
+            # update ntokens_target
+            true_bsz = is_positive.size(0)
+            collate_data.update(
+                {
+                    "ntokens_target": (
+                        target[:true_bsz, :].ne(self.dictionary.pad())
+                        * is_positive.unsqueeze(1).repeat(1, target.size(1))
+                    ).sum()
+                }
+            )
+
+        return collate_data
