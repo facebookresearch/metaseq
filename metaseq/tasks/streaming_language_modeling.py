@@ -67,10 +67,6 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             'If set to "eos", includes only one sentence per sample.'
         },
     )
-    valid_sample_break_mode: Optional[str] = field(
-        default="none",
-        metadata={"help": "control break model specific to valid splits"},
-    )
     tokens_per_sample: int = field(
         default=1024,
         metadata={"help": "max number of tokens per sample for LM dataset"},

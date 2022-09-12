@@ -9,7 +9,8 @@ on-the-fly tokenization.
 
 import logging
 import os
-from typing import Any, Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -28,39 +29,63 @@ from metaseq.tasks import register_task
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
+    valid_sample_break_mode: Optional[str] = field(
+        default="none",
+        metadata={"help": "control break model specific to valid splits"},
+    )
+    report_valid_accuracy: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Read negative examples while reading data for evaluations"
+            "This is useful to calculate validation accuracy during training"
+        },
+    )
+
+
 @register_task(
-    "streaming_finetune_language_modeling", dataclass=StreamingLanguageModelingConfig
+    "streaming_finetune_language_modeling", dataclass=StreamingFinetuneLanguageModelingConfig
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
-    def _tokenize_src_tgt_json(self, json):
-        if "candidates" in json and len(json["candidates"]) > 0:
-            src = json["src"].rstrip(" ")
-            src_tokens_len = len(self.tokenizer.encode(src).ids)
-            tgt = json["tgt"].rstrip()
-            pos = ()
-            neg = []
-            for cand in json["candidates"]:
-                cand = cand.rstrip()
-                full_tokens = torch.LongTensor(
-                    self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
-                )
-                cand_tokens = torch.clone(full_tokens)
-                cand_tokens[:src_tokens_len] = self.dictionary.pad_index
-                if cand == tgt:
-                    pos = (full_tokens, cand_tokens)
-                else:
-                    neg.append((full_tokens, cand_tokens))
-            return zip(*([pos] + neg))
-        else:
-            src = json["src"].rstrip(" ")
-            tgt = json["tgt"].rstrip()
+    """
+    Fine-tune a language model on a stream of data with a source/input and a target/output
+    """
+
+    def _tokenize_src_tgt_withcands_json(self, json):
+        assert "candidates" in json and isinstance(json["candidates"], list)
+        src = json["src"].rstrip(" ")
+        src_tokens_len = len(self.tokenizer.encode(src).ids)
+        tgt = json["tgt"].rstrip()
+        pos = None
+        neg = []
+        cands = json["candidates"]
+        if len(cands) == 0:
+            cands = [tgt]
+        for cand in cands:
+            cand = cand.rstrip()
             full_tokens = torch.LongTensor(
-                self.tokenizer.encode(" ".join([src, tgt])).ids + [self.eod]
+                self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
             )
-            src_tokens_len = len(self.tokenizer.encode(src).ids)
-            tgt_tokens = torch.clone(full_tokens)
-            tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
-            return (full_tokens, tgt_tokens)
+            cand_tokens = torch.clone(full_tokens)
+            cand_tokens[:src_tokens_len] = self.dictionary.pad_index
+            if cand == tgt:
+                pos = (full_tokens, cand_tokens)
+            else:
+                neg.append((full_tokens, cand_tokens))
+        assert pos is not None
+        return zip(*([pos] + neg))
+
+    def _tokenize_src_tgt_json(self, json):
+        src = json["src"].rstrip(" ")
+        tgt = json["tgt"].rstrip()
+        full_tokens = torch.LongTensor(
+            self.tokenizer.encode(" ".join([src, tgt])).ids + [self.eod]
+        )
+        src_tokens_len = len(self.tokenizer.encode(src).ids)
+        tgt_tokens = torch.clone(full_tokens)
+        tgt_tokens[:src_tokens_len] = self.dictionary.pad_index
+        return (full_tokens, tgt_tokens)
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
@@ -101,7 +126,9 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self._tokenize_src_tgt_json,
+                    tokenizer=self._tokenize_src_tgt_withcands_json
+                    if (split != "train" and self.args.report_valid_accuracy)
+                    else self._tokenize_src_tgt_json,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
