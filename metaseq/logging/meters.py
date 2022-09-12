@@ -89,8 +89,8 @@ class HistoryMeter(Meter):
 
     @property
     def avg(self):
-        if type(self.history[0]) is tuple:
-            return sum([h for i, h in self.history])
+        if type(self.history[0]) is dict:
+            return sum([h["value"] for h in self.history])
         else:
             return sum(self.history)
 
