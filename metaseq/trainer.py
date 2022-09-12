@@ -19,11 +19,9 @@ import torch
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, \
-    fsdp_wrap
+from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
-from metaseq.models.ema import build_ema
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 
@@ -223,41 +221,6 @@ class Trainer(object):
             else:
                 self._wrapped_model = self._model
         return self._wrapped_model
-
-    @property
-    def ema(self):
-        if self._ema is None:
-            self._build_ema()
-        return self._ema
-
-    def _build_ema(self):
-        if self.cfg.ema.store_ema:
-            if self.is_fsdp:
-                # Build FSDP model
-                extra = {
-                    "use_sharded_state": self.use_sharded_state,
-                }
-                with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
-                    model = fsdp_wrap(self.task.build_model(self.cfg.model))
-
-                if self.cfg.common.fp16:
-                    model = model.half()
-
-                # Copy FSDP model state (since copy.deepcopy doesn't work)
-                state_dict = self.model.state_dict()
-                if not self.use_sharded_state:
-                    state_dict = distributed_utils.broadcast_object(
-                        state_dict,
-                        src_rank=0,
-                        group=self.model.process_group
-                    )
-                model.load_state_dict(state_dict)
-                self._ema = build_ema(model, self.cfg.ema, self.device)
-            else:
-                self._ema = build_ema(self._model, self.cfg.ema, self.device)
-            logger.info(
-                "Exponential Moving Average Shadow Model is initialized."
-            )
 
     @property
     def optimizer(self):
@@ -1039,6 +1002,7 @@ class Trainer(object):
             clip_norm,
             clip_norm_type,
             aggregate_norm_fn=None,
+            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
     def cumulative_training_time(self):
@@ -1073,7 +1037,7 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.common.bf16:
+                if self.cfg.bf16:
                     return t.bfloat16()
                 return t.half()
             return t

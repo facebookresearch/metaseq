@@ -11,4 +11,3 @@ defaults:
     - generation: null
     - common_eval: null
     - eval_lm: null
-    - ema: null

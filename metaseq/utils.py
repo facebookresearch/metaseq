@@ -546,31 +546,6 @@ class set_torch_seed(object):
         set_rng_state(self.rng_state)
 
 
-class set_rank_seed(set_torch_seed):
-    def __init__(self, seed, update):
-        if dist.is_initialized():
-            rank, world = dist.get_rank(), dist.get_world_size()
-        else:
-            rank, world = 0, 1
-        rank_seed = seed + update * world + rank
-
-        # torch
-        super(set_rank_seed, self).__init__(rank_seed)
-
-        # numpy
-        self.np_state = np.random.get_state()
-        np.random.seed(rank_seed)
-
-        # random
-        self.random_state = random.getstate()
-        random.seed(rank_seed)
-
-    def __exit__(self, *exc):
-        random.setstate(self.random_state)
-        np.random.set_state(self.np_state)
-        super(set_rank_seed, self).__exit__(*exc)
-
-
 class CudaEnvironment(object):
     def __init__(self):
         cur_device = torch.cuda.current_device()
