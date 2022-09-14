@@ -168,7 +168,7 @@ def init_watched_comm(
         nccl_timeout=datetime.timedelta(seconds=90), 
         communicator_timeout=datetime.timedelta(seconds=30), 
         communicator_check_period=datetime.timedelta(seconds=1), 
-        # internal_timeout=datetime.timedelta(seconds=30)
+        verbose=False
         ):
 
     loginfo(f"Checking that the required ports are not busy..")
@@ -199,7 +199,7 @@ def init_watched_comm(
         queue = {"to_heartbeat": queue_to_heartbeat, "from_heartbeat": queue_from_heartbeat}
         heartbeat_queues[partner] = queue
         heartbeat_procs[partner] = ctx.Process(target=heartbeat_fn, 
-                    args=(role, rank, partner, world_size, backend, queue, watch_device, communicator_check_period, communicator_timeout, signal_to_send_at_timeout), 
+                    args=(role, rank, partner, world_size, backend, queue, watch_device, communicator_check_period, communicator_timeout, signal_to_send_at_timeout, verbose), 
                     daemon=True)
 
     loginfo(f"Modifying signal handeling routine..")
@@ -226,7 +226,7 @@ def init_watched_comm(
         # gather the dead
         loginfo(f"Reinitialization of the main communication channel. Our survived computation units are {alive_comp_units}. Cleaning the dead partner comms..")
         
-        for partner in heartbeat_queues.keys():
+        for partner in list(heartbeat_queues):
             if partner not in alive_comp_units:
                 heartbeat_queues[partner]["to_heartbeat"].close()
                 heartbeat_queues[partner]["from_heartbeat"].close()
