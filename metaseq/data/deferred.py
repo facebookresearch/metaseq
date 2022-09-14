@@ -61,36 +61,31 @@ def tree_map(fn, tree):
     vs, unflatten = tree_flatten(tree)
     return unflatten(fn(v) for v in vs)
 
-class Deferred:
-    pass
 
-class DeferredTensor(Deferred):
+class DeferredTensor:
     def __init__(self, size_or_value, ctor=None):
-        if not isinstance(size_or_value, torch.Tensor):
+        if isinstance(size_or_value, int):
             self._size = size_or_value
             self.ctor = ctor
         else:
             self._value = size_or_value
             assert isinstance(self._value, torch.Tensor)
-            self._size = tuple(self._value.shape)
-        assert isinstance(self._size, tuple)
+            assert len(self._value.shape) == 1, "can only defer 1-D tensors"
+            self._size = self._value.shape[0]
     def realize(self):
         if hasattr(self, 'ctor'):
             # print("REALIZING...")
             self._value = self.ctor()
             del self.ctor
-            assert tuple(self._value.shape) == self._size
+            assert len(self._value.shape) == 1 and self._value.shape[0] == self._size
         return self._value
 
     def numel(self):
-        p = 1
-        for x in self.shape:
-            p *= x
-        return p
+        return self._size
 
     @property
     def shape(self):
-        return self._size
+        return (self._size,)
 
     def __getitem__(self, s):
         if isinstance(s, slice) and len(self.shape) == 1:
@@ -99,7 +94,7 @@ class DeferredTensor(Deferred):
 
     def __torch_function__(self, fn, types, args, kwargs={}):
         if fn is torch.cat and len(args) == 1 and len(kwargs) == 0 and all(len(x.shape) == 1 for x in args[0]):
-            new_size = (sum(x.shape[0] for x in args[0]),)
+            new_size = sum(x.shape[0] for x in args[0])
             return DeferredTensor(new_size, lambda: torch.cat(tuple(x.realize() for x in args[0])))
         raise NotImplementedError(f'Unimplemented: {args}, {kwargs}')
 
@@ -107,15 +102,15 @@ class DeferredTensor(Deferred):
 # stack and then reaches max recursion
 class SliceDeferredTensor(DeferredTensor):
     def __init__(self, to_slice, s):
-        indices = s.indices(to_slice.shape[0])
+        indices = s.indices(to_slice._size)
         new_size = len(range(*indices))
-        super().__init__((new_size,), lambda: to_slice.realize()[s])
+        super().__init__(new_size, lambda: to_slice.realize()[s])
         self.to_slice = to_slice
         self.indices = indices
 
     def __getitem__(self, s):
         orig_start, _, orig_step = self.indices
-        start, end, step = s.indices(self._size[0])
+        start, end, step = s.indices(self._size)
         assert orig_step > 0 and step > 0
         return SliceDeferredTensor(self.to_slice, slice(orig_start + start, orig_start + end, orig_step * step))
 
@@ -124,10 +119,9 @@ class DeferredDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(self, dataset: torch.utils.data.Dataset, len_cache=None, deferred_type=DeferredTensor):
+    def __init__(self, dataset: torch.utils.data.Dataset, len_cache=None):
         super().__init__()
         self.dataset = dataset
-        self.deferred_type = deferred_type
         self.len_cache = AtomicArray(len(self.dataset)) if len_cache is None else len_cache
         self.enabled = True
 
@@ -151,13 +145,12 @@ class DeferredDataset(torch.utils.data.Dataset):
         assert idx >= 0 and idx < len(self.dataset)
         l = self.len_cache[idx]
         if l == 0:
-            # print("MISS ", idx)
-            r = self.deferred_type(self.dataset[idx])
-            assert len(r._size) == 1, "can only cache size of 1-dim tensors..."
-            self.len_cache[idx] = r._size[0]
+            r = DeferredTensor(self.dataset[idx])
+            self.len_cache[idx] = r._size
             return r
-        # print("HIT ", idx)
-        return self.deferred_type((l,), lambda: self.dataset[idx])
+        else:
+            # print("HIT ", idx)
+            return DeferredTensor(l, lambda: self.dataset[idx])
 
 class SkipDeferredDataset(torch.utils.data.IterableDataset):
     def __init__(self, dataset, to_skip: int):
@@ -171,7 +164,7 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         for i, elem in enumerate(self.dataset):
             if i >= self.to_skip:
-                yield tree_map(lambda x: x.realize() if isinstance(x, Deferred) else x, elem)
+                yield tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)
             else:
                 # the real version will not do this, but we need to return a sentinel to the main
                 # process to stop timing of the skip process for benchmarking
