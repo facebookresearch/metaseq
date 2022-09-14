@@ -6,15 +6,13 @@ from ctypes import addressof, memset
 from multiprocessing import Array, Process
 from collections import namedtuple
 from typing import NamedTuple
-
+import time
 
 deferred_c_src = f'{os.path.dirname(os.path.abspath(__file__))}/deferred.cpp'
 deferred_c = load('deferred', deferred_c_src)
 atomic_read = deferred_c.atomic_read
 atomic_write = deferred_c.atomic_write
 atomic_read_all = deferred_c.atomic_read_all
-
-from tqdm import tqdm
 
 class AtomicArray:
     """
@@ -128,18 +126,7 @@ class DeferredDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def _progress_bar(self):
-        # just to viz how far into the the dataset we get while running
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info and worker_info.id == 0:
-            # put a hacky progress bar here
-            if not hasattr(self, 't'):
-                self.t = tqdm(total=len(self.dataset))
-            self.t.update(1)
-
-
     def __getitem__(self, idx):
-        self._progress_bar()
         if not self.enabled:
             return self.dataset[idx]
         assert idx >= 0 and idx < len(self.dataset)
@@ -162,14 +149,15 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset):
         self.enabled = True
 
     def __iter__(self):
+        self.skip_time = 0
+        t0 = time.time()
         for i, elem in enumerate(self.dataset):
             if i >= self.to_skip:
-                yield tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)
-            else:
-                # the real version will not do this, but we need to return a sentinel to the main
-                # process to stop timing of the skip process for benchmarking
-                # if this is the last one we will skip, return enough None to fill an entire batch,
-                if i + 1 == self.to_skip:
-                    for _ in range(self.batch_size):
-                        yield None # dummy return to time the skip process
-
+                r = tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)
+                # inject timing information into output dictionary to benchmark skip process
+                if isinstance(r, dict):
+                    r['skip_time'] = self.skip_time
+                yield r
+            elif i + 1 == self.to_skip:
+                t1 = time.time()
+                self.skip_time = t1 - t0
