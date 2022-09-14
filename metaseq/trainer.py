@@ -309,8 +309,6 @@ class Trainer(object):
     def consolidate_optimizer(self):
         """For OSS, we need to consolidate the state dict."""
         self._gathered_optim_state = None
-        if self.cfg.checkpoint.no_save_optimizer_state:
-            return
         if hasattr(self.optimizer.optimizer, "consolidate_state_dict"):
             self.optimizer.optimizer.consolidate_state_dict()
         elif self.is_fsdp and not self.use_sharded_state:
@@ -325,8 +323,7 @@ class Trainer(object):
     def state_dict(self, filename, training_finished=False) -> Dict[str, Dict]:
         model_state_dict = self.model.state_dict()
         optim_state = None
-        if not self.cfg.checkpoint.no_save_optimizer_state:
-            optim_state = self._gathered_optim_state or self.optimizer.state_dict()
+        optim_state = self._gathered_optim_state or self.optimizer.state_dict()
         model_save_list = [
             (
                 filename,
@@ -362,11 +359,8 @@ class Trainer(object):
                     "previous_training_time": self.cumulative_training_time(),
                 },
             }
-            if not self.cfg.checkpoint.no_save_optimizer_state or (
-                self.cfg.checkpoint.no_save_optimizer_state_on_training_finished
-                and training_finished
-            ):
-                state_dict["last_optimizer_state"] = optimizer_state_dict
+
+            state_dict["last_optimizer_state"] = optimizer_state_dict
 
             if self.is_fsdp and self.use_sharded_state:
                 state_dict[

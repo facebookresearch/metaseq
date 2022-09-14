@@ -172,10 +172,6 @@ def get_grid(args):
         hyperparam("--validate-interval-updates", 2000),
         hyperparam("--save-interval-updates", 2000),
         hyperparam(
-            "--no-epoch-checkpoints"
-        ),  # only save checkpoints based on num steps
-        hyperparam("--no-best-checkpoints"),  # don't save checkpoint_best.pt
-        hyperparam(
             "--memory-efficient-fp16",
             save_dir_key=lambda val: "me_fp16" if not no_save_params else "",
         ),
