@@ -512,7 +512,7 @@ class CheckpointConfig(MetaseqDataclass):
         default=False, metadata={"help": "don't save models or checkpoints"}
     )
     no_epoch_checkpoints: bool = field(
-        default=False, metadata={"help": "don't store checkpoints at epoch boundaries"}
+        default=False, metadata={"help": "only store last and best checkpoints"}
     )
     no_last_checkpoints: bool = field(
         default=False, metadata={"help": "don't store last checkpoints"}
@@ -626,6 +626,10 @@ class GenerationConfig(MetaseqDataclass):
     sampling: bool = field(
         default=False,
         metadata={"help": "sample hypotheses instead of using beam search"},
+    )
+    searching: bool = field(
+        default=False,
+        metadata={"help": "generating using beam search"},
     )
     sampling_topp: float = field(
         default=-1.0,
