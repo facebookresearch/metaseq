@@ -131,7 +131,7 @@ class SequenceSearch(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
+        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b - 1 or 1e99)
         min_len = min(max_len - 1, self.min_len or 0)
 
         assert (
@@ -147,11 +147,12 @@ class SequenceSearch(nn.Module):
             torch.zeros(bsz * beam_size, max_len + 1).to(src_tokens).float()
         )  # +1 for eos; pad is never chosen for scoring
         tokens = (
-            torch.zeros(bsz * beam_size, max_len + 1)
+            torch.zeros(bsz * beam_size, max_len + 2)
             .to(src_tokens)
             .long()
             .fill_(self.pad)
-        )  # +2 for eos and pad  # Lili TODO tokens different shape
+        )  # +2 for eos and pad
+        tokens[:, 0] = self.eos if bos_token is None else bos_token
 
         # A list that indicates candidates that should be ignored.
         # For example, suppose we're sampling and have already finalized 2/5
@@ -243,7 +244,7 @@ class SequenceSearch(nn.Module):
         prompt_tokens = tokens[:, 1:start_step].unsqueeze(-1)
         # look up a specific vocab logprob, and broadcast it into scores
         toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(-1)
-        scores[:, : start_step - 1] = toscores.type_as(scores)  #Lili TODO: different from generator
+        scores[:, : start_step - 1] = toscores.type_as(scores)
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
         # decisions are only over the most recent token.
@@ -255,11 +256,11 @@ class SequenceSearch(nn.Module):
         lprobs = torch.cat(lprobs_cut, dim=0)
         # finally, scores is actually stored as the cumulative NLL, but we have
         # individual NLL scores right now
-        scores = scores.cumsum(dim=1)  #This is calculated for beam search selection later
+        scores = scores.cumsum(dim=1)
 
         # start from previous timestep because we still have to do beam search
         # bookkeeping (i.e. finalize the hypothesis if it's the final token)
-        for step in range(start_step - 1, max_len):
+        for step in range(start_step - 1, max_len + 1):
             # reorder decoder internal states based on the prev choice of beams
             if reorder_state is not None:
                 if batch_idxs is not None:
@@ -307,7 +308,7 @@ class SequenceSearch(nn.Module):
             lprobs[:, self.pad] = -math.inf  # never select pad
 
             # handle max length constraint
-            if step >= max_len -1 :
+            if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
@@ -315,10 +316,10 @@ class SequenceSearch(nn.Module):
             cand_scores, cand_indices, cand_beams = self.search.step(
                 # underlying search indexes from first token being generated,
                 # so we need to account for the size of the prompt.
-                step ,
+                step - start_step + 1,
                 lprobs.view(bsz, -1, self.vocab_size),
-                scores[:, : step].view(bsz, beam_size, -1),
-                tokens[:, : step + 1],
+                scores[:, start_step - 1 : step].view(bsz, beam_size, -1),
+                tokens[:, start_step - 1 : step + 1],
                 original_batch_idxs,
             )
 
@@ -351,6 +352,7 @@ class SequenceSearch(nn.Module):
 
                 finalized_sents = self.finalize_hypos(
                     step,
+                    start_step,
                     eos_bbsz_idx,
                     eos_scores,
                     tokens,
@@ -488,6 +490,7 @@ class SequenceSearch(nn.Module):
     def finalize_hypos(
         self,
         step: int,
+        start_step: int,
         bbsz_idx,
         eos_scores,
         tokens,
@@ -510,20 +513,33 @@ class SequenceSearch(nn.Module):
         # clone relevant token and attention tensors.
         # tokens is (batch * beam, max_len). So the index_select
         # gets the newly EOS rows, then selects cols 1..{step + 2}
+        # tokens_clone = tokens.index_select(0, bbsz_idx)[
+        #     :, 1 : step + 2
+        # ]  # skip the first index, which is EOS
+
+        # tokens_clone[:, step] = self.eos
 
         # Special logic for adapting to new hub_utils, ignore above old logic
         tokens_clone = tokens.index_select(0, bbsz_idx)[
             :,  : step + 1
         ]  # keep the first index, for new implementation 
 
+
         # compute scores per token position
         pos_scores = scores.index_select(0, bbsz_idx)[:, : step + 1]
         pos_scores[:, step] = eos_scores
+
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
+
         # convert from cumulative to per-position scores
+        begin_score = pos_scores[:, start_step-1].clone()
         pos_scores[:, 1:] = pos_scores[:, 1:] - pos_scores[:, :-1]
-        
+        pos_scores[:, start_step-1] = begin_score
+
         # Special logic for adapting to new hub_utils
         pos_scores = torch.cat([torch.zeros(pos_scores.shape[0], 1).float().cuda(), pos_scores[:, :-1]], dim=1)
+
 
         # cum_unfin records which sentences in the batch are finished.
         # It helps match indexing between (a) the original sentences
