@@ -71,7 +71,7 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
         "min_tokens": [4],
         "max_tokens": [4],
         "temperature": 1.0, #0.0,
-        "top_p": 1.0,
+        "top_p": 0.0,
         "n": 1,
         "seed": 11619
     }
@@ -97,7 +97,15 @@ def cli_main():
     for s in LAUNCH_ARGS:
         flat_launch_args += s.split()
 
-    flat_launch_args += ['--searching']
+    
+    import sys
+    gen_method = sys.argv[1]
+    if gen_method == 'search': 
+        flat_launch_args += ['--searching']
+    elif gen_method == 'sample':
+        pass
+    else:
+        print('passing generation argument please, using sampling now')
     print(flat_launch_args)
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
