@@ -255,6 +255,7 @@ class GeneratorHubInterface(nn.Module):
             gen_args.beam = beam
             for k, v in kwargs.items():
                 setattr(gen_args, k, v)
+
         generator = self.task.build_generator(self.models, gen_args)
 
         inference_step_args = inference_step_args or {}
@@ -497,28 +498,6 @@ class GeneratorInterface:
             model.make_generation_fast_()
             return fsdp_wrap(model)
 
-        # # Load the model
-        # overrides = ast.literal_eval(self.cfg.common_eval.model_overrides)
-        # logger.info("loading model(s) from {}".format(self.cfg.common_eval.path))
-        # def _load_checkpoint():
-        #     return checkpoint_utils.load_model_ensemble_and_task(
-        #         utils.split_paths(self.cfg.common_eval.path),
-        #         arg_overrides=overrides,
-        #         task=task,
-        #         suffix=self.cfg.checkpoint.checkpoint_suffix,
-        #         strict=(self.cfg.checkpoint.checkpoint_shard_count == 1),
-        #         num_shards=self.cfg.checkpoint.checkpoint_shard_count,
-        #         build_model_hook=_build_model,
-        #     )
-        # if self.cfg.distributed_training.ddp_backend == 'fully_sharded':
-        #     with fsdp_enable_wrap(
-        #         self.cfg.distributed_training,
-        #         use_sharded_state=self.cfg.distributed_training.use_sharded_state,
-        #     ):
-        #         models, _model_args, _task = _load_checkpoint()
-        # else:
-        #         models, _model_args, _task = _load_checkpoint()
-        
         # Load the model
         overrides = ast.literal_eval(self.cfg.common_eval.model_overrides)
         logger.info("loading model(s) from {}".format(self.cfg.common_eval.path))
@@ -535,7 +514,6 @@ class GeneratorInterface:
                 num_shards=self.cfg.checkpoint.checkpoint_shard_count,
                 build_model_hook=_build_model,
             )
-
         # Set dictionaries
         src_dict = task.source_dictionary
         tgt_dict = task.target_dictionary
@@ -575,7 +553,6 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
-        skip_special_tokens=False,
     ):
         """
         Generate from sequences.
@@ -651,6 +628,7 @@ class GeneratorInterface:
             self.cfg.generation.max_len_a = 0
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
+
             need_logprobs = True if logprobs > 0 else False
             generator = self.task.build_generator(
                 self.models,
@@ -667,7 +645,7 @@ class GeneratorInterface:
             translations = self.task.inference_step(generator, self.models, batch)
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
-
+            
             all_tokens = translations["tokens"].cpu()[: len(inputs)]
             all_scores = translations["scores"].cpu()[: len(inputs)]
             if logprobs > 0:
@@ -706,16 +684,13 @@ class GeneratorInterface:
                     tokens_no_eos = tokens[1:] if echo else tokens
                     scores_with_eos = [None] + scores[1:] if echo else scores
                     # turn it into a string
-                    text = self.bpe.bpe.decode(tokens_no_eos, skip_special_tokens=False)
+                    text = self.bpe.bpe.decode(tokens_no_eos)
                     # re-encode it so we get offsets
                     token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
 
                     result = {
                         "text": text,
-                        "tokens": [
-                            self.bpe.bpe.decode([t], skip_special_tokens=False)
-                            for t in tokens
-                        ],
+                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
@@ -788,3 +763,4 @@ class GeneratorInterface:
         if distributions is not None:
             distributions = distributions[mask]
         return list(new_tokens), list(new_scores), distributions
+        

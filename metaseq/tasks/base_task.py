@@ -347,8 +347,28 @@ class BaseTask(object):
                 self.target_dictionary,
                 compute_vocab_dist=getattr(args, "compute_vocab_dist", False),
             )
+        elif getattr(args, "searching", False):
+            logger.info('=============== loading beam search ==================')
+            # from metaseq.sequence_search import SequenceSearch
+            from metaseq.sequence_search_ms import SequenceSearch
+            if seq_gen_cls is None:
+                seq_gen_cls = SequenceSearch
+            extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
+            return seq_gen_cls(
+                models,
+                self.target_dictionary,
+                beam_size=getattr(args, "beam", 5),
+                max_len_a=getattr(args, "max_len_a", 0),
+                max_len_b=getattr(args, "max_len_b", 200),
+                min_len=getattr(args, "min_len", 1),
+                temperature=getattr(args, "temperature", 1.0),
+                **extra_gen_cls_kwargs,
+            )
 
-        from metaseq.sequence_generator import SequenceGenerator
+        else:
+            from metaseq.sequence_generator import SequenceGenerator
+            if seq_gen_cls is None:
+                seq_gen_cls = SequenceGenerator
 
         # Choose search strategy.
         sampling = getattr(args, "sampling", False)
@@ -356,8 +376,7 @@ class BaseTask(object):
         assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
-        if seq_gen_cls is None:
-            seq_gen_cls = SequenceGenerator
+
 
         return seq_gen_cls(
             models,

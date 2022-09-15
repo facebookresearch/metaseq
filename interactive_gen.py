@@ -45,6 +45,7 @@ except KeyError:
     print(
         f"{model_name} on {env_name} config not found, please add that in metaseq_internal.constants"
     )
+del model_config["lauch_port"]
 flat_launch_args = []
 for k, v in model_config.items():
     k = k.replace("_", "-")
@@ -68,12 +69,13 @@ cfg.common_eval.model_overrides = '{"tensor_parallel_init_model_on_gpu": False}'
 gi = GeneratorInterface(cfg)
 gi.load_model()
 
-
+# print('ready to generate')
 if 'speech' in model_name:
     while True:
         try:
             text_tokens = list(gi.bpe.bpe.encode(input()).ids)
             tokens_orig = text_tokens
+            # print(tokens_orig)
             response = gi.generate(
                 inputs=[tokens_orig],
                 echo=True,

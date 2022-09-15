@@ -637,6 +637,10 @@ class GenerationConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "sample hypotheses instead of using beam search"},
     )
+    searching: bool = field(
+        default=False,
+        metadata={"help": "generating using beam search"},
+    )
     sampling_topp: float = field(
         default=-1.0,
         metadata={
