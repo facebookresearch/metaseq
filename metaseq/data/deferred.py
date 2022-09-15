@@ -144,20 +144,21 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset):
         self.dataset = dataset
         self.to_skip = to_skip
 
-        self.batch_size  = 0 # hack to know how many None to return to get timing information
-
-        self.enabled = True
-
     def __iter__(self):
-        self.skip_time = 0
+        skip_time = 0
         t0 = time.time()
+        if isinstance(self.to_skip, int):
+            to_skip = self.to_skip
+        else:
+            to_skip = self.to_skip[torch.utils.data.get_worker_info().id]
+
         for i, elem in enumerate(self.dataset):
-            if i >= self.to_skip:
+            if i >= to_skip:
                 r = tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)
                 # inject timing information into output dictionary to benchmark skip process
                 if isinstance(r, dict):
-                    r['skip_time'] = self.skip_time
+                    r['skip_time'] = skip_time
                 yield r
-            elif i + 1 == self.to_skip:
+            elif i + 1 == to_skip:
                 t1 = time.time()
-                self.skip_time = t1 - t0
+                skip_time = t1 - t0
