@@ -67,7 +67,7 @@ def save_checkpoint(
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = (
-        end_of_epoch and epoch % cfg.save_interval == 0
+        end_of_epoch and cfg.save_interval > 0 and epoch % cfg.save_interval == 0
     )
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = (
         not end_of_epoch
