@@ -401,7 +401,6 @@ def validate_and_save(
             and cfg.checkpoint.save_interval > 0
             and epoch_itr.epoch % cfg.checkpoint.save_interval == 0
         )
-        or should_stop
         or (
             cfg.checkpoint.save_interval_updates > 0
             and num_updates > 0
@@ -427,7 +426,7 @@ def validate_and_save(
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save or should_stop:
+    if do_save:
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
