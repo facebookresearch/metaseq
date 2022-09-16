@@ -490,7 +490,7 @@ class CheckpointConfig(MetaseqDataclass):
             "help": "a dictionary used to override optimizer args when loading a checkpoint"
         },
     )
-    save_interval: int = field(
+    save_interval_epochs: int = field(
         default=1,
         metadata={
             "help": "save a checkpoint every N epochs"
@@ -499,6 +499,12 @@ class CheckpointConfig(MetaseqDataclass):
     )
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
+    )
+    keep_last_epochs: int = field(
+        default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
+    )
+    keep_last_updates: int = field(
+        default=-1, metadata={"help": "keep only the last N updates checkpoints"}
     )
     best_checkpoint_metric: str = field(
         default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}

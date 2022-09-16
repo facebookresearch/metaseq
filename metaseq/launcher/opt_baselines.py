@@ -143,8 +143,8 @@ def get_grid(args):
             hyperparam(
                 "--dict-size", 51200 - 4
             ),  # TODO(susan): what is this -4 sorcery? relic of more nmt things?
-            hyperparam("--save_interval", 0),
-            hyperparam("--save_interval_updates", 0),
+            hyperparam("--save-interval-epochs", 0),
+            hyperparam("--save-interval-updates", 0),
         ]
         total_updates = 50
         warmup_updates = 50
@@ -162,7 +162,8 @@ def get_grid(args):
         grid += [
             hyperparam(
                 "--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets)
-            )
+            ),
+            hyperparam("--save-interval-updates", 2000),
         ]
 
     grid += [
@@ -171,7 +172,6 @@ def get_grid(args):
         hyperparam("--num-workers", 8),
         hyperparam("--num-workers-valid", 1),
         hyperparam("--validate-interval-updates", 2000),
-        hyperparam("--save-interval-updates", 2000),
         hyperparam(
             "--memory-efficient-fp16",
             save_dir_key=lambda val: "me_fp16" if not no_save_params else "",

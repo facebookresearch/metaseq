@@ -68,7 +68,9 @@ def save_checkpoint(
     checkpoint_conds = collections.OrderedDict()
 
     save_for_epoch = (
-        end_of_epoch and cfg.save_interval > 0 and epoch % cfg.save_interval == 0
+        end_of_epoch
+        and cfg.save_interval_epochs > 0
+        and epoch % cfg.save_interval_epochs == 0
     )
 
     save_for_updates = (
@@ -88,34 +90,64 @@ def save_checkpoint(
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
     ]
+    if len(checkpoints) > 0:
+        if PathManager.islink(checkpoints[0]):
+            PathManager.rm(checkpoints[0])
 
-    if PathManager.islink(checkpoints[0]):
-        PathManager.rm(checkpoints[0])
-
-    trainer.save_checkpoint(
-        checkpoints[0],
-        extra_state,
-        training_finished=training_finished,
-        async_callback_fn=async_callback_fn,
-    )
-
-    def _copy_if_not_async(src, dest):
-        if cfg.write_checkpoints_asynchronously:
-            pass  # TODO[ioPath]: Need to implement a delayed asynchronous file copying/moving feature.
-        else:
-            assert PathManager.copy(
-                src, dest, overwrite=True
-            ), f"Failed to copy {src} to {dest}"
-
-    for cp in checkpoints[1:]:
-        _copy_if_not_async(src=checkpoints[0], dest=cp)
-
-    write_timer.stop()
-    logger.info(
-        "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-            checkpoints[0], epoch, updates, val_loss, write_timer.sum
+        trainer.save_checkpoint(
+            checkpoints[0],
+            extra_state,
+            training_finished=training_finished,
+            async_callback_fn=async_callback_fn,
         )
-    )
+
+        def _copy_if_not_async(src, dest):
+            if cfg.write_checkpoints_asynchronously:
+                pass  # TODO[ioPath]: Need to implement a delayed asynchronous file copying/moving feature.
+            else:
+                assert PathManager.copy(
+                    src, dest, overwrite=True
+                ), f"Failed to copy {src} to {dest}"
+
+        for cp in checkpoints[1:]:
+            _copy_if_not_async(src=checkpoints[0], dest=cp)
+
+        write_timer.stop()
+        logger.info(
+            "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
+                checkpoints[0], epoch, updates, val_loss, write_timer.sum
+            )
+        )
+
+        _delete_old_checkpoint_files(
+            cfg,
+            end_of_epoch,
+            suffix,
+        )
+
+
+def _delete_old_checkpoint_files(
+    cfg: CheckpointConfig, end_of_epoch: bool, suffix: str
+):
+    if not end_of_epoch and cfg.keep_last_updates > 0:
+        suffixes = [suffix]
+
+        # remove old checkpoints; checkpoints are sorted in descending order
+        for one_suffix in suffixes:
+            checkpoints = _checkpoint_paths(
+                cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
+            )
+            for old_chk in checkpoints[cfg.keep_last_updates :]:
+                if os.path.lexists(old_chk):
+                    os.remove(old_chk)
+    if cfg.keep_last_epochs > 0:
+        # remove old epoch checkpoints; checkpoints are sorted in descending order
+        checkpoints = _checkpoint_paths(
+            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
+        )
+        for old_chk in checkpoints[cfg.keep_last_epochs :]:
+            if os.path.lexists(old_chk):
+                os.remove(old_chk)
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
