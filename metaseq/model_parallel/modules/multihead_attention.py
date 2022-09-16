@@ -21,6 +21,7 @@ try:
         ColumnParallelLinear,
         RowParallelLinear,
         split_tensor_along_last_dim,
+        gather_from_tensor_model_parallel_region,
     )
     from megatron.model.fused_softmax import (
         ScaledUpperTriangMaskedSoftmax,
@@ -537,12 +538,13 @@ class ModelParallelMultiheadAttention(nn.Module):
         ]
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
-        attn, attn_bias = self.out_proj(attn)
+        attn = gather_from_tensor_model_parallel_region(attn)
+        # attn, attn_bias = self.out_proj(attn)
         # return attn_weights None to keep the return type same as single gpu multihead attention
         # This will be deprecated.
         attn_weights: Optional[Tensor] = None
         # logger.info("output:" + str(attn.float().norm().item()))
-        return (attn, attn_bias), attn_weights
+        return (attn, None), attn_weights
 
     def _get_input_buffer(
         self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
