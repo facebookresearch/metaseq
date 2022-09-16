@@ -47,11 +47,7 @@ def save_checkpoint(
         best_function = max if cfg.maximize_best_checkpoint_metric else min
         save_checkpoint.best = best_function(val_loss, prev_best)
 
-    if cfg.no_save:
-        logger.warning(f"Not saving checkpoints.")
-        return
-
-    trainer.consolidate_optimizer()  # TODO(SS): we dont need if no_save_optimizer_state
+    trainer.consolidate_optimizer()
 
     if not trainer.should_save_checkpoint_on_current_rank:
         return
@@ -70,33 +66,22 @@ def save_checkpoint(
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
-    checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = (
-        end_of_epoch and not cfg.no_epoch_checkpoints and epoch % cfg.save_interval == 0
+
+    save_for_epoch = (
+        end_of_epoch
+        and cfg.save_interval_epochs > 0
+        and epoch % cfg.save_interval_epochs == 0
     )
-    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = (
+
+    save_for_updates = (
         not end_of_epoch
         and cfg.save_interval_updates > 0
         and updates % cfg.save_interval_updates == 0
     )
-    checkpoint_conds[f"checkpoint_best{suffix}.pt"] = (
-        val_loss is not None
-        and (
-            not hasattr(save_checkpoint, "best")
-            or is_better(val_loss, save_checkpoint.best)
-        )
-        and not cfg.no_best_checkpoints
-    )
-    if (
-        val_loss is not None
-        and cfg.keep_best_checkpoints > 0
-        and not cfg.no_best_checkpoints
-    ):
-        checkpoint_conds[
-            "checkpoint.best_{}_{:.2f}.pt".format(cfg.best_checkpoint_metric, val_loss)
-        ] = not hasattr(save_checkpoint, "best") or is_better(
-            val_loss, save_checkpoint.best
-        )
-    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = not cfg.no_last_checkpoints
+
+    checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
+    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
+    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = save_for_epoch or save_for_updates
 
     extra_state = {"train_iterator": epoch_itr.state_dict(), "val_loss": val_loss}
     if hasattr(save_checkpoint, "best"):
@@ -134,17 +119,17 @@ def save_checkpoint(
             )
         )
 
-    _delete_old_checkpoint_files(
-        cfg,
-        end_of_epoch,
-        suffix,
-    )
+        _delete_old_checkpoint_files(
+            cfg,
+            end_of_epoch,
+            suffix,
+        )
 
 
 def _delete_old_checkpoint_files(
     cfg: CheckpointConfig, end_of_epoch: bool, suffix: str
 ):
-    if not end_of_epoch and cfg.keep_interval_updates > 0:
+    if not end_of_epoch and cfg.keep_last_updates > 0:
         suffixes = [suffix]
 
         # remove old checkpoints; checkpoints are sorted in descending order
@@ -152,7 +137,7 @@ def _delete_old_checkpoint_files(
             checkpoints = _checkpoint_paths(
                 cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
             )
-            for old_chk in checkpoints[cfg.keep_interval_updates :]:
+            for old_chk in checkpoints[cfg.keep_last_updates :]:
                 if os.path.lexists(old_chk):
                     os.remove(old_chk)
     if cfg.keep_last_epochs > 0:
@@ -161,19 +146,6 @@ def _delete_old_checkpoint_files(
             cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
         )
         for old_chk in checkpoints[cfg.keep_last_epochs :]:
-            if os.path.lexists(old_chk):
-                os.remove(old_chk)
-    if cfg.keep_best_checkpoints > 0:
-        # only keep the best N checkpoints according to validation metric
-        checkpoints = _checkpoint_paths(
-            cfg.save_dir,
-            pattern=r"checkpoint\.best_{}_(\d+\.?\d*){}\.pt".format(
-                cfg.best_checkpoint_metric, suffix
-            ),
-        )
-        if not cfg.maximize_best_checkpoint_metric:
-            checkpoints = checkpoints[::-1]
-        for old_chk in checkpoints[cfg.keep_best_checkpoints :]:
             if os.path.lexists(old_chk):
                 os.remove(old_chk)
 

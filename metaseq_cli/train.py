@@ -396,24 +396,18 @@ def validate_and_save(
         )
 
     do_save = (
-        (
-            end_of_epoch
-            and epoch_itr.epoch % cfg.checkpoint.save_interval == 0
-            and not cfg.checkpoint.no_epoch_checkpoints
-        )
-        or should_stop
-        or (
-            cfg.checkpoint.save_interval_updates > 0
-            and num_updates > 0
-            and num_updates % cfg.checkpoint.save_interval_updates == 0
-            and num_updates >= cfg.dataset.validate_after_updates
-            and was_successful_step
-        )
+        end_of_epoch
+        and cfg.checkpoint.save_interval_epochs > 0
+        and epoch_itr.epoch % cfg.checkpoint.save_interval_epochs == 0
+    ) or (
+        cfg.checkpoint.save_interval_updates > 0
+        and num_updates > 0
+        and num_updates % cfg.checkpoint.save_interval_updates == 0
+        and num_updates >= cfg.dataset.validate_after_updates
+        and was_successful_step
     )
     do_validate = (
-        (
-            not end_of_epoch and do_save and not cfg.checkpoint.no_best_checkpoints
-        )  # validate during mid-epoch saves
+        (not end_of_epoch and do_save)  # validate during mid-epoch saves
         or should_stop
         or (
             cfg.dataset.validate_interval_updates > 0
@@ -429,7 +423,7 @@ def validate_and_save(
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save or should_stop:
+    if do_save:
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
