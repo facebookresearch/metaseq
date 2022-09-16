@@ -150,7 +150,7 @@ def _delete_old_checkpoint_files(
         # remove old checkpoints; checkpoints are sorted in descending order
         for one_suffix in suffixes:
             checkpoints = _checkpoint_paths(
-                cfg.save_dir, pattern=r"checkpoint_\d+_(\d+){}\.pt".format(one_suffix)
+                cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
             )
             for old_chk in checkpoints[cfg.keep_interval_updates :]:
                 if os.path.lexists(old_chk):
