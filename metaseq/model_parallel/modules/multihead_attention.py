@@ -21,6 +21,7 @@ try:
         ColumnParallelLinear,
         RowParallelLinear,
         split_tensor_along_last_dim,
+        scatter_to_tensor_model_parallel_region
     )
     from megatron.model.fused_softmax import (
         ScaledUpperTriangMaskedSoftmax,
@@ -332,11 +333,15 @@ class ModelParallelMultiheadAttention(nn.Module):
             k, _ = self.k_proj(key)
             v, _ = self.v_proj(value)
 
+        attn_mask = attn_mask.transpose(0, 2)
+        attn_mask = scatter_to_tensor_model_parallel_region(attn_mask)
+        attn_mask = attn_mask.transpose(0, 2)
         # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
         # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
         # we have seq_lens not power of 2.
-        CHANGES = not getattr(self, "inference", False)
-
+        # Alibi embeddings (first dim = bsz * num_heads_partition) are also not supported by megatron given it requires
+        # different masks per attention head.
+        CHANGES = not getattr(self, "inference", False) and False  #not attn_mask.size(0) == bsz * self.num_heads_partition
         if CHANGES:
             output_size = (
                 q.size(1),
@@ -481,8 +486,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 # If we have a per sequence mask, the condition len(attn_mask.size()) == 3
                 # is true.
                 if len(attn_mask.size()) == 3:
-                    attn_mask = attn_mask.unsqueeze(1)
-                    attn_mask = attn_mask.repeat(1, self.num_heads_partition, 1, 1)
+                    attn_mask = attn_mask.repeat(bsz, 1, 1)
                     attn_mask = attn_mask.view(
                         bsz * self.num_heads_partition, tgt_len, src_len
                     )
