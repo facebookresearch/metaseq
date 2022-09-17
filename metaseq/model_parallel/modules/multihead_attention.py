@@ -14,6 +14,9 @@ from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
 
+
+import xformers.ops as xops
+
 try:
     from megatron.mpu import (
         get_cuda_rng_tracker,
@@ -336,13 +339,13 @@ class ModelParallelMultiheadAttention(nn.Module):
         # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
-
+        
         if CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
                 q.size(0),
-                k.size(0),
+                k.size(0),              
             )
 
             q = q.view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
@@ -354,61 +357,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                     .view(-1, bsz * self.num_heads_partition, self.head_dim)
                     .transpose(0, 1)
                 )
-            matmul_result = torch.empty(
-                output_size[0] * output_size[1],
-                output_size[2],
-                output_size[3],
-                dtype=q.dtype,
-                device=torch.cuda.current_device(),
-            )
-
-            # Scale q,k before matmul for stability see https://tinyurl.com/sudb9s96 for math
-            matmul_result = torch.baddbmm(
-                matmul_result,
-                math.sqrt(self.scaling) * q.transpose(0, 1),  # [b * np, sq, hn]
-                math.sqrt(self.scaling)
-                * k.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
-                beta=0.0,
-            )
-
-            # Replace any non-finite values with finite equivalents, since otherwise
-            # we may get NaN when adding attn_mask or computing softmax.
-            if attn_mask is not None:
-                matmul_result = torch.nan_to_num(matmul_result)
-
-            # The attn_mask shape can be either seq_length x seq_length, or batch_size x seq_length x seq_length
-            # depending on whether we are broadcasting the same attention mask across the batch, or
-            # masking dynamically based on the data (e.g. for document attention).
-            # If we have a per sequence mask, the condition len(attn_mask.size()) == 3
-            # is true.
-            if (attn_mask is not None) and (len(attn_mask.size()) == 3):
-                # Going back to original scaled_masked_softmax to accomodate
-                # non-causal attention masking (use the given input attention)
-                attention_scores = matmul_result.view(*output_size)
-                attn_mask = attn_mask < -0.5
-                attn_mask = attn_mask.unsqueeze(1)
-                attn_probs = ScaledMaskedSoftmax.apply(attention_scores, attn_mask, 1.0)
-                attn_probs = attn_probs.view(
-                    output_size[0] * output_size[1], output_size[2], output_size[3]
-                )
-            else:
-                try:
-                    attn_probs = ScaledUpperTriangMaskedSoftmax.apply(
-                        matmul_result, 1.0
-                    )
-                except RuntimeError as e:
-                    raise RuntimeError(
-                        "Looks like you may have hit the feared INTERNAL ASSERT "
-                        "ERROR. You can either ensure your sequences are padded "
-                        "to a nice length (usually a power of 2), or you can make "
-                        "sure you call model.make_generation_fast_() at load. See "
-                        "interactive_hosted.py for an example.\n\n"
-                        f"Original Exception: {e}"
-                    )
-
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_probs)
-
         else:
             q *= self.scaling
 
@@ -528,8 +476,13 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
+        q = q.transpose(0, 1)
+        k = k.transpose(0, 1)
+        attn = xops.memory_efficient_attention(
+            q, k, v, attn_bias=xops.LowerTriangularMask()
+        )
         # logger.info("attn:" + str(attn.float().norm().item()))
+
         assert list(attn.size()) == [
             bsz * self.num_heads_partition,
             tgt_len,
