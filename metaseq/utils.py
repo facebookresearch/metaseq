@@ -478,6 +478,11 @@ def relu_squared(x: torch.Tensor):
     return F.relu(x).pow(2)
 
 
+def swiglu(x: torch.Tensor):
+    x, gate = x.chunk(2, dim=-1)
+    return F.silu(gate) * x
+
+
 def get_activation_fn(activation: str) -> Callable:
     """Returns the activation function corresponding to `activation`"""
     from metaseq.modules import gelu_accurate
@@ -492,6 +497,8 @@ def get_activation_fn(activation: str) -> Callable:
         return torch.tanh
     elif activation == "linear":
         return lambda x: x
+    elif activation == "swiglu":
+        return swiglu
     else:
         raise RuntimeError("--activation-fn {} not supported".format(activation))
 
