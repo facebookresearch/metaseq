@@ -2,7 +2,7 @@
 import os
 import torch
 from torch.utils.cpp_extension import load
-from ctypes import addressof, memset
+from ctypes import addressof, memset, memmove
 from multiprocessing import Array, Process
 from collections import namedtuple
 from typing import NamedTuple
@@ -35,6 +35,15 @@ class AtomicArray:
         r = Array('i', len(self.data), lock=False)
         atomic_read_all(addressof(r), addressof(self.data), len(self.data))
         return r
+
+    def __getstate__(self):
+        return (len(self.data), bytes(self.as_array()))
+
+    def __setstate__(self, state):
+        l, b = state
+        self.__init__(l)
+        memmove(addressof(self.data), b, len(b))
+
 
 
 def tree_flatten_instance(r, obj):
@@ -112,7 +121,12 @@ class SliceDeferredTensor(DeferredTensor):
         assert orig_step > 0 and step > 0
         return SliceDeferredTensor(self.to_slice, slice(orig_start + start, orig_start + end, orig_step * step))
 
-class DeferredDataset(torch.utils.data.Dataset):
+class _DeferredBase:
+    def set_epoch(self, epoch):
+        if hasattr(self.dataset, "set_epoch"):
+            self.dataset.set_epoch(epoch)
+
+class DeferredDataset(torch.utils.data.Dataset, _DeferredBase):
     """Generate deferred objects that might not be loaded by later stages in the data loader
 
     """
@@ -136,10 +150,9 @@ class DeferredDataset(torch.utils.data.Dataset):
             self.len_cache[idx] = r._size
             return r
         else:
-            # print("HIT ", idx)
             return DeferredTensor(l, lambda: self.dataset[idx])
 
-class SkipDeferredDataset(torch.utils.data.IterableDataset):
+class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
     def __init__(self, dataset, to_skip: int):
         self.dataset = dataset
         self.to_skip = to_skip

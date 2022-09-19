@@ -27,6 +27,9 @@ from metaseq.data import (
     data_utils,
     iterators,
 )
+
+from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
+
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
@@ -334,6 +337,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
+        dataset = DeferredDataset(dataset)
         # shuffle order across epochs
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
@@ -454,9 +458,10 @@ class StreamingLanguageModelingTask(LegacyTask):
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
 
+        skip_dataset = SkipDeferredDataset(dataset, 0)
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
-            dataset,
+            skip_dataset,
             num_shards=num_shards,
             shard_id=shard_id,
             drop_last=skip_remainder_batch,
@@ -464,6 +469,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
+
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,
@@ -471,6 +477,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             drop_last=skip_remainder_batch,
             num_workers=num_workers,
             epoch=epoch,
+            num_shards=num_shards,
         )
 
     @property
