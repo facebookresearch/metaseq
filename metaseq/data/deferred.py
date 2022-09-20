@@ -3,9 +3,7 @@ import os
 import torch
 from torch.utils.cpp_extension import load
 from ctypes import addressof, memset, memmove
-from multiprocessing import Array, Process
-from collections import namedtuple
-from typing import NamedTuple
+from multiprocessing import Array
 import time
 
 deferred_c_src = f'{os.path.dirname(os.path.abspath(__file__))}/deferred.cpp'
@@ -13,6 +11,7 @@ deferred_c = load('deferred', deferred_c_src)
 atomic_read = deferred_c.atomic_read
 atomic_write = deferred_c.atomic_write
 atomic_read_all = deferred_c.atomic_read_all
+
 
 class AtomicArray:
     """
@@ -45,7 +44,6 @@ class AtomicArray:
         memmove(addressof(self.data), b, len(b))
 
 
-
 def tree_flatten_instance(r, obj):
     if isinstance(obj, dict):
         ctors = [tree_flatten_instance(r, v) for v in obj.values()]
@@ -59,10 +57,12 @@ def tree_flatten_instance(r, obj):
         r.append(obj)
         return next
 
+
 def tree_flatten(tree):
     r = []
     ctor = tree_flatten_instance(r, tree)
     return r, lambda ns: ctor(iter(ns))
+
 
 def tree_map(fn, tree):
     vs, unflatten = tree_flatten(tree)
@@ -79,6 +79,7 @@ class DeferredTensor:
             assert isinstance(self._value, torch.Tensor)
             assert len(self._value.shape) == 1, "can only defer 1-D tensors"
             self._size = self._value.shape[0]
+
     def realize(self):
         if hasattr(self, 'ctor'):
             # print("REALIZING...")
@@ -105,7 +106,9 @@ class DeferredTensor:
             return DeferredTensor(new_size, lambda: torch.cat(tuple(x.realize() for x in args[0])))
         raise NotImplementedError(f'Unimplemented: {args}, {kwargs}')
 
-# optimization of slice of slice, because otherwise the tokenization code creates a really deep deferred tensor
+
+# optimization of slice of slice, because otherwise the tokenization code
+# creates a really deep deferred tensor
 # stack and then reaches max recursion
 class SliceDeferredTensor(DeferredTensor):
     def __init__(self, to_slice, s):
@@ -119,12 +122,15 @@ class SliceDeferredTensor(DeferredTensor):
         orig_start, _, orig_step = self.indices
         start, end, step = s.indices(self._size)
         assert orig_step > 0 and step > 0
-        return SliceDeferredTensor(self.to_slice, slice(orig_start + start, orig_start + end, orig_step * step))
+        return SliceDeferredTensor(self.to_slice,
+                                   slice(orig_start + start, orig_start + end, orig_step * step))
+
 
 class _DeferredBase:
     def set_epoch(self, epoch):
         if hasattr(self.dataset, "set_epoch"):
             self.dataset.set_epoch(epoch)
+
 
 class DeferredDataset(torch.utils.data.Dataset, _DeferredBase):
     """Generate deferred objects that might not be loaded by later stages in the data loader
@@ -148,13 +154,14 @@ class DeferredDataset(torch.utils.data.Dataset, _DeferredBase):
         if not self.enabled:
             return self.dataset[idx]
         assert idx >= 0 and idx < len(self.dataset)
-        l = self.len_cache[idx]
-        if l == 0:
+        ln = self.len_cache[idx]
+        if ln == 0:
             r = DeferredTensor(self.dataset[idx])
             self.len_cache[idx] = r._size
             return r
         else:
-            return DeferredTensor(l, lambda: self.dataset[idx])
+            return DeferredTensor(ln, lambda: self.dataset[idx])
+
 
 class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
     def __init__(self, dataset, to_skip: int):
@@ -172,8 +179,10 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
             to_skip = self.to_skip[worker_id]
         for i, elem in enumerate(self.dataset):
             if i >= to_skip:
-                r = tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)
-                # inject timing information into output dictionary to benchmark skip process
+                r = tree_map(lambda x: x.realize()
+                             if isinstance(x, DeferredTensor) else x, elem)
+                # inject timing information into output dictionary to
+                # benchmark skip process
                 if isinstance(r, dict):
                     r['skip_time'] = skip_time
                 yield r

@@ -143,6 +143,7 @@ class StreamingCountingIterator(object):
     def has_next(self):
         return bool(self._peekable_itr)  # whether peekable has items
 
+
 class EpochBatchIterating(object):
     def __len__(self) -> int:
         raise NotImplementedError
@@ -274,7 +275,8 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         dataset = self.dataset
         while not isinstance(dataset, DeferredDataset):
             dataset = dataset.dataset
-
+        logger.info(f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
+                    f"entries in tokenization_cache, {sentences_consumed} sentences consumed per worker, iteration {n}")
         return {
             "epoch": epoch,
             "sentences_consumed": sentences_consumed,
@@ -294,7 +296,8 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             sentences_consumed = state_dict["sentences_consumed"]
             logger.info(f"Skipping {sentences_consumed} sentences in each worker...")
             num_workers = 1 if self.num_workers == 0 else self.num_workers
-            assert len(sentences_consumed) == num_workers, "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
+            assert len(sentences_consumed) == num_workers,\
+                "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
             dataset = self.dataset
             while not isinstance(dataset, SkipDeferredDataset):
                 dataset = dataset.dataset
@@ -312,9 +315,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             # checkpoint from before sentences_consumed was added, slow fast forward...
             if "iterations_in_epoch" in state_dict and state_dict["iterations_in_epoch"] > 0:
                 # fast-forward epoch iterator
+                itr_pos = state_dict["iterations_in_epoch"]
                 logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
                 t0 = time.time()
-                iter_pos = state_dict["iterations_in_epoch"]
                 next(itertools.islice(self._itr, itr_pos, itr_pos), None)
                 t1 = time.time()
                 logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")

@@ -10,10 +10,12 @@ import torch
 from metaseq.data import iterators
 from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
 
+
 class TensorListDataset(torch.utils.data.Dataset):
     def __init__(self, tensor_list):
         self.tensor_list = tensor_list
         self.queried = 0
+
     def __len__(self):
         return len(self.tensor_list)
 
