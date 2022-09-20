@@ -501,6 +501,8 @@ def get_activation_fn(activation: str) -> Callable:
         return lambda x: x
     elif activation == "swiglu":
         return swiglu
+    elif activation == "geglu":
+        return geglu
     else:
         raise RuntimeError("--activation-fn {} not supported".format(activation))
 
@@ -514,6 +516,7 @@ def get_available_activation_fns() -> List:
         "tanh",
         "linear",
         "swiglu",
+        "geglu",
     ]
 
 

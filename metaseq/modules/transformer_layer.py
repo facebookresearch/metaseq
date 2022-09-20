@@ -96,12 +96,13 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.encoder_normalize_before
         ffn_dim = args.encoder_ffn_embed_dim
-        activation = getattr(args, "activation_fn", "relu") or "relu"
-        if activation == "swiglu":
+        self.activation_fn = utils.get_activation_fn(
+            activation=getattr(args, "activation_fn", "relu") or "relu"
+        )
+        if self.activation_fn in utils.get_gated_activation_fns():
             self.activation_gate = Linear(self.embed_dim, ffn_dim)
         else:
             self.activation_gate = None
-        self.activation_fn = utils.get_activation_fn(activation)
 
         self.fc1 = Linear(self.embed_dim, ffn_dim)
         self.fc2 = Linear(ffn_dim, self.embed_dim)
