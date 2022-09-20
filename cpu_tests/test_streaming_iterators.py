@@ -8,19 +8,22 @@ import unittest
 import torch
 
 from metaseq.data import iterators
+from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
 
-
-class TensorListIterableDataset(torch.utils.data.IterableDataset):
+class TensorListDataset(torch.utils.data.Dataset):
     def __init__(self, tensor_list):
         self.tensor_list = tensor_list
+        self.queried = 0
+    def __len__(self):
+        return len(self.tensor_list)
 
-    def __iter__(self):
-        for tensor in self.tensor_list:
-            yield tensor
+    def __getitem__(self, idx):
+        self.queried += 1
+        return self.tensor_list[idx]
 
 
 def get_simple_dataset():
-    return TensorListIterableDataset(
+    dataset = TensorListDataset(
         [
             torch.LongTensor([0, 1]),
             torch.LongTensor([2, 3]),
@@ -29,12 +32,15 @@ def get_simple_dataset():
             torch.LongTensor([8, 9]),
         ]
     )
+    dataset = DeferredDataset(dataset)
+    dataset = SkipDeferredDataset(dataset, 0)
+    return dataset
 
 
 class TestStreamingIterators(unittest.TestCase):
     def test_streaming_counting_iterator(self):
         ref = list(range(10))
-        itr = iterators.StreamingCountingIterator(ref)
+        itr = iterators.StreamingCountingIterator(ref, 0, 1, 1)
         for i, ref_i in enumerate(ref):
             self.assertTrue(itr.has_next())
             self.assertEqual(itr.n, i)
@@ -52,6 +58,9 @@ class TestStreamingIterators(unittest.TestCase):
 
     def test_streaming_epoch_batch_iterator_state_dict(self):
         def hook_fn(epoch_batch_itr, itr):
+            queried = epoch_batch_itr.dataset.dataset.dataset.queried
+            if epoch_batch_itr.iterations_in_epoch == 2:
+                assert queried == 2, "Deferred Token cache didn't cache loading"
             new_epoch_batch_itr = iterators.StreamingEpochBatchIterator(
                 # recreate the dataset
                 dataset=get_simple_dataset(),

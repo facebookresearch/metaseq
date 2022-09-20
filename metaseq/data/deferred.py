@@ -140,6 +140,10 @@ class DeferredDataset(torch.utils.data.Dataset, _DeferredBase):
     def __len__(self):
         return len(self.dataset)
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
     def __getitem__(self, idx):
         if not self.enabled:
             return self.dataset[idx]
@@ -163,8 +167,9 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
         if isinstance(self.to_skip, int):
             to_skip = self.to_skip
         else:
-            to_skip = self.to_skip[torch.utils.data.get_worker_info().id]
-
+            info = torch.utils.data.get_worker_info()
+            worker_id = 0 if info is None else info.id
+            to_skip = self.to_skip[worker_id]
         for i, elem in enumerate(self.dataset):
             if i >= to_skip:
                 r = tree_map(lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem)

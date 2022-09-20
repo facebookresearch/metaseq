@@ -265,9 +265,11 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             # when loading later we don't end up fast-forwarding the iterator
             epoch = self.epoch + 1
             sentences_consumed = [0 for _ in range(self.num_workers)]
+            n = 0
         else:
             epoch = self.epoch
             sentences_consumed = self._itr.sentences_consumed
+            n = self._itr.n
 
         dataset = self.dataset
         while not isinstance(dataset, DeferredDataset):
@@ -277,6 +279,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             "epoch": epoch,
             "sentences_consumed": sentences_consumed,
             "tokenization_cache": dataset.len_cache,
+            "n": n,
         }
 
     def load_state_dict(self, state_dict):
@@ -290,7 +293,8 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         if "sentences_consumed" in state_dict and max(state_dict["sentences_consumed"]) > 0:
             sentences_consumed = state_dict["sentences_consumed"]
             logger.info(f"Skipping {sentences_consumed} sentences in each worker...")
-            assert len(sentences_consumed) == self.num_workers, "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
+            num_workers = 1 if self.num_workers == 0 else self.num_workers
+            assert len(sentences_consumed) == num_workers, "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
             dataset = self.dataset
             while not isinstance(dataset, SkipDeferredDataset):
                 dataset = dataset.dataset
@@ -298,18 +302,22 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             while not isinstance(dataset, DeferredDataset):
                 dataset = dataset.dataset
             dataset.len_cache = state_dict["tokenization_cache"]
+            n = state_dict["n"]
 
-        self._itr = self._get_iterator_for_epoch(self.epoch)
-
-        # checkpoint from before sentences_consumed was added, slow fast forward...
-        if "iterations_in_epoch" in state_dict and state_dict["iterations_in_epoch"] > 0:
-            # fast-forward epoch iterator
-            logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
-            t0 = time.time()
-            iter_pos = state_dict["iterations_in_epoch"]
-            next(itertools.islice(self._itr, itr_pos, itr_pos), None)
-            t1 = time.time()
-            logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            self._itr.n = n
+            self._itr.sentences_consumed = sentences_consumed
+        else:
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            # checkpoint from before sentences_consumed was added, slow fast forward...
+            if "iterations_in_epoch" in state_dict and state_dict["iterations_in_epoch"] > 0:
+                # fast-forward epoch iterator
+                logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
+                t0 = time.time()
+                iter_pos = state_dict["iterations_in_epoch"]
+                next(itertools.islice(self._itr, itr_pos, itr_pos), None)
+                t1 = time.time()
+                logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
 
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:
