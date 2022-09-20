@@ -21,6 +21,7 @@ from torch import Tensor
 
 from metaseq.distributed import utils as distributed_utils
 from metaseq.incremental_decoding_utils import HasIncrementalState
+from metaseq.modules import gelu_accurate
 
 try:
     from amp_C import multi_tensor_l2norm
@@ -478,15 +479,16 @@ def relu_squared(x: torch.Tensor):
     return F.relu(x).pow(2)
 
 
-def swiglu(x: torch.Tensor):
-    x, gate = x.chunk(2, dim=-1)
-    return F.silu(gate) * x
+def swiglu(x: torch.Tensor, gate: torch.Tensor):
+    return F.silu(x) * gate
+
+
+def geglu(x: torch.Tensor, gate: torch.Tensor):
+    return gelu_accurate(x) * gate
 
 
 def get_activation_fn(activation: str) -> Callable:
     """Returns the activation function corresponding to `activation`"""
-    from metaseq.modules import gelu_accurate
-
     if activation == "relu":
         return F.relu
     elif activation == "relu_squared":
@@ -511,6 +513,14 @@ def get_available_activation_fns() -> List:
         "gelu_accurate",
         "tanh",
         "linear",
+        "swiglu",
+    ]
+
+
+def get_gated_activation_fns() -> List:
+    return [
+        geglu,
+        swiglu,
     ]
 
 

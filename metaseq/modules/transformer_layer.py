@@ -26,7 +26,7 @@ def _linear(x, weight, bias=None):
     return F.linear(x, weight, bias)
 
 
-def _ffn(x, fc1, activation_fn, fc2, dropout_module):
+def _ffn(x, fc1, activation_fn, activation_gate, fc2, dropout_module):
     x_shape = x.shape
     x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
@@ -46,16 +46,26 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module):
         x = x + bias_fc2
     elif model_parallel:
         # here, we do the bias computation inside fc1 and fc2 AND gather_output
-        x, _ = fc1(x)
-        x = activation_fn(x)
+        x_fc1, _ = fc1(x)
+        if activation_fn in utils.get_gated_activation_fns():
+            gate, _ = activation_gate(x)
+            x = activation_fn(x_fc1, gate)
+        else:
+            x = activation_fn(x_fc1)
+        del x_fc1
         x, _ = fc2(x)
     elif has_fused_bias_gelu and activation_fn == gelu:
         x = _linear(x, fc1.weight)
         x = fused_bias_gelu(x, fc1.bias)
         x = _linear(x, fc2.weight, fc2.bias)
     else:
-        x = fc1(x)
-        x = activation_fn(x)
+        x_fc1 = fc1(x)
+        if activation_fn in utils.get_gated_activation_fns():
+            gate = activation_gate(x)
+            x = activation_fn(x_fc1, gate)
+        else:
+            x = activation_fn(x_fc1)
+        del x_fc1
         x = fc2(x)
     x = x.view(x_shape)
     x = dropout_module(x)
@@ -86,9 +96,13 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.encoder_normalize_before
         ffn_dim = args.encoder_ffn_embed_dim
-        self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, "activation_fn", "relu") or "relu"
-        )
+        activation = getattr(args, "activation_fn", "relu") or "relu"
+        if activation == "swiglu":
+            self.activation_gate = Linear(self.embed_dim, ffn_dim)
+        else:
+            self.activation_gate = None
+        self.activation_fn = utils.get_activation_fn(activation)
+
         self.fc1 = Linear(self.embed_dim, ffn_dim)
         self.fc2 = Linear(ffn_dim, self.embed_dim)
         self.final_layer_norm = LayerNorm(self.embed_dim)
@@ -157,6 +171,7 @@ class TransformerEncoderLayer(nn.Module):
             x,
             self.fc1,
             self.activation_fn,
+            self.activation_gate,
             self.fc2,
             self.dropout_module,
         )
@@ -247,6 +262,20 @@ class TransformerDecoderLayer(nn.Module):
             else "relu"
         )
         self.skip_bias_add = (self.activation_fn == gelu) and has_fused_bias_gelu
+
+        if self.activation_fn in utils.get_gated_activation_fns():
+            self.activation_gate = self.build_fc1(
+                self.embed_dim,
+                ffn_dim,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                full_megatron_init=getattr(args, "full_megatron_init", False),
+                megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+                dtype=self._get_model_init_dtype(),
+                disable_bias=getattr(args, "disable_bias", False),
+            )
+        else:
+            self.activation_gate = None
+
         self.fc1 = self.build_fc1(
             self.embed_dim,
             ffn_dim,
@@ -499,6 +528,7 @@ class TransformerDecoderLayer(nn.Module):
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,
+            activation_gate=self.activation_gate,
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
