@@ -23,9 +23,10 @@ def init_comm(rank, world_size, backend="nccl", timeout=datetime.timedelta(secon
 
 
 class NCCLtimeout(Exception):
-    def __init__(self, timeouted_comms, *args: object) -> None:
+    def __init__(self, timeouted_comms=None, alive_comp_units=None, *args: object) -> None:
         super().__init__(*args)
         self.timeouted_comms = timeouted_comms
+        self.alive_comp_units = alive_comp_units
 
 
 class NotGPUfailRelatedTimeout(Exception):
