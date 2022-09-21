@@ -39,6 +39,7 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
         drop_last: Optional[bool] = False,
         padding_idx: Optional[int] = None,
         shuffle_buffer_size: int = 1,
+        left_truncation: Optional[bool] = False,
         seed: Optional[int] = None,
     ):
         super().__init__()
@@ -48,6 +49,7 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
         self.drop_last = drop_last
         self.padding_idx = padding_idx
         self.shuffle_buffer_size = shuffle_buffer_size
+        self.left_truncation = left_truncation
         self.seed = seed
         if break_mode == "none" or break_mode == "complete":
             self.block_iterator = yield_src_tgt_blocks
@@ -82,6 +84,7 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
             self.block_size,
             self.drop_last,
             self.padding_idx,
+            self.left_truncation,
         )
 
         if self.seed is not None:
@@ -116,7 +119,7 @@ class StreamingSrcTgtDataset(torch.utils.data.IterableDataset):
             yield get_next_item_and_replace_in_buffer(None)
 
 
-def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
+def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx, left_truncation):
     """Packs multiple examples together in a block"""
     cur_src_block = []
     cur_src_block_ids = []
@@ -129,10 +132,13 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
             src = src[0]
             tgt = tgt[0]
         if src.numel() > block_size:
-            # truncate right side
-            # TODO: Switch this to left truncate so that the target isnt ever truncated
-            src = src[:block_size]
-            tgt = tgt[:block_size]
+            # truncate left/right side
+            if left_truncation:
+                src = src[-block_size:]
+                tgt = tgt[-block_size:]
+            else:
+                src = src[:block_size]
+                tgt = tgt[:block_size]
 
         if src.numel() > cur_block_remain:
             padding = cur_src_block[-1].new_full((cur_block_remain,), padding_idx)
@@ -172,7 +178,7 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx):
         }
 
 
-def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
+def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx, left_truncation):
     """Mimics sample-break-mode eos i.e. 1 example per sequence without any packing.
     When multiple examples are packed into a single sequence, example tokens would attend
     to tokens in neighbouring examples, which may be undesirable. This mode can
@@ -195,10 +201,13 @@ def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, paddin
             cur_src_block_ids = []
             cur_tgt_block = []
             if src.numel() > block_size:
-                # truncate right side
-                # TODO: Enable left side truncation
-                src = src[:block_size]
-                tgt = tgt[:block_size]
+                # truncate left/right side
+                if left_truncation:
+                    src = src[-block_size:]
+                    tgt = tgt[-block_size:]
+                else:
+                    src = src[:block_size]
+                    tgt = tgt[:block_size]
 
             cur_src_block.append(src)
             cur_src_block_ids.append(counter)

@@ -42,6 +42,13 @@ class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
             "This is useful to calculate validation accuracy during training"
         },
     )
+    left_truncation: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "If an example is more than the block size decide on truncation type"
+            "if left_truncation is true, truncation is on left size otherwise on right side."
+        }
+    )
 
 
 @register_task(
@@ -145,6 +152,9 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         # shuffle order across epochs
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
+        logger.info(
+            f"Enabling {'left' if self.args.left_truncation else 'right'} truncation in the blocks of {split} split"
+        )
         self.datasets[split] = StreamingSrcTgtDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
@@ -156,6 +166,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
+            left_truncation=self.args.left_truncation,
             # 1284 is a randomly-generated offset to decouple the seed used here
             # from the seed used above in StreamingShuffleDataset
             # TODO: Track this seed to avoid collisions. See issue #65
