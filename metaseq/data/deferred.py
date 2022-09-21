@@ -1,3 +1,8 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 import os
 import torch
 from torch.utils.cpp_extension import load
@@ -102,7 +107,9 @@ class DeferredTensor:
 
     def new_full(self, size_tup, value):
         assert len(size_tup) == 1, "Unimplemented: multi-dim new_full"
-        return DeferredTensor(size_tup[0], lambda: self.realize().new_full(size_tup, value))
+        return DeferredTensor(
+            size_tup[0], lambda: self.realize().new_full(size_tup, value)
+        )
 
     def __torch_function__(self, fn, types, args, kwargs={}):
         if (
@@ -191,9 +198,11 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
             to_skip = self.to_skip[worker_id]
         for i, elem in enumerate(self.dataset):
             if i >= to_skip:
-                r = tree_map(
-                    lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem
-                )
+
+                def to_tensor(x):
+                    return x.realize() if isinstance(x, DeferredTensor) else x
+
+                r = tree_map(to_tensor, elem)
                 # inject timing information into output dictionary to
                 # benchmark skip process
                 if isinstance(r, dict):

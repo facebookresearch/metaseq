@@ -277,7 +277,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         dataset = self.dataset
         while not isinstance(dataset, DeferredDataset):
             dataset = dataset.dataset
-        logger.info(
+        logger.debug(
             f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
             f"entries in tokenization_cache, {sentences_consumed} sentences consumed per worker, iteration {n}"
         )
@@ -327,7 +327,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             ):
                 # fast-forward epoch iterator
                 itr_pos = state_dict["iterations_in_epoch"]
-                logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
+                logger.info(
+                    f"Fast-forwarding dataloader by {itr_pos} batches using slower logic because checkpoint does not have a tokenization_cache..."
+                )
                 t0 = time.time()
                 next(itertools.islice(self._itr, itr_pos, itr_pos), None)
                 t1 = time.time()

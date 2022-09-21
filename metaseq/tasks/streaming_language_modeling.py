@@ -337,7 +337,14 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
+        # DeferredDataset keeps a cache that maps dataset idx -> number of tokens in the data.
+        # When the token count is known, it defers actually loading the dataset element, avoiding
+        # tokenization. Computations on the tensors are also deferred until the value is actually needed.
+
+        # SkipDeferredDataset later may choose to skip over deferred tensors, never causing them to be
+        # tokenized by settings its `to_skip` property to non-zero.
         dataset = DeferredDataset(dataset)
+
         # shuffle order across epochs
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
@@ -458,6 +465,10 @@ class StreamingLanguageModelingTask(LegacyTask):
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
 
+        # SkipDeferredDataset may optionally skip elements before iteration starts,
+        # allowing it to fast-forward without returning elements to the data loader,
+        # and without tokenizing the files it is skipping.
+        # It also removes all the deferred tensors introduced by DeferredDataset
         skip_dataset = SkipDeferredDataset(dataset, 0)
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
