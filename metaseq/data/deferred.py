@@ -100,6 +100,10 @@ class DeferredTensor:
             return SliceDeferredTensor(self, s)
         raise NotImplementedError("non-slice getitem")
 
+    def new_full(self, size_tup, value):
+        assert len(size_tup) == 1, "Unimplemented: multi-dim new_full"
+        return DeferredTensor(size_tup[0], lambda: self.realize().new_full(size_tup, value))
+
     def __torch_function__(self, fn, types, args, kwargs={}):
         if (
             fn is torch.cat

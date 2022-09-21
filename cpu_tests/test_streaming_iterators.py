@@ -7,9 +7,9 @@ import unittest
 
 import torch
 
-from metaseq.data import iterators
+from metaseq.data import iterators, StreamingShuffleDataset, StreamingTokenBlockDataset, PartitionedStreamingDataset
 from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
-
+import random
 
 class TensorListDataset(torch.utils.data.Dataset):
     def __init__(self, tensor_list):
@@ -109,6 +109,84 @@ class TestStreamingIterators(unittest.TestCase):
         assert epoch_batch_itr.end_of_epoch()
         with self.assertRaises(StopIteration):
             next(itr)
+
+    def test_deferred_iterator(self):
+        class FakeTensorData(torch.utils.data.Dataset):
+            def __init__(self):
+                self.rng = random.Random(0)
+                self.trng = torch.Generator()
+                self.trng.manual_seed(0)
+                self.items = [torch.randint(256, size=(self.rng.randrange(512, 8192),), generator=self.trng) for _ in range(len(self))]
+                self.queried = 0
+
+            def __len__(self):
+                return 128
+
+            def __getitem__(self, idx):
+                self.queried += 1
+                return self.items[idx]
+
+            def __iter__(self):
+                for i in range(len(self)):
+                    yield self[i]
+
+        def create_dataset(break_mode="none", drop_last=True, sentence_size=2049, num_shards=1):
+            dataset = FakeTensorData()
+            defer_dataset = DeferredDataset(dataset)
+            shuffle_dataset = StreamingShuffleDataset(defer_dataset, seed=42)
+            shuffle_dataset.set_epoch(0)
+            token_dataset = StreamingTokenBlockDataset(
+                shuffle_dataset,
+                # We generate blocks with one extra token, so that we have a target
+                # for the final input token. This results in slight data loss.
+                block_size=sentence_size,
+                break_mode=break_mode,
+                # we drop the remainder block during training
+                drop_last=drop_last,
+                padding_idx=1,
+                # 1284 is a randomly-generated offset to decouple the seed used here
+                # from the seed used above in StreamingShuffleDataset
+                seed=1284 + 42,
+            )
+            token_dataset.set_shuffle_buffer_size(4)
+            skip_dataset = SkipDeferredDataset(token_dataset, 0)
+            partitioned_dataset = PartitionedStreamingDataset(
+                  skip_dataset,
+                  num_shards=num_shards,
+                  shard_id=0,
+                  drop_last=True,
+            )
+            return partitioned_dataset, dataset, defer_dataset, skip_dataset
+
+        def run_test(drop_last, break_mode):
+            dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(drop_last=drop_last, break_mode=break_mode)
+            num_iters = 0
+            for i, x in enumerate(dataset):
+                assert isinstance(x['block'], torch.Tensor)
+                assert x['block'].shape[0] == 2049 or (drop_last and x['block'].shape[0] <= 2049) or break_mode == "eos_pad_8"
+                num_iters += 1
+
+            a_fourth = num_iters // 4
+            dataset2, fake_dataset2, defer_dataset2, skip_dataset2 = create_dataset(drop_last=drop_last, break_mode=break_mode)
+
+            defer_dataset2.len_cache = defer_dataset.len_cache
+            skip_dataset2.to_skip = a_fourth
+            value1 = list(dataset)[a_fourth]
+            value2 = next(iter(dataset2))
+            assert torch.allclose(value1['block'], value2['block'])
+            # check that we didn't actually query all the dataset to do the fast forward
+            assert  fake_dataset2.queried == len(value2['ids'])
+
+
+        run_test(drop_last=True, break_mode="complete")
+        run_test(drop_last=False, break_mode="complete")
+
+        run_test(drop_last=True, break_mode="eos_pad_8")
+        run_test(drop_last=False, break_mode="eos_pad_8")
+
+        run_test(drop_last=True, break_mode="none")
+        run_test(drop_last=False, break_mode="none")
+
 
 
 if __name__ == "__main__":
