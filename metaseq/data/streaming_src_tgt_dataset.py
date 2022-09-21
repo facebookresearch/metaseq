@@ -178,7 +178,9 @@ def yield_src_tgt_blocks(iterable, block_size, drop_last, padding_idx, left_trun
         }
 
 
-def yield_src_tgt_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx, left_truncation):
+def yield_src_tgt_single_sentences_pad_8(
+    iterable, block_size, drop_last, padding_idx, left_truncation
+):
     """Mimics sample-break-mode eos i.e. 1 example per sequence without any packing.
     When multiple examples are packed into a single sequence, example tokens would attend
     to tokens in neighbouring examples, which may be undesirable. This mode can

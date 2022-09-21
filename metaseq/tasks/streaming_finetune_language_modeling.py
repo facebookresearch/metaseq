@@ -47,12 +47,13 @@ class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
         metadata={
             "help": "If an example is more than the block size decide on truncation type"
             "if left_truncation is true, truncation is on left size otherwise on right side."
-        }
+        },
     )
 
 
 @register_task(
-    "streaming_finetune_language_modeling", dataclass=StreamingFinetuneLanguageModelingConfig
+    "streaming_finetune_language_modeling",
+    dataclass=StreamingFinetuneLanguageModelingConfig,
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
     """
