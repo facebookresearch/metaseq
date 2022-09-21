@@ -22,8 +22,6 @@ from metaseq.tasks.streaming_language_modeling import (
     StreamingLanguageModelingTask,
     StreamingLanguageModelingConfig,
 )
-from metaseq.tasks.streaming_language_modeling import DocumentToSequenceDataset
-
 from metaseq.tasks import register_task
 
 logger = logging.getLogger(__name__)
@@ -42,10 +40,18 @@ class StreamingFinetuneLanguageModelingConfig(StreamingLanguageModelingConfig):
             "This is useful to calculate validation accuracy during training"
         },
     )
+    left_truncation: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "If an example is more than the block size decide on truncation type"
+            "if left_truncation is true, truncation is on left size otherwise on right side."
+        },
+    )
 
 
 @register_task(
-    "streaming_finetune_language_modeling", dataclass=StreamingFinetuneLanguageModelingConfig
+    "streaming_finetune_language_modeling",
+    dataclass=StreamingFinetuneLanguageModelingConfig,
 )
 class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
     """
@@ -142,7 +148,13 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        self.datasets[split] = DocumentToSequenceDataset(
+        # shuffle order across epochs
+        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
+
+        logger.info(
+            f"Enabling {'left' if self.args.left_truncation else 'right'} truncation in the blocks of {split} split"
+        )
+        self.datasets[split] = StreamingSrcTgtDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -153,6 +165,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
+            left_truncation=self.args.left_truncation,
             seed=self.args.seed,
             source_target=True,
         )
