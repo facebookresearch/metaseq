@@ -133,7 +133,9 @@ class StreamingCountingIterator(object):
         return self
 
     def __next__(self):
-        self.sentences_consumed[self.n % self.num_workers] += self.batch_size * self.num_shards
+        self.sentences_consumed[self.n % self.num_workers] += (
+            self.batch_size * self.num_shards
+        )
         self.n += 1
         return next(self._peekable_itr)
 
@@ -275,8 +277,10 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         dataset = self.dataset
         while not isinstance(dataset, DeferredDataset):
             dataset = dataset.dataset
-        logger.info(f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
-                    f"entries in tokenization_cache, {sentences_consumed} sentences consumed per worker, iteration {n}")
+        logger.info(
+            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
+            f"entries in tokenization_cache, {sentences_consumed} sentences consumed per worker, iteration {n}"
+        )
         return {
             "epoch": epoch,
             "sentences_consumed": sentences_consumed,
@@ -292,12 +296,16 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
 
         # must be set before _get_iterator_for_epoch otherwise the datasets in the workers
         # will not be copied with the right state
-        if "sentences_consumed" in state_dict and max(state_dict["sentences_consumed"]) > 0:
+        if (
+            "sentences_consumed" in state_dict
+            and max(state_dict["sentences_consumed"]) > 0
+        ):
             sentences_consumed = state_dict["sentences_consumed"]
             logger.info(f"Skipping {sentences_consumed} sentences in each worker...")
             num_workers = 1 if self.num_workers == 0 else self.num_workers
-            assert len(sentences_consumed) == num_workers,\
-                "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
+            assert (
+                len(sentences_consumed) == num_workers
+            ), "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
             dataset = self.dataset
             while not isinstance(dataset, SkipDeferredDataset):
                 dataset = dataset.dataset
@@ -313,7 +321,10 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         else:
             self._itr = self._get_iterator_for_epoch(self.epoch)
             # checkpoint from before sentences_consumed was added, slow fast forward...
-            if "iterations_in_epoch" in state_dict and state_dict["iterations_in_epoch"] > 0:
+            if (
+                "iterations_in_epoch" in state_dict
+                and state_dict["iterations_in_epoch"] > 0
+            ):
                 # fast-forward epoch iterator
                 itr_pos = state_dict["iterations_in_epoch"]
                 logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
@@ -336,7 +347,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             worker_init_fn=getattr(self.dataset, "worker_init_fn", None),
         )
 
-        itr = StreamingCountingIterator(itr, self.num_workers, self.batch_size, self.num_shards)
+        itr = StreamingCountingIterator(
+            itr, self.num_workers, self.batch_size, self.num_shards
+        )
 
         return itr
 

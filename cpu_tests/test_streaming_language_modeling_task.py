@@ -152,7 +152,9 @@ class TestDatasetLoading(unittest.TestCase):
         match our expectation from the shard/subshard standpoint.
         """
         self.task.load_dataset("train", epoch=epoch)
-        iterated_data = [doc for doc in self.task.dataset("train").dataset.dataset.dataset]
+        iterated_data = [
+            doc for doc in self.task.dataset("train").dataset.dataset.dataset
+        ]
 
         # For a given epoch, the start offset would be
         offset = (epoch - 1) % data_subshard_count

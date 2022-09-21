@@ -1,4 +1,3 @@
-
 import os
 import torch
 from torch.utils.cpp_extension import load
@@ -6,8 +5,8 @@ from ctypes import addressof, memset, memmove
 from multiprocessing import Array
 import time
 
-deferred_c_src = f'{os.path.dirname(os.path.abspath(__file__))}/deferred.cpp'
-deferred_c = load('deferred', deferred_c_src)
+deferred_c_src = f"{os.path.dirname(os.path.abspath(__file__))}/deferred.cpp"
+deferred_c = load("deferred", deferred_c_src)
 atomic_read = deferred_c.atomic_read
 atomic_write = deferred_c.atomic_write
 atomic_read_all = deferred_c.atomic_read_all
@@ -17,9 +16,10 @@ class AtomicArray:
     """
     A multi-process array array where the read and write operations are atomic.
     """
+
     def __init__(self, size):
-        self.data = Array('i', size, lock=False)
-        memset(addressof(self.data), 0, 4*size)
+        self.data = Array("i", size, lock=False)
+        memset(addressof(self.data), 0, 4 * size)
 
     def __getitem__(self, idx):
         return atomic_read(addressof(self.data), idx)
@@ -31,7 +31,7 @@ class AtomicArray:
         return len(self.data)
 
     def as_array(self):
-        r = Array('i', len(self.data), lock=False)
+        r = Array("i", len(self.data), lock=False)
         atomic_read_all(addressof(r), addressof(self.data), len(self.data))
         return r
 
@@ -81,7 +81,7 @@ class DeferredTensor:
             self._size = self._value.shape[0]
 
     def realize(self):
-        if hasattr(self, 'ctor'):
+        if hasattr(self, "ctor"):
             # print("REALIZING...")
             self._value = self.ctor()
             del self.ctor
@@ -98,13 +98,20 @@ class DeferredTensor:
     def __getitem__(self, s):
         if isinstance(s, slice) and len(self.shape) == 1:
             return SliceDeferredTensor(self, s)
-        raise NotImplementedError('non-slice getitem')
+        raise NotImplementedError("non-slice getitem")
 
     def __torch_function__(self, fn, types, args, kwargs={}):
-        if fn is torch.cat and len(args) == 1 and len(kwargs) == 0 and all(len(x.shape) == 1 for x in args[0]):
+        if (
+            fn is torch.cat
+            and len(args) == 1
+            and len(kwargs) == 0
+            and all(len(x.shape) == 1 for x in args[0])
+        ):
             new_size = sum(x.shape[0] for x in args[0])
-            return DeferredTensor(new_size, lambda: torch.cat(tuple(x.realize() for x in args[0])))
-        raise NotImplementedError(f'Unimplemented: {args}, {kwargs}')
+            return DeferredTensor(
+                new_size, lambda: torch.cat(tuple(x.realize() for x in args[0]))
+            )
+        raise NotImplementedError(f"Unimplemented: {args}, {kwargs}")
 
 
 # optimization of slice of slice, because otherwise the tokenization code
@@ -122,8 +129,9 @@ class SliceDeferredTensor(DeferredTensor):
         orig_start, _, orig_step = self.indices
         start, end, step = s.indices(self._size)
         assert orig_step > 0 and step > 0
-        return SliceDeferredTensor(self.to_slice,
-                                   slice(orig_start + start, orig_start + end, orig_step * step))
+        return SliceDeferredTensor(
+            self.to_slice, slice(orig_start + start, orig_start + end, orig_step * step)
+        )
 
 
 class _DeferredBase:
@@ -133,14 +141,14 @@ class _DeferredBase:
 
 
 class DeferredDataset(torch.utils.data.Dataset, _DeferredBase):
-    """Generate deferred objects that might not be loaded by later stages in the data loader
-
-    """
+    """Generate deferred objects that might not be loaded by later stages in the data loader"""
 
     def __init__(self, dataset: torch.utils.data.Dataset, len_cache=None):
         super().__init__()
         self.dataset = dataset
-        self.len_cache = AtomicArray(len(self.dataset)) if len_cache is None else len_cache
+        self.len_cache = (
+            AtomicArray(len(self.dataset)) if len_cache is None else len_cache
+        )
         self.enabled = True
 
     def __len__(self):
@@ -179,12 +187,13 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
             to_skip = self.to_skip[worker_id]
         for i, elem in enumerate(self.dataset):
             if i >= to_skip:
-                r = tree_map(lambda x: x.realize()
-                             if isinstance(x, DeferredTensor) else x, elem)
+                r = tree_map(
+                    lambda x: x.realize() if isinstance(x, DeferredTensor) else x, elem
+                )
                 # inject timing information into output dictionary to
                 # benchmark skip process
                 if isinstance(r, dict):
-                    r['skip_time'] = skip_time
+                    r["skip_time"] = skip_time
                 yield r
             elif i + 1 == to_skip:
                 t1 = time.time()
