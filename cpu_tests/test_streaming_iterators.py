@@ -13,7 +13,7 @@ from metaseq.data import (
     StreamingTokenBlockDataset,
     PartitionedStreamingDataset,
 )
-from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
+from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset, DeferredTensor
 import random
 
 
@@ -206,6 +206,29 @@ class TestStreamingIterators(unittest.TestCase):
 
         run_test(drop_last=True, break_mode="none")
         run_test(drop_last=False, break_mode="none")
+
+    def test_deferred_tensor_memory(self):
+        num_deleted = 0
+
+        class Counter:
+            def __del__(self):
+                nonlocal num_deleted
+                num_deleted += 1
+
+            def t(self):
+                return torch.zeros(10)
+
+        def get_deferred():
+            c = Counter()
+            return DeferredTensor(10, lambda: c.t())
+
+        l = [get_deferred()[1:3][0:1], get_deferred()]
+        l.append(l[-1].new_full((2,), 0))
+        r = torch.cat(l)
+        the_result = r.realize()
+        assert (
+            num_deleted == 2
+        ), "DeferredTensors are still live after realize, maybe a reference cycle?"
 
 
 if __name__ == "__main__":
