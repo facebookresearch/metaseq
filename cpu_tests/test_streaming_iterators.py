@@ -212,7 +212,9 @@ class TestStreamingIterators(unittest.TestCase):
         # number of workers, we have to restore where the first requested batch is from
         # to a worker (n % num_workers) that isn't worker 0. However, DataLoader returns data from worker 0 first.
         # So we shift what each worker thinks its ID is by n so worker 0 will behave as worker (n % num_workers).
-        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(drop_last=True, break_mode="none")
+        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(
+            drop_last=True, break_mode="none"
+        )
         dataloader1 = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=1,
@@ -226,12 +228,14 @@ class TestStreamingIterators(unittest.TestCase):
                 consumed[i % 2] += 1
 
         len_cache = defer_dataset.len_cache
-        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(drop_last=True, break_mode="none")
+        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(
+            drop_last=True, break_mode="none"
+        )
         defer_dataset.len_cache = len_cache
         skip_dataset.to_skip = consumed
         d = dataset
-        while hasattr(d, 'dataset'):
-            if hasattr(d, 'worker_offset'):
+        while hasattr(d, "dataset"):
+            if hasattr(d, "worker_offset"):
                 d.worker_offset = 7
             d = d.dataset
         dataloader2 = torch.utils.data.DataLoader(
@@ -242,8 +246,7 @@ class TestStreamingIterators(unittest.TestCase):
             drop_last=True,
         )
         first = next(iter(dataloader2))
-        assert torch.allclose(last['block'], first['block'])
-
+        assert torch.allclose(last["block"], first["block"])
 
     def test_deferred_tensor_memory(self):
         num_deleted = 0
@@ -268,6 +271,7 @@ class TestStreamingIterators(unittest.TestCase):
             num_deleted == 2
         ), "DeferredTensors are still live after realize, maybe a reference cycle?"
         del the_result
+
 
 if __name__ == "__main__":
     unittest.main()
