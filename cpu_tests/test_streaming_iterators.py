@@ -196,7 +196,7 @@ class TestStreamingIterators(unittest.TestCase):
             value2 = next(iter(dataset2))
             assert torch.allclose(value1["block"], value2["block"])
             # check that we didn't actually query all the dataset to do the fast forward
-            assert fake_dataset2.queried == len(value2["ids"])
+            assert fake_dataset2.queried <= len(value2["ids"]) + 1
 
         run_test(drop_last=True, break_mode="complete")
         run_test(drop_last=False, break_mode="complete")

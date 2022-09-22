@@ -206,8 +206,7 @@ def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
     for idx, item in enumerate(iterable):
         cur_block_ids.append(idx)
         while item.numel() > 0:
-            numel = item.numel()
-            num_to_take = min(numel, cur_block_remain)
+            num_to_take = min(item.numel(), cur_block_remain)
 
             cur_block.append(item[:num_to_take])
             item = item[num_to_take:]  # remainder
@@ -224,7 +223,7 @@ def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
                 }
 
                 cur_block = []
-                cur_block_ids = [idx] if numel > num_to_take else []
+                cur_block_ids = []
                 cur_block_remain = block_size
 
     if not drop_last and len(cur_block) > 0:
