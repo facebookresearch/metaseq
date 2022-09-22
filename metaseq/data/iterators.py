@@ -15,6 +15,7 @@ from typing import Callable, Optional
 from metaseq.data.deferred import SkipDeferredDataset, DeferredDataset
 import numpy as np
 import torch
+from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
 
@@ -281,10 +282,13 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
             f"entries in tokenization_cache, {sequences_consumed} sentences consumed per worker, iteration {n}"
         )
+
         return {
             "epoch": epoch,
             "sequences_consumed": sequences_consumed,
-            "tokenization_cache": dataset.len_cache,
+            "tokenization_cache": dataset.len_cache
+            if distributed_utils.get_global_rank() == 0
+            else None,
             "n": n,
         }
 
@@ -316,7 +320,23 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 if hasattr(dataset, "worker_offset"):
                     dataset.worker_offset = n
                 dataset = dataset.dataset
-            dataset.len_cache = state_dict["tokenization_cache"]
+
+            global_group = distributed_utils.get_global_group()
+            if global_group is None:
+                dataset.len_cache = state_dict["tokenization_cache"]
+            else:
+                if distributed_utils.get_global_rank() == 0:
+                    dataset.len_cache = state_dict["tokenization_cache"]
+                    l, b = dataset.len_cache.__getstate__()
+                    len_tensor = torch.frombuffer(bytearray(b), dtype=torch.int8).cuda()
+                    distributed_utils.broadcast(len_tensor, 0, global_group)
+                else:
+                    len_tensor = torch.empty(
+                        4 * len(dataset), dtype=torch.int8, device="cuda"
+                    )
+                    distributed_utils.broadcast(len_tensor, 0, global_group)
+                    len_tensor = len_tensor.cpu()
+                    dataset.len_cache.from_tensor(len_tensor)
 
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n

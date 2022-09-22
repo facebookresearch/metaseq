@@ -48,6 +48,9 @@ class AtomicArray:
         self.__init__(l)
         memmove(addressof(self.data), b, len(b))
 
+    def from_tensor(self, t):
+        memmove(addressof(self.data), t.data_ptr(), len(self.data) * 4)
+
 
 def tree_flatten_instance(r, obj):
     if isinstance(obj, dict):
