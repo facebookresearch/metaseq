@@ -280,7 +280,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             dataset = dataset.dataset
         logger.debug(
             f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
-            f"entries in tokenization_cache, {sequences_consumed} sentences consumed per worker, iteration {n}"
+            f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
         )
 
         return {
@@ -307,7 +307,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             sequences_consumed = state_dict["sequences_consumed"]
             n = state_dict["n"]
 
-            logger.info(f"Skipping {sequences_consumed} sentences in each worker...")
+            logger.info(f"Skipping {sequences_consumed} sequences in each worker...")
             num_workers = 1 if self.num_workers == 0 else self.num_workers
             assert (
                 len(sequences_consumed) == num_workers

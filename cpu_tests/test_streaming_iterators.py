@@ -142,7 +142,7 @@ class TestStreamingIterators(unittest.TestCase):
                     yield self[i]
 
         def create_dataset(
-            break_mode="none", drop_last=True, sentence_size=2049, num_shards=1
+            break_mode="none", drop_last=True, sequence_size=2049, num_shards=1
         ):
             dataset = FakeTensorData()
             defer_dataset = DeferredDataset(dataset)
@@ -152,7 +152,7 @@ class TestStreamingIterators(unittest.TestCase):
                 shuffle_dataset,
                 # We generate blocks with one extra token, so that we have a target
                 # for the final input token. This results in slight data loss.
-                block_size=sentence_size,
+                block_size=sequence_size,
                 break_mode=break_mode,
                 # we drop the remainder block during training
                 drop_last=drop_last,
