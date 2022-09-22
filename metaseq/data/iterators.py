@@ -13,6 +13,7 @@ import time
 from threading import Thread
 from typing import Callable, Optional
 from metaseq.data.deferred import SkipDeferredDataset, DeferredDataset
+from metaseq.data import StreamingShuffleDataset
 import numpy as np
 import torch
 
@@ -301,6 +302,8 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             and max(state_dict["sentences_consumed"]) > 0
         ):
             sentences_consumed = state_dict["sentences_consumed"]
+            n = state_dict["n"]
+
             logger.info(f"Skipping {sentences_consumed} sentences in each worker...")
             num_workers = 1 if self.num_workers == 0 else self.num_workers
             assert (
@@ -310,10 +313,13 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             while not isinstance(dataset, SkipDeferredDataset):
                 dataset = dataset.dataset
             dataset.to_skip = sentences_consumed
+            dataset.worker_offset = n
+            while not isinstance(dataset, StreamingShuffleDataset):
+                dataset = dataset.dataset
+            dataset.worker_offset = n
             while not isinstance(dataset, DeferredDataset):
                 dataset = dataset.dataset
             dataset.len_cache = state_dict["tokenization_cache"]
-            n = state_dict["n"]
 
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n

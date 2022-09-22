@@ -207,6 +207,44 @@ class TestStreamingIterators(unittest.TestCase):
         run_test(drop_last=True, break_mode="none")
         run_test(drop_last=False, break_mode="none")
 
+        # now do a test with actual dataloader object.
+        # the tricky bit here is if we suspend on an iteration `n`` that is not a multiple of the
+        # number of workers, we have to restore where the first requested batch is from
+        # to a worker (n % num_workers) that isn't worker 0. However, DataLoader returns data from worker 0 first.
+        # So we shift what each worker thinks its ID is by n so worker 0 will behave as worker (n % num_workers).
+        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(drop_last=True, break_mode="none")
+        dataloader1 = torch.utils.data.DataLoader(
+            dataset=dataset,
+            batch_size=1,
+            num_workers=2,
+            pin_memory=True,
+            drop_last=True,
+        )
+        consumed = [0, 0]
+        for i, last in zip(range(8), dataloader1):
+            if i < 7:  # don't include the last one
+                consumed[i % 2] += 1
+
+        len_cache = defer_dataset.len_cache
+        dataset, fake_dataset, defer_dataset, skip_dataset = create_dataset(drop_last=True, break_mode="none")
+        defer_dataset.len_cache = len_cache
+        skip_dataset.to_skip = consumed
+        d = dataset
+        while hasattr(d, 'dataset'):
+            if hasattr(d, 'worker_offset'):
+                d.worker_offset = 7
+            d = d.dataset
+        dataloader2 = torch.utils.data.DataLoader(
+            dataset=dataset,
+            batch_size=1,
+            num_workers=2,
+            pin_memory=True,
+            drop_last=True,
+        )
+        first = next(iter(dataloader2))
+        assert torch.allclose(last['block'], first['block'])
+
+
     def test_deferred_tensor_memory(self):
         num_deleted = 0
 
@@ -229,7 +267,7 @@ class TestStreamingIterators(unittest.TestCase):
         assert (
             num_deleted == 2
         ), "DeferredTensors are still live after realize, maybe a reference cycle?"
-
+        del the_result
 
 if __name__ == "__main__":
     unittest.main()

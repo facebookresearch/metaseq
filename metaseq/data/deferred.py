@@ -186,6 +186,7 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
     def __init__(self, dataset, to_skip: int):
         self.dataset = dataset
         self.to_skip = to_skip
+        self.worker_offset = 0
 
     def __iter__(self):
         skip_time = 0
@@ -194,7 +195,7 @@ class SkipDeferredDataset(torch.utils.data.IterableDataset, _DeferredBase):
             to_skip = self.to_skip
         else:
             info = torch.utils.data.get_worker_info()
-            worker_id = 0 if info is None else info.id
+            worker_id = ((0 if info is None else info.id) + self.worker_offset) % info.num_workers
             to_skip = self.to_skip[worker_id]
         for i, elem in enumerate(self.dataset):
             if i >= to_skip:
