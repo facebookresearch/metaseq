@@ -16,6 +16,9 @@ CURATOR = 'curator'
 ALIVE = 'alive'
 DEAD = 'dead'
 
+class EmptyWorldException(Exception):
+    pass
+
 class Partner:
     def __init__(self, id, role, status = ALIVE, heartbeat_process=None, heartbeat_queues = None) -> None:
         self.comp_unit_id = id
@@ -50,14 +53,15 @@ def curator_starter(self_id,
             curator_to_hearbeat = ctx.Queue()
             curator_from_heartbeat = ctx.Queue()
             queue = {"to_heartbeat": curator_to_hearbeat, "from_heartbeat": curator_from_heartbeat}
-            heartbeat_proc = ctx.Process(target=heartbeat_starter, 
+            heartbeat_process = ctx.Process(target=heartbeat_starter, 
                     args=(partner.role, self_id, partner_id, world_size, backend, queue, watch_device, communicator_check_period, verbose), 
                     daemon=True)
-            partners[partner_id].heartbeat_process = heartbeat_proc
-            partners[partner_id].heartbeat_queues = queue
+            partner.heartbeat_process = heartbeat_process
+            partner.heartbeat_queues = queue
 
-    for partner in partners.items():
-        partner.heartbeat_proc.start()
+    for partner in partners.values():
+        if partner.role is not None:
+            partner.heartbeat_process.start()
 
     curator_procedure(self_id=self_id, all_partners=partners, queues_to_host=heartbeat_queues[CURATOR], device=watch_device, 
                         period=communicator_check_period, 
@@ -88,12 +92,12 @@ def multiclass_one_hot(inp, num_classes, device):
             len(inp[0])
             result = []
             for item in inp:
-                onehot = torch.nn.functional.one_hot(torch.tensor(item, dtype=torch.int64), num_classes=num_classes, device=device)
+                onehot = torch.nn.functional.one_hot(torch.tensor(item, dtype=torch.int64, device=device), num_classes=num_classes)
                 onehot = onehot.sum(dim=0)
                 result.append(onehot)
             return torch.stack(result)
         except TypeError:
-            onehot = torch.nn.functional.one_hot(torch.tensor(inp, dtype=torch.int64), num_classes=num_classes, device=device)
+            onehot = torch.nn.functional.one_hot(torch.tensor(inp, dtype=torch.int64, device=device), num_classes=num_classes)
             onehot = onehot.sum(dim=0)
             return onehot
     else:
@@ -103,18 +107,24 @@ def clear_timeouted_partners(partners_dict, timeouted_partner_ids):
     for partner in partners_dict.values():
         if partner.comp_unit_id in timeouted_partner_ids:
             partner.status = DEAD
-            partner.heartbeat_queues["to_heartbeat"].close()
-            partner.heartbeat_queues["from_heartbeat"].close()
-            partner.heartbeat_process.terminate()
+            if partner.role is not None:
+                partner.heartbeat_queues["to_heartbeat"].close()
+                partner.heartbeat_queues["from_heartbeat"].close()
+                partner.heartbeat_process.terminate()
 
 def put_replace(queue, obj):
     try_to_get_from(queue)
+    if isinstance(obj, torch.Tensor):
+        obj = obj.to('cpu')
     queue.put_nowait(obj)
 
 def try_fmax_update(queue, tensor):
     tensor_update = try_to_get_from(queue)
     if tensor_update is not None:
+        tensor_update = tensor_update.to(tensor.device)
+        loginfo(f"update: old {tensor} vs new {tensor_update}")
         torch.fmax(tensor, tensor_update, out=tensor)
+
 
 def curator_procedure(self_id, all_partners, queues_to_host, device, period, signal_pid, communicator_timeout, signal_to_send_at_timeout):
     alive_comp_units = sorted(list(all_partners.keys()))
@@ -128,23 +138,26 @@ def curator_procedure(self_id, all_partners, queues_to_host, device, period, sig
 
     while True:
         for partner in all_partners.values():
-            if partner.status == ALIVE:
-                if partner.role == SENDER:
-                    put_replace(partner.heartbeat_queues["to_heartbeat"], times_tensor)
-                elif partner.role == RECEIVER:
-                    try_fmax_update(partner.heartbeat_queues["from_heartbeat"], times_tensor)
+            if partner.status == ALIVE and partner.role is not None:
+                try_fmax_update(partner.heartbeat_queues["from_heartbeat"], times_tensor)
+                put_replace(partner.heartbeat_queues["to_heartbeat"], times_tensor)
+                    
 
         now_tensor = converter.encode_tensor(converter.utc_tensor())
         timediff_tensor = torch.sub(now_tensor, times_tensor)
-        torch.mul(timediff_tensor, alive_units_mask, out=times_tensor)
+        torch.mul(timediff_tensor, alive_units_mask, out=timediff_tensor)
         timeouted_partners = (timediff_tensor > timeout).nonzero()
         if len(timeouted_partners) > 0:
-            timeouted_partners = set(timeouted_partners)
+            timeouted_partners = set(timeouted_partners.flatten().tolist())
             loginfo(f"Timeout exceeded! Sending signal {signal_to_send_at_timeout} to {signal_pid}")
             os.kill(signal_pid, signal_to_send_at_timeout)
             alive_comp_units = sorted(list(set(alive_comp_units).difference(timeouted_partners)))
+            if len(alive_comp_units) == 0:
+                raise EmptyWorldException()
             alive_units_mask = multiclass_one_hot(alive_comp_units, num_classes=initial_world_size, device=device)
-            clear_timeouted_partners(partners_dict=all_partners, timeouted_partners=timeouted_partners)
+            clear_timeouted_partners(partners_dict=all_partners, timeouted_partner_ids=timeouted_partners)
+
+        loginfo(f"Putting alive_comp_units: {alive_comp_units}")
 
         put_replace(queues_to_host["host_from_curator"], alive_comp_units)
         time.sleep(period_in_seconds)
@@ -159,14 +172,15 @@ def heartbeat_starter(role, self_id, partner_id, world_size, backend, queue, wat
     os.environ["MASTER_PORT"] = str(int(os.environ["MASTER_PORT"]) + world_size + max(self_id, partner_id))
     loginfo(f"Using port {os.environ['MASTER_PORT']} for communication")
     os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "0"
+    def inner_comm_fn(tensor):
+        try_fmax_update(queue["to_heartbeat"], tensor)
+        put_replace(queue["from_heartbeat"], tensor)
     if role==SENDER:
         init_comm(rank=0, world_size=2, backend=backend) 
         outer_comm_fn = lambda tensor: dist.isend(tensor, dst=1) 
-        inner_comm_fn = lambda tensor: try_fmax_update(queue["to_heartbeat"], tensor)
     else: 
         init_comm(rank=1, world_size=2, backend=backend)
         outer_comm_fn = lambda tensor: dist.irecv(tensor, src=0)
-        inner_comm_fn = lambda tensor: put_replace(queue["from_heartbeat"], tensor)
 
     self_id_indicator = torch.nn.functional.one_hot(torch.tensor(self_id, dtype=torch.int64, device=watch_device), num_classes=world_size)
     partner_indicator = torch.nn.functional.one_hot(torch.tensor(partner_id, dtype=torch.int64, device=watch_device), num_classes=world_size)
@@ -207,10 +221,9 @@ def heartbeat_procedure(initial_world_size, last_comm_time_multiplier, inner_com
 
         time.sleep(period_in_seconds)
 
-
 def get_heartbeat_queues_and_procs(
-                            alive_comp_units,
-                            self_id, 
+                            partners,
+                            rank, 
                             world_size, 
                             backend, 
                             watch_device, 
@@ -219,6 +232,9 @@ def get_heartbeat_queues_and_procs(
                             signal_to_send_at_timeout, 
                             verbose,
                             central_comp_unit_id=0):
+    alive_comp_units = partners
+    self_id = rank
+
     heartbeat_procs = {}
     heartbeat_queues = {}
 
@@ -266,6 +282,7 @@ def get_signal_handler(dict_of_queues, former_signal_handler, timeout):
         loginfo(f"Signal {signum} is being handled..")
         alive_comp_units = dict_of_queues[CURATOR]["host_from_curator"].get()
         signal.signal(signum, current_handler)
+        loginfo(f"raising NCCLtimeout with alive_comp_units: {alive_comp_units}")
         raise NCCLtimeout(alive_comp_units=alive_comp_units)
 
     return handler

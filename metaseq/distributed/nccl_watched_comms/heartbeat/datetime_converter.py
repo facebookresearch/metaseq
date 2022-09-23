@@ -6,6 +6,9 @@ import torch
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+def inner_product(vector1, vector2):
+        # as of fall 2022, GPUs do not support int64 inner product
+        return torch.sum(vector1 * vector2)
 
 class DatetimeTensorConverter:
     def __init__(self, device=None):
@@ -25,7 +28,7 @@ class DatetimeTensorConverter:
         self.div_decoder = self.torch_encoder
         torch_int64_max = 1000000000
         # what is the largest value int64 can hold? - no docs on this!!!
-        self.remainder_decoder = torch.tensor((torch_int64_max, ) + encoding_multipliers, dtype=torch.int64) 
+        self.remainder_decoder = torch.tensor((torch_int64_max,) + encoding_multipliers, dtype=torch.int64)
 
     def datetime_to_tensor(self, datetime):
 
@@ -55,15 +58,25 @@ class DatetimeTensorConverter:
 
     def encode_tensor(self, datetime_as_tensor):
         """
-            stacked vectors like 
-            datetime_as_tensor = torch.stack([now_tensor, now_tensor])
+        stacked vectors like
+        datetime_as_tensor = torch.stack([now_tensor, now_tensor])
         """
-        return datetime_as_tensor @ self.torch_encoder
+        if len(datetime_as_tensor.shape) == 1:
+            return inner_product(datetime_as_tensor, self.torch_encoder)
+        else:
+            return torch.stack(
+                [
+                    inner_product(datetime_vector, self.torch_encoder)
+                    for datetime_vector in torch.unbind(datetime_as_tensor)
+                ]
+            )
+        # as of fall 2022, GPUs do not support int64 matrix multiplication
+        # return datetime_as_tensor @ self.torch_encoder
 
     def decode_tensor(self, datetime_encoding):
         if len(datetime_encoding.shape) > 0:
             dim = len(datetime_encoding.shape)
-            datetime_encoding = datetime_encoding.unsqueeze(dim).repeat((1,)*dim + (len(self.div_decoder),))
+            datetime_encoding = datetime_encoding.unsqueeze(dim).repeat((1,) * dim + (len(self.div_decoder),))
         div_decoded = torch.div(datetime_encoding, self.div_decoder, rounding_mode="trunc")
-        fully_decoded = torch.remainder(div_decoded, self.remainder_decoder) 
+        fully_decoded = torch.remainder(div_decoded, self.remainder_decoder)
         return fully_decoded

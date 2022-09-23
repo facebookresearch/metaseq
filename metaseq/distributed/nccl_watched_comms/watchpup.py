@@ -41,9 +41,9 @@ def init_watched_comm(
     loginfo(f"Describing partner communication processes..")
 
     if mode == ALL_TO_ALL:
-        from Documents.GitHub.metaseq.metaseq.distributed.nccl_watched_comms.heartbeat.all_to_all import get_heartbeat_queues_and_procs, get_signal_handler, clean_heartbeat_queues_and_procs
+        from metaseq.distributed.nccl_watched_comms.heartbeat.all_to_all import get_heartbeat_queues_and_procs, get_signal_handler, clean_heartbeat_queues_and_procs
     elif mode == ALL_TO_ONE:
-        from Documents.GitHub.metaseq.metaseq.distributed.nccl_watched_comms.heartbeat.all_to_one import get_heartbeat_queues_and_procs, get_signal_handler, clean_heartbeat_queues_and_procs
+        from metaseq.distributed.nccl_watched_comms.heartbeat.all_to_one import get_heartbeat_queues_and_procs, get_signal_handler, clean_heartbeat_queues_and_procs
     else:
         raise NotImplementedError(f"only {ALL_TO_ALL} or {ALL_TO_ONE} modes are permitted")
 

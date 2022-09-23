@@ -10,6 +10,11 @@ from .fully_sharded_data_parallel import (
     FullyShardedDataParallel,
 )
 from .module_proxy_wrapper import ModuleProxyWrapper
+from .nccl_watched_comms.watchpup import (
+    init_watched_comm,
+    ALL_TO_ALL,
+    ALL_TO_ONE
+)
 
 
 __all__ = [
@@ -18,4 +23,5 @@ __all__ = [
     "fsdp_wrap",
     "FullyShardedDataParallel",
     "ModuleProxyWrapper",
+    "init_watched_comm",
 ]
