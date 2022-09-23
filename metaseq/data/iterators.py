@@ -12,9 +12,10 @@ import queue
 import time
 from threading import Thread
 from typing import Callable, Optional
-
+from metaseq.data.deferred import SkipDeferredDataset, DeferredDataset
 import numpy as np
 import torch
+from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
 
@@ -112,7 +113,7 @@ class StreamingCountingIterator(object):
         n (int): number of elements consumed from this iterator
     """
 
-    def __init__(self, iterable):
+    def __init__(self, iterable, num_workers, batch_size, num_shards):
         try:
             import more_itertools
         except ImportError:
@@ -121,23 +122,29 @@ class StreamingCountingIterator(object):
                 "please install with: pip install more_itertools"
             )
         self._peekable_itr = more_itertools.peekable(iterable)
-        self._countable_itr = more_itertools.countable(self._peekable_itr)
+
+        self.num_workers = 1 if num_workers == 0 else num_workers
+        self.batch_size = batch_size
+        self.num_shards = num_shards
+
+        self.n = 0
+        self.sequences_consumed = [0 for _ in range(self.num_workers)]
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        return next(self._countable_itr)
+        self.sequences_consumed[self.n % self.num_workers] += (
+            self.batch_size * self.num_shards
+        )
+        self.n += 1
+        return next(self._peekable_itr)
 
     def __len__(self):
         return 0
 
     def has_next(self):
         return bool(self._peekable_itr)  # whether peekable has items
-
-    @property
-    def n(self):
-        return self._countable_itr.items_seen
 
 
 class EpochBatchIterating(object):
@@ -210,6 +217,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         drop_last: bool,
         num_workers: int = 0,
         epoch: int = 1,
+        num_shards: int = 1,
     ):
         super().__init__()
         self.dataset = dataset
@@ -218,7 +226,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         self.drop_last = drop_last
         self.num_workers = num_workers
         self.epoch = max(epoch, 1)  # we use 1-based indexing for epochs
-
+        self.num_shards = num_shards
         assert isinstance(dataset, torch.utils.data.IterableDataset)
 
         self._itr: Optional[StreamingCountingIterator] = None
@@ -260,13 +268,28 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             # small optimization: we advance the epoch before saving, so that
             # when loading later we don't end up fast-forwarding the iterator
             epoch = self.epoch + 1
-            iter_in_epoch = 0
+            sequences_consumed = [0 for _ in range(self.num_workers)]
+            n = 0
         else:
             epoch = self.epoch
-            iter_in_epoch = self.iterations_in_epoch
+            sequences_consumed = self._itr.sequences_consumed
+            n = self._itr.n
+
+        dataset = self.dataset
+        while not isinstance(dataset, DeferredDataset):
+            dataset = dataset.dataset
+        logger.debug(
+            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
+            f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
+        )
+
         return {
             "epoch": epoch,
-            "iterations_in_epoch": iter_in_epoch,
+            "sequences_consumed": sequences_consumed,
+            "tokenization_cache": dataset.len_cache
+            if distributed_utils.get_global_rank() == 0
+            else None,
+            "n": n,
         }
 
     def load_state_dict(self, state_dict):
@@ -274,15 +297,67 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         self.epoch = state_dict["epoch"]
         if hasattr(self.dataset, "set_epoch"):
             self.dataset.set_epoch(self.epoch)
-        self._itr = self._get_iterator_for_epoch(self.epoch)
-        itr_pos = state_dict.get("iterations_in_epoch", 0)
-        if itr_pos > 0:
-            # fast-forward epoch iterator
-            logger.info(f"Fast-forwarding dataloader by {itr_pos} batches...")
-            t0 = time.time()
-            next(itertools.islice(self._itr, itr_pos, itr_pos), None)
-            t1 = time.time()
-            logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
+
+        # must be set before _get_iterator_for_epoch otherwise the datasets in the workers
+        # will not be copied with the right state
+        if (
+            "sequences_consumed" in state_dict
+            and max(state_dict["sequences_consumed"]) > 0
+        ):
+            sequences_consumed = state_dict["sequences_consumed"]
+            n = state_dict["n"]
+
+            logger.info(f"Skipping {sequences_consumed} sequences in each worker...")
+            num_workers = 1 if self.num_workers == 0 else self.num_workers
+            assert (
+                len(sequences_consumed) == num_workers
+            ), "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
+            dataset = self.dataset
+            while not isinstance(dataset, SkipDeferredDataset):
+                dataset = dataset.dataset
+            dataset.to_skip = sequences_consumed
+            while not isinstance(dataset, DeferredDataset):
+                if hasattr(dataset, "worker_offset"):
+                    dataset.worker_offset = n
+                dataset = dataset.dataset
+
+            global_group = distributed_utils.get_global_group()
+            if global_group is None:
+                dataset.len_cache = state_dict["tokenization_cache"]
+            else:
+                if distributed_utils.get_global_rank() == 0:
+                    dataset.len_cache = state_dict["tokenization_cache"]
+                    l, b = dataset.len_cache.__getstate__()
+                    len_tensor = torch.frombuffer(bytearray(b), dtype=torch.int8).cuda()
+                    distributed_utils.broadcast(len_tensor, 0, global_group)
+                else:
+                    len_tensor = torch.empty(
+                        4 * len(dataset), dtype=torch.int8, device="cuda"
+                    )
+                    distributed_utils.broadcast(len_tensor, 0, global_group)
+                    len_tensor = len_tensor.cpu()
+                    dataset.len_cache.from_tensor(len_tensor)
+
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            self._itr.n = n
+            self._itr.sequences_consumed = sequences_consumed
+        else:
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            # checkpoint from before sequences_consumed was added, slow fast forward...
+            if (
+                "iterations_in_epoch" in state_dict
+                and state_dict["iterations_in_epoch"] > 0
+            ):
+                # fast-forward epoch iterator
+                itr_pos = state_dict["iterations_in_epoch"]
+                logger.info(
+                    f"Fast-forwarding dataloader by {itr_pos} batches using slower logic because "
+                    "checkpoint does not have a tokenization_cache..."
+                )
+                t0 = time.time()
+                next(itertools.islice(self._itr, itr_pos, itr_pos), None)
+                t1 = time.time()
+                logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
 
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:
@@ -298,7 +373,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             worker_init_fn=getattr(self.dataset, "worker_init_fn", None),
         )
 
-        itr = StreamingCountingIterator(itr)
+        itr = StreamingCountingIterator(
+            itr, self.num_workers, self.batch_size, self.num_shards
+        )
 
         return itr
 

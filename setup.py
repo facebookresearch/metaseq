@@ -8,6 +8,7 @@ import os
 import sys
 
 from setuptools import Extension, find_packages, setup
+from torch.utils.cpp_extension import include_paths
 
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
@@ -77,6 +78,12 @@ extensions = [
         sources=["metaseq/data/token_block_utils_fast.pyx"],
         language="c++",
         extra_compile_args=extra_compile_args,
+    ),
+    Extension(
+        "metaseq.data.atomic",
+        sources=["metaseq/data/deferred.cpp"],
+        include_dirs=include_paths(),
+        language="c++",
     ),
 ]
 

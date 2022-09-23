@@ -27,6 +27,9 @@ from metaseq.data import (
     data_utils,
     iterators,
 )
+
+from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
+
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
@@ -334,6 +337,14 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
+        # DeferredDataset keeps a cache that maps dataset idx -> number of tokens in the data.
+        # When the token count is known, it defers actually loading the dataset element, avoiding
+        # tokenization. Computations on the tensors are also deferred until the value is actually needed.
+
+        # SkipDeferredDataset later may choose to skip over deferred tensors, never causing them to be
+        # tokenized by settings its `to_skip` property to non-zero.
+        dataset = DeferredDataset(dataset)
+
         # shuffle order across epochs
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
@@ -454,9 +465,14 @@ class StreamingLanguageModelingTask(LegacyTask):
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
 
+        # SkipDeferredDataset may optionally skip elements before iteration starts,
+        # allowing it to fast-forward without returning elements to the data loader,
+        # and without tokenizing the files it is skipping.
+        # It also removes all the deferred tensors introduced by DeferredDataset
+        skip_dataset = SkipDeferredDataset(dataset, 0)
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
-            dataset,
+            skip_dataset,
             num_shards=num_shards,
             shard_id=shard_id,
             drop_last=skip_remainder_batch,
@@ -464,6 +480,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
+
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,
@@ -471,6 +488,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             drop_last=skip_remainder_batch,
             num_workers=num_workers,
             epoch=epoch,
+            num_shards=num_shards,
         )
 
     @property
