@@ -79,10 +79,12 @@ extensions = [
         language="c++",
         extra_compile_args=extra_compile_args,
     ),
-    Extension('metaseq.data.atomic',
-    sources=['metaseq/data/deferred.cpp'],
-    include_dirs=include_paths(),
-    language="c++")
+    Extension(
+        "metaseq.data.atomic",
+        sources=["metaseq/data/deferred.cpp"],
+        include_dirs=include_paths(),
+        language="c++",
+    ),
 ]
 
 
@@ -136,7 +138,6 @@ def do_setup(package_data):
             "cython",
             'numpy; python_version>="3.7"',
             "setuptools>=18.0",
-            "torch",
         ],
         install_requires=[
             # protobuf version pinned due to tensorboard not pinning a version.

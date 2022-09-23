@@ -3,15 +3,13 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
 import torch
-from torch.utils.cpp_extension import load
 from ctypes import addressof, memset, memmove
 from multiprocessing import Array
 import time
 
-
 from metaseq.data.atomic import atomic_read, atomic_write, atomic_read_all
+
 
 class AtomicArray:
     """
