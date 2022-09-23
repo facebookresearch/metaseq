@@ -10,12 +10,8 @@ from ctypes import addressof, memset, memmove
 from multiprocessing import Array
 import time
 
-deferred_c_src = f"{os.path.dirname(os.path.abspath(__file__))}/deferred.cpp"
-deferred_c = load("deferred", deferred_c_src)
-atomic_read = deferred_c.atomic_read
-atomic_write = deferred_c.atomic_write
-atomic_read_all = deferred_c.atomic_read_all
 
+from metaseq.data.atomic import atomic_read, atomic_write, atomic_read_all
 
 class AtomicArray:
     """

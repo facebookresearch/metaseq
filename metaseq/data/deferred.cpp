@@ -19,7 +19,7 @@ void atomic_read_all(uint64_t dst_ptr, uint64_t src_ptr,  int64_t size) {
     }
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(atomic, m) {
     m.def("atomic_write", atomic_write);
     m.def("atomic_read", atomic_read);
     m.def("atomic_read_all", atomic_read_all);
