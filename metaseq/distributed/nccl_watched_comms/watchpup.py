@@ -4,6 +4,7 @@ import signal
 import torch.distributed as dist
 import os
 import contextlib
+import logging
 
 from metaseq.distributed.nccl_watched_comms.utils import ALL_TO_ALL, ALL_TO_ONE, loginfo, init_comm
 from metaseq.distributed.nccl_watched_comms.checking_ports import check_required_ports
@@ -21,6 +22,12 @@ def init_watched_comm(
         mode=ALL_TO_ALL,
         verbose=False
         ):
+    
+    if verbose:
+        logging.basicConfig(
+                    format=f'slurm_procid {os.environ["SLURM_PROCID"]}:: %(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
+                    level=logging.INFO,
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
     loginfo(f"Checking that the required ports are not busy..")
 
@@ -56,7 +63,8 @@ def init_watched_comm(
                             communicator_check_period=communicator_check_period, 
                             communicator_timeout=communicator_timeout, 
                             signal_to_send_at_timeout=signal_to_send_at_timeout, 
-                            verbose=verbose)
+                            # verbose=verbose,
+                            )
 
     loginfo(f"Modifying signal handeling routine..")
 
@@ -104,6 +112,9 @@ def init_watched_comm(
     # signal.alarm(0)
     for heartbeat_proc in heartbeat_procs.values():
         heartbeat_proc.terminate()
+
+    for heartbeat_proc in heartbeat_procs.values():
+        heartbeat_proc.join()
     
     signal.signal(signal_to_send_at_timeout, former_sigalrm_handler)
 

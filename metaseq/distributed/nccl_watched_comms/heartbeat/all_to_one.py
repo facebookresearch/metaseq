@@ -39,7 +39,7 @@ def curator_starter(self_id,
                     watch_device, 
                     signal_pid, 
                     backend, 
-                    verbose):
+                    verbose=False):
     if verbose:
         logging.basicConfig(
                     format=f'{CURATOR} heartbeat on {self_id}: %(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -108,9 +108,10 @@ def clear_timeouted_partners(partners_dict, timeouted_partner_ids):
         if partner.comp_unit_id in timeouted_partner_ids:
             partner.status = DEAD
             if partner.role is not None:
+                partner.heartbeat_process.terminate()
+                partner.heartbeat_process.join()
                 partner.heartbeat_queues["to_heartbeat"].close()
                 partner.heartbeat_queues["from_heartbeat"].close()
-                partner.heartbeat_process.terminate()
 
 def put_replace(queue, obj):
     try_to_get_from(queue)
@@ -122,7 +123,6 @@ def try_fmax_update(queue, tensor):
     tensor_update = try_to_get_from(queue)
     if tensor_update is not None:
         tensor_update = tensor_update.to(tensor.device)
-        loginfo(f"update: old {tensor} vs new {tensor_update}")
         torch.fmax(tensor, tensor_update, out=tensor)
 
 
@@ -149,7 +149,7 @@ def curator_procedure(self_id, all_partners, queues_to_host, device, period, sig
         timeouted_partners = (timediff_tensor > timeout).nonzero()
         if len(timeouted_partners) > 0:
             timeouted_partners = set(timeouted_partners.flatten().tolist())
-            loginfo(f"Timeout exceeded! Sending signal {signal_to_send_at_timeout} to {signal_pid}")
+            loginfo(f"Timeout exceeded! Timeouted partners are {timeouted_partners}. The lags in us are {timediff_tensor}")
             os.kill(signal_pid, signal_to_send_at_timeout)
             alive_comp_units = sorted(list(set(alive_comp_units).difference(timeouted_partners)))
             if len(alive_comp_units) == 0:
@@ -163,7 +163,7 @@ def curator_procedure(self_id, all_partners, queues_to_host, device, period, sig
         time.sleep(period_in_seconds)
 
 
-def heartbeat_starter(role, self_id, partner_id, world_size, backend, queue, watch_device, communicator_check_period, verbose):
+def heartbeat_starter(role, self_id, partner_id, world_size, backend, queue, watch_device, communicator_check_period, verbose=False):
     if verbose:
         logging.basicConfig(
                     format=f'{role} heartbeat {min(self_id, partner_id)}->{max(self_id, partner_id)}: %(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -230,7 +230,7 @@ def get_heartbeat_queues_and_procs(
                             communicator_check_period, 
                             communicator_timeout, 
                             signal_to_send_at_timeout, 
-                            verbose,
+                            verbose=False,
                             central_comp_unit_id=0):
     alive_comp_units = partners
     self_id = rank
