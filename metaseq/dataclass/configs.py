@@ -500,6 +500,10 @@ class CheckpointConfig(MetaseqDataclass):
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
     )
+    save_last_checkpoint: bool = field(
+        default=True,
+        metadata={"help": "store a last checkpoint at the end of the training run."},
+    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
