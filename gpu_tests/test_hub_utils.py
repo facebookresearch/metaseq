@@ -143,7 +143,6 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
     return hypothesis
 
 
-
 class TestHubUtils(unittest.TestCase):
     def test_generator_interface(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
