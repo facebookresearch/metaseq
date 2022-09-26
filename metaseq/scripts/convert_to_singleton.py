@@ -81,7 +81,7 @@ def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"
         "--checkpoint-shard-count",
         "1",
         "--use-sharded-state",
-        "/tmp",  # required "data" argument.
+        model_path,
     ]
     print(ARGS)
 
