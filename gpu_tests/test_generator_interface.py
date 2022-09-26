@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-import torch
 import unittest
 import os
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from metaseq.hub_utils import GeneratorInterface, GeneratorHubInterface
-from metaseq.dataclass.utils import convert_namespace_to_omegaconf
+from metaseq.hub_utils import GeneratorInterface
 from metaseq.distributed import utils as distributed_utils
 from metaseq.dataclass.configs import MetaseqConfig
 import numpy as np
-from metaseq import hub_utils
-from metaseq.distributed import fsdp_wrap, fsdp_enable_wrap
 from megatron.mpu import destroy_model_parallel
 import torch.distributed as dist
 
@@ -39,8 +35,6 @@ def generate_using_generator_interface(cfg: MetaseqConfig, **kwargs):
     generator = GeneratorInterface(cfg)
     models = generator.load_model()  # noqa: F841
 
-    # print(f"generator_interface {[elem for elem in models[0].parameters()]} + + + + rank is {torch.distributed.get_rank()}")
-
     request_object = {
         "inputs": [PROMPT],
         "temperature": 1.0,
@@ -65,8 +59,6 @@ class TestGeneratorInterface(unittest.TestCase):
         cfg = create_generation_config_with_defaults(
             model_path, ddp_backend="fully_sharded"
         )
-        # cfg = convert_namespace_to_omegaconf(cfg)
-        # cfg.model.tensor_parallel_init_model_on_gpu = True
 
         overall_generation = distributed_utils.call_main(
             cfg, generate_using_generator_interface

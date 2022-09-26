@@ -3,7 +3,7 @@ import torch
 import unittest
 import os
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from metaseq.hub_utils import GeneratorInterface, GeneratorHubInterface
+from metaseq.hub_utils import GeneratorHubInterface
 from metaseq.distributed import utils as distributed_utils
 from metaseq.dataclass.configs import MetaseqConfig
 import numpy as np
@@ -72,8 +72,6 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
             "reshard.pt",
             **kwargs,
         )
-
-    # print(f"generator_interface {[elem for elem in x['models'][0].parameters()]} + + + + rank is {torch.distributed.get_rank()}")
 
     generator = GeneratorHubInterface(
         x["args"],
