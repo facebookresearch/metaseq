@@ -62,7 +62,9 @@ def generate_using_generator_interface(cfg: MetaseqConfig, **kwargs):
 class TestGeneratorInterface(unittest.TestCase):
     def test_generator_interface(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
-        cfg = create_generation_config_with_defaults(model_path, ddp_backend="fully_sharded")
+        cfg = create_generation_config_with_defaults(
+            model_path, ddp_backend="fully_sharded"
+        )
         # cfg = convert_namespace_to_omegaconf(cfg)
         # cfg.model.tensor_parallel_init_model_on_gpu = True
 

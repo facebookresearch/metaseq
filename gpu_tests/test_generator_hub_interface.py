@@ -100,7 +100,9 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
 class TestGeneratorHubInterface(unittest.TestCase):
     def test_generator_hub_interface(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
-        cfg = create_generation_config_with_defaults(model_path, ddp_backend="fully_sharded")
+        cfg = create_generation_config_with_defaults(
+            model_path, ddp_backend="fully_sharded"
+        )
 
         overall_generation = distributed_utils.call_main(
             cfg, generate_using_generator_hub_interface, model_path=model_path
