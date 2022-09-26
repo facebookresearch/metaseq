@@ -153,7 +153,7 @@ class TestDatasetLoading(unittest.TestCase):
         """
         self.task.load_dataset("train", epoch=epoch)
         iterated_data = [
-            doc for doc in self.task.dataset("train").dataset.dataset.dataset
+            doc for doc in self.task.dataset("train").dataset
         ]
 
         # For a given epoch, the start offset would be

@@ -12,12 +12,12 @@ import queue
 import time
 from threading import Thread
 from typing import Callable, Optional
-from metaseq.data.deferred import SkipDeferredDataset, DeferredDataset
 import numpy as np
 import torch
 from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +276,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             n = self._itr.n
 
         dataset = self.dataset
-        while not isinstance(dataset, DeferredDataset):
+        while not isinstance(dataset, DocumentToSequenceDataset):
             dataset = dataset.dataset
         logger.debug(
             f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
@@ -313,14 +313,10 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 len(sequences_consumed) == num_workers
             ), "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
             dataset = self.dataset
-            while not isinstance(dataset, SkipDeferredDataset):
+            while not isinstance(dataset, DocumentToSequenceDataset):
                 dataset = dataset.dataset
             dataset.to_skip = sequences_consumed
-            while not isinstance(dataset, DeferredDataset):
-                if hasattr(dataset, "worker_offset"):
-                    dataset.worker_offset = n
-                dataset = dataset.dataset
-
+            dataset.worker_offset = n
             global_group = distributed_utils.get_global_group()
             if global_group is None:
                 dataset.len_cache = state_dict["tokenization_cache"]
