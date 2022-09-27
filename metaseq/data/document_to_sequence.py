@@ -14,15 +14,6 @@ import time
 from metaseq.data.atomic_array import AtomicArray
 
 
-# gotta be a better way to get this...
-def f():
-    x = 4
-    return lambda: x
-
-
-Cell = type(f().__closure__[0])
-
-
 class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
     """Take a dataset containing documents and turn it into an iterable dataset
     returning sequences of block_size tokens.
@@ -156,10 +147,10 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     r = self.dataset[idx]
                     ln = r.shape[0]
                     self.len_cache[idx] = ln
-                    yield (ln, Cell(r))
+                    yield (ln, [r])
                 else:
                     create = (lambda i: lambda: self.dataset[i])(idx)
-                    yield (ln, Cell(create))
+                    yield (ln, [create])
 
         block_itr = self.block_iterator(
             documents(),
@@ -229,10 +220,10 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     else:
                         # A deferred creation of a tensor (cell(<lambda>), start_idx, length)
                         # we use the cell to make sure we only ever create the tensor once
-                        if not isinstance(c.cell_contents, torch.Tensor):
-                            c.cell_contents = c.cell_contents()
+                        if not isinstance(c[0], torch.Tensor):
+                            c[0] = c[0]()
                         # A tensor slice (cell(<Tensor>), start_idx, length)
-                        subsequences.append(c.cell_contents[start : start + ln])
+                        subsequences.append(c[0][start : start + ln])
                 elem["block"] = torch.cat(subsequences)
                 elem["skip_time"] = skip_time
                 yield elem

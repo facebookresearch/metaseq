@@ -58,7 +58,7 @@ class FakeTensorData(torch.utils.data.Dataset):
         self.trng.manual_seed(0)
         self.items = [
             torch.randint(
-                256, size=(self.rng.randrange(512, 513),), generator=self.trng
+                256, size=(self.rng.randrange(512, 2048),), generator=self.trng
             )
             for _ in range(len(self))
         ]
@@ -161,8 +161,6 @@ class TestStreamingIterators(unittest.TestCase):
                 # we drop the remainder block during training
                 drop_last=drop_last,
                 padding_idx=1,
-                # 1284 is a randomly-generated offset to decouple the seed used here
-                # from the seed used above in StreamingShuffleDataset
                 seed=42,
             )
             token_dataset.set_shuffle_buffer_size(4)
@@ -227,8 +225,9 @@ class TestStreamingIterators(unittest.TestCase):
             drop_last=True,
         )
         consumed = [0, 0]
-        for i, last in zip(range(8), dataloader1):
-            if i < 7:  # don't include the last one
+        ITERS = 8
+        for i, last in zip(range(ITERS), dataloader1):
+            if i < ITERS - 1:  # don't include the last one
                 consumed[i % 2] += 1
 
         len_cache = token_dataset.len_cache
@@ -237,7 +236,7 @@ class TestStreamingIterators(unittest.TestCase):
         )
         token_dataset.len_cache = len_cache
         token_dataset.to_skip = consumed
-        token_dataset.worker_offset = 7
+        token_dataset.worker_offset = ITERS - 1
         dataloader2 = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=1,
