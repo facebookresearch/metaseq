@@ -38,7 +38,7 @@ struct AtomicArray {
             return -1;
         }
         PyObject* call_args[] = {format, size, Py_False};
-        Owned array = PyObject_Vectorcall(Array.obj, &call_args[0], 2, kwnames);
+        Owned array = _PyObject_Vectorcall(Array.obj, &call_args[0], 2, kwnames);
         if (!array.obj) {
             return -1;
         }
