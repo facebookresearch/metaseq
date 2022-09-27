@@ -18,7 +18,10 @@ from metaseq.data.atomic_array import AtomicArray
 def f():
     x = 4
     return lambda: x
+
+
 Cell = type(f().__closure__[0])
+
 
 class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
     """Take a dataset containing documents and turn it into an iterable dataset
@@ -58,8 +61,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         padding_idx: Optional[int] = None,
         shuffle_buffer_size: int = 1,
         seed: Optional[int] = None,
-        len_cache = None,
-        to_skip = 0,
+        len_cache=None,
+        to_skip=0,
         permute_documents=True,
     ):
         super().__init__()
@@ -68,12 +71,15 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         self.worker_offset = 0
 
         self.document_shuffle_seed = seed
-        self.shuffle_buffer_seed = None if seed is None else seed + 2273 + 1284  # at some point in the past these numbers were
-                                                                                 # added to keep the two seeds different
-
+        self.shuffle_buffer_seed = (
+            None if seed is None else seed + 2273 + 1284
+        )  # at some point in the past these numbers were
+        # added to keep the two seeds different
 
         self.indices = None
-        self.len_cache = AtomicArray(len(self.dataset)) if len_cache is None else len_cache
+        self.len_cache = (
+            AtomicArray(len(self.dataset)) if len_cache is None else len_cache
+        )
         # self.len_cache = [ 0 for _ in range(len(self.dataset))] if len_cache is None else len_cache
 
         self.block_size = block_size
@@ -139,7 +145,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             worker_id = 0
             indices = self.indices
 
-        to_skip = self.to_skip if isinstance(self.to_skip, int) else self.to_skip[worker_id]
+        to_skip = (
+            self.to_skip if isinstance(self.to_skip, int) else self.to_skip[worker_id]
+        )
 
         def documents():
             for idx in indices:
@@ -163,6 +171,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         baserng = np.random.default_rng(self.shuffle_buffer_seed)
         rngstate = None
         rngcount = 0
+
         def create_rng():
             nonlocal rngstate, rngcount
             while True:
@@ -211,9 +220,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         for i, elem in enumerate(sequences()):
             if i >= to_skip:
-                elem['ids'] = torch.LongTensor(elem['ids'])
+                elem["ids"] = torch.LongTensor(elem["ids"])
                 subsequences = []
-                for c, start, ln in elem['block']:
+                for c, start, ln in elem["block"]:
                     # A padding tensor (<padding_value>, 0, length)
                     if isinstance(c, int):
                         subsequences.append(subsequences[-1].new_full((ln,), c))
@@ -223,9 +232,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                         if not isinstance(c.cell_contents, torch.Tensor):
                             c.cell_contents = c.cell_contents()
                         # A tensor slice (cell(<Tensor>), start_idx, length)
-                        subsequences.append(c.cell_contents[start:start+ln])
-                elem['block'] = torch.cat(subsequences)
-                elem['skip_time'] = skip_time
+                        subsequences.append(c.cell_contents[start : start + ln])
+                elem["block"] = torch.cat(subsequences)
+                elem["skip_time"] = skip_time
                 yield elem
             elif i + 1 == to_skip:
                 t1 = time.time()
@@ -308,6 +317,7 @@ def yield_passthrough(iterable, block_size, drop_last, padding_idx):
             "ids": [idx],
             "block": [(token_generator, 0, tokens)],
         }
+
 
 def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
     """Sample break mode = None. (Pre-Training default)."""

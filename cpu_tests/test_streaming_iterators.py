@@ -41,8 +41,15 @@ def get_simple_dataset():
             torch.LongTensor([8, 9]),
         ]
     )
-    dataset = DocumentToSequenceDataset(dataset, block_size=None, permute_documents=False, break_mode="passthrough", padding_idx=1)
+    dataset = DocumentToSequenceDataset(
+        dataset,
+        block_size=None,
+        permute_documents=False,
+        break_mode="passthrough",
+        padding_idx=1,
+    )
     return dataset
+
 
 class FakeTensorData(torch.utils.data.Dataset):
     def __init__(self):
@@ -67,6 +74,7 @@ class FakeTensorData(torch.utils.data.Dataset):
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
+
 
 class TestStreamingIterators(unittest.TestCase):
     def test_streaming_counting_iterator(self):
@@ -110,7 +118,7 @@ class TestStreamingIterators(unittest.TestCase):
         epoch_batch_itr = iterators.StreamingEpochBatchIterator(
             dataset,
             batch_size=2,
-            collate_fn=lambda xs: torch.cat([x['block'] for x in xs]),
+            collate_fn=lambda xs: torch.cat([x["block"] for x in xs]),
             drop_last=drop_last,
         )
         assert epoch_batch_itr.next_epoch_idx == 1
@@ -144,18 +152,19 @@ class TestStreamingIterators(unittest.TestCase):
             break_mode="none", drop_last=True, sequence_size=2049, num_shards=1
         ):
             dataset = FakeTensorData()
-            token_dataset = DocumentToSequenceDataset(dataset,
-                                # We generate blocks with one extra token, so that we have a target
-                                # for the final input token. This results in slight data loss.
-                                block_size=sequence_size,
-                                break_mode=break_mode,
-                                # we drop the remainder block during training
-                                drop_last=drop_last,
-                                padding_idx=1,
-                                # 1284 is a randomly-generated offset to decouple the seed used here
-                                # from the seed used above in StreamingShuffleDataset
-                                seed=42,
-                            )
+            token_dataset = DocumentToSequenceDataset(
+                dataset,
+                # We generate blocks with one extra token, so that we have a target
+                # for the final input token. This results in slight data loss.
+                block_size=sequence_size,
+                break_mode=break_mode,
+                # we drop the remainder block during training
+                drop_last=drop_last,
+                padding_idx=1,
+                # 1284 is a randomly-generated offset to decouple the seed used here
+                # from the seed used above in StreamingShuffleDataset
+                seed=42,
+            )
             token_dataset.set_shuffle_buffer_size(4)
             token_dataset.set_epoch(0)
             partitioned_dataset = PartitionedStreamingDataset(
@@ -241,6 +250,7 @@ class TestStreamingIterators(unittest.TestCase):
 
     def test_document_to_sequence(self):
         MAX_SEQ_LEN = 2048
+
         def get_traditional_iterator(dataset, break_mode, drop_last):
             shuffle_dataset = StreamingShuffleDataset(dataset, seed=42)
             shuffle_dataset.set_epoch(0)
@@ -262,18 +272,18 @@ class TestStreamingIterators(unittest.TestCase):
 
         def get_document_to_sequence_iterator(dataset, break_mode, drop_last):
             document_to_sequence_dataset = DocumentToSequenceDataset(
-                                dataset,
-                                # We generate blocks with one extra token, so that we have a target
-                                # for the final input token. This results in slight data loss.
-                                block_size=MAX_SEQ_LEN + 1,
-                                break_mode=break_mode,
-                                # we drop the remainder block during training
-                                drop_last=drop_last,
-                                padding_idx=1,
-                                # 1284 is a randomly-generated offset to decouple the seed used here
-                                # from the seed used above in StreamingShuffleDataset
-                                seed=42,
-                            )
+                dataset,
+                # We generate blocks with one extra token, so that we have a target
+                # for the final input token. This results in slight data loss.
+                block_size=MAX_SEQ_LEN + 1,
+                break_mode=break_mode,
+                # we drop the remainder block during training
+                drop_last=drop_last,
+                padding_idx=1,
+                # 1284 is a randomly-generated offset to decouple the seed used here
+                # from the seed used above in StreamingShuffleDataset
+                seed=42,
+            )
             document_to_sequence_dataset.set_epoch(0)
             document_to_sequence_dataset.set_shuffle_buffer_size(4)
             return document_to_sequence_dataset
@@ -287,8 +297,8 @@ class TestStreamingIterators(unittest.TestCase):
             self.assertEqual(len(a_values), len(b_values))
 
             for av, bv in zip(a_values, b_values):
-                self.assertTrue(torch.allclose(av['ids'], bv['ids']))
-                self.assertTrue(torch.allclose(av['block'], bv['block']))
+                self.assertTrue(torch.allclose(av["ids"], bv["ids"]))
+                self.assertTrue(torch.allclose(av["block"], bv["block"]))
 
         compare("none", False)
         compare("eos_pad_8", False)
@@ -297,7 +307,6 @@ class TestStreamingIterators(unittest.TestCase):
         compare("none", True)
         compare("eos_pad_8", True)
         compare("complete", True)
-
 
 
 if __name__ == "__main__":

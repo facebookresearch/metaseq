@@ -21,8 +21,6 @@ from metaseq.data import (
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
-    StreamingShuffleDataset,
-    StreamingTokenBlockDataset,
     StreamingSrcTgtDataset,
     data_utils,
     iterators,
@@ -31,6 +29,7 @@ from metaseq.data import (
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
 

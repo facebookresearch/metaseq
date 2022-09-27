@@ -8,6 +8,7 @@ import os
 import sys
 
 from setuptools import Extension, find_packages, setup
+
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
 
