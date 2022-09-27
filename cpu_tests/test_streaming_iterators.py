@@ -63,12 +63,15 @@ class FakeTensorData(torch.utils.data.Dataset):
             for _ in range(len(self))
         ]
         self.queried = 0
+        self.realized = [False for _ in self.items]
 
     def __len__(self):
         return 128
 
     def __getitem__(self, idx):
         self.queried += 1
+        assert not self.realized[idx], "Document unexpectedly loaded twice"
+        self.realized[idx] = True
         return self.items[idx]
 
     def __iter__(self):
@@ -178,6 +181,7 @@ class TestStreamingIterators(unittest.TestCase):
                 drop_last=drop_last, break_mode=break_mode
             )
             num_iters = 0
+            values = []
             for i, x in enumerate(dataset):
                 assert isinstance(x["block"], torch.Tensor)
                 assert (
@@ -186,6 +190,7 @@ class TestStreamingIterators(unittest.TestCase):
                     or break_mode == "eos_pad_8"
                 )
                 num_iters += 1
+                values.append(x)
 
             a_fourth = num_iters // 4
             dataset2, fake_dataset2, token_dataset2 = create_dataset(
@@ -194,11 +199,19 @@ class TestStreamingIterators(unittest.TestCase):
 
             token_dataset2.len_cache = token_dataset.len_cache
             token_dataset2.to_skip = a_fourth
-            value1 = list(dataset)[a_fourth]
-            value2 = next(iter(dataset2))
+            value1 = values[a_fourth]
+            it = iter(dataset2)
+            value2 = next(it)
             assert torch.allclose(value1["block"], value2["block"])
             # check that we didn't actually query all the dataset to do the fast forward
             assert fake_dataset2.queried <= len(value2["ids"]) + 1
+            # load the rest of the dataset to check we are only
+            # truly loading documents once even when we defer
+            while True:
+                try:
+                    next(it)
+                except StopIteration:
+                    break
 
         run_test(drop_last=True, break_mode="complete")
         run_test(drop_last=False, break_mode="complete")
@@ -288,9 +301,8 @@ class TestStreamingIterators(unittest.TestCase):
             return document_to_sequence_dataset
 
         def compare(break_mode, drop_last):
-            dataset = FakeTensorData()
-            a = get_traditional_iterator(dataset, break_mode, drop_last)
-            b = get_document_to_sequence_iterator(dataset, break_mode, drop_last)
+            a = get_traditional_iterator(FakeTensorData(), break_mode, drop_last)
+            b = get_document_to_sequence_iterator(FakeTensorData(), break_mode, drop_last)
             a_values = list(a)
             b_values = list(b)
             self.assertEqual(len(a_values), len(b_values))

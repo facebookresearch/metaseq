@@ -13,6 +13,26 @@ from metaseq.data import data_utils
 import time
 from metaseq.data.atomic_array import AtomicArray
 
+from typing import Union, List, Iterable, Tuple, TypedDict, Literal
+
+Document = Tuple[
+    int,  # the number of tokens in the document
+    Union[
+        int,  # an unloaded document self.documents[value]
+        Literal["padding"],  # conceptually a tensor full of self.padding_idx
+        torch.Tensor,  # loaded 1-D tensor full of the tokens from the document
+    ],
+]
+
+SequenceFragment = Tuple[
+    List[Document], int, int  # single element list, starting offset, length
+]
+
+
+class Sequence(TypedDict):
+    block: List[SequenceFragment]
+    ids: List[int]
+
 
 class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
     """Take a dataset containing documents and turn it into an iterable dataset
@@ -140,7 +160,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             self.to_skip if isinstance(self.to_skip, int) else self.to_skip[worker_id]
         )
 
-        def documents():
+        def documents() -> Iterable[Document]:
             for idx in indices:
                 ln = self.len_cache[idx]
                 if ln == 0:
@@ -149,14 +169,16 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     self.len_cache[idx] = ln
                     yield (ln, [r])
                 else:
-                    create = (lambda i: lambda: self.dataset[i])(idx)
-                    yield (ln, [create])
+                    # the single element list [idx]
+                    # will be filled in with the loaded tensor
+                    # self.documents[idx] the first time it is
+                    # required
+                    yield (ln, [idx])
 
         block_itr = self.block_iterator(
             documents(),
             self.block_size,
-            self.drop_last,
-            self.padding_idx,
+            self.drop_last
         )
 
         baserng = np.random.default_rng(self.shuffle_buffer_seed)
@@ -177,14 +199,15 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         buffer = []
 
-        def get_next_item_and_replace_in_buffer(replacement_item):
+        def get_next_item_and_replace_in_buffer(replacement_item: Sequence) -> Sequence:
             # return a random item from the buffer and replace with a new item
             if rng is not None:
                 if len(buffer) == self.shuffle_buffer_size:
                     idx = next(rng)
                 else:
                     if len(buffer) == self.shuffle_buffer_size - 1:
-                        baserng._bit_generator.__setstate__(rngstate)
+                        if rngstate is not None:
+                            baserng._bit_generator.__setstate__(rngstate)
                         baserng.integers(self.shuffle_buffer_size, size=rngcount % 1024)
                     idx = baserng.integers(len(buffer))
             else:
@@ -196,7 +219,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 buffer.pop(idx)
             return item
 
-        def sequences():
+        def sequences() -> Iterable[Sequence]:
             for block in block_itr:
                 if len(buffer) < self.shuffle_buffer_size:
                     # initially fill the buffer to the requested size
@@ -215,14 +238,16 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 subsequences = []
                 for c, start, ln in elem["block"]:
                     # A padding tensor (<padding_value>, 0, length)
-                    if isinstance(c, int):
-                        subsequences.append(subsequences[-1].new_full((ln,), c))
+                    if c[0] == "padding":
+                        subsequences.append(
+                            subsequences[-1].new_full((ln,), self.padding_idx)
+                        )
                     else:
-                        # A deferred creation of a tensor (cell(<lambda>), start_idx, length)
-                        # we use the cell to make sure we only ever create the tensor once
+                        # This single-element list is shared among all SequenceFragments that use
+                        # the same document. We update the list to ensure we only
+                        # ever tokenize the document once.
                         if not isinstance(c[0], torch.Tensor):
-                            c[0] = c[0]()
-                        # A tensor slice (cell(<Tensor>), start_idx, length)
+                            c[0] = self.dataset[c[0]]
                         subsequences.append(c[0][start : start + ln])
                 elem["block"] = torch.cat(subsequences)
                 elem["skip_time"] = skip_time
@@ -232,7 +257,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 skip_time = t1 - t0
 
 
-def yield_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
+def yield_single_sentences_pad_8(iterable, block_size, drop_last) -> Iterable[Sequence]:
     """Mimics sample-break-mode eos i.e. 1 example per sequence without any packing.
     When multiple examples are packed into a single sequence, example tokens would attend
     to tokens in neighbouring examples, which may be undesirable. This mode can
@@ -257,7 +282,7 @@ def yield_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
         # already passed with + 1 included.
         cur_block_remain = min(int(math.ceil(tokens / 8)) * 8 + 1, block_size)
         cur_block_remain -= tokens
-        padding = (padding_idx, 0, cur_block_remain)
+        padding = (["padding"], 0, cur_block_remain)
         cur_block.append(padding)
         cur_block_ids.append(idx)
         yield {
@@ -266,7 +291,7 @@ def yield_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
         }
 
 
-def yield_doc_blocks(iterable, block_size, drop_last, padding_idx):
+def yield_doc_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
     """Mimics sample-break-mode complete"""
     cur_block = []
     cur_block_ids = []
@@ -277,7 +302,7 @@ def yield_doc_blocks(iterable, block_size, drop_last, padding_idx):
             tokens = block_size
 
         if tokens > cur_block_remain:
-            padding = (padding_idx, 0, cur_block_remain)
+            padding = (["padding"], 0, cur_block_remain)
             cur_block.append(padding)
             yield {
                 "ids": cur_block_ids,
@@ -294,7 +319,7 @@ def yield_doc_blocks(iterable, block_size, drop_last, padding_idx):
         assert cur_block_remain >= 0
     if not drop_last and len(cur_block) > 0:
         if cur_block_remain > 0:
-            padding = (padding_idx, 0, cur_block_remain)
+            padding = (["padding"], 0, cur_block_remain)
             cur_block.append(padding)
         yield {
             "ids": cur_block_ids,
@@ -302,7 +327,7 @@ def yield_doc_blocks(iterable, block_size, drop_last, padding_idx):
         }
 
 
-def yield_passthrough(iterable, block_size, drop_last, padding_idx):
+def yield_passthrough(iterable, block_size, drop_last) -> Iterable[Sequence]:
     for idx, (tokens, token_generator) in enumerate(iterable):
         yield {
             "ids": [idx],
@@ -310,7 +335,7 @@ def yield_passthrough(iterable, block_size, drop_last, padding_idx):
         }
 
 
-def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
+def yield_token_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
     """Sample break mode = None. (Pre-Training default)."""
     cur_block = []
     cur_block_ids = []
@@ -336,7 +361,7 @@ def yield_token_blocks(iterable, block_size, drop_last, padding_idx):
 
     if not drop_last and len(cur_block):
         if cur_block_remain:
-            cur_block.append((padding_idx, 0, cur_block_remain))
+            cur_block.append((["padding"], 0, cur_block_remain))
         yield {
             "ids": cur_block_ids,
             "block": cur_block,
