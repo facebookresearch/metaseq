@@ -79,6 +79,13 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         super().__init__()
         self.dataset = dataset
         assert len(dataset) > 0
+
+        # PyTorch dataloaders round-robin through worker processes to request data,
+        # but always start with worker 0.
+        # if we stop iteration on round n when n is not divisible by the
+        # number of workers, then when we start again we need to make sure
+        # worker 0 was the previous processes' worker (n % num_workers) so
+        # data is next pulled from the right worker.
         self.worker_offset = 0
 
         self.document_shuffle_seed = seed
@@ -175,11 +182,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     # required
                     yield (ln, [idx])
 
-        block_itr = self.block_iterator(
-            documents(),
-            self.block_size,
-            self.drop_last
-        )
+        block_itr = self.block_iterator(documents(), self.block_size, self.drop_last)
 
         baserng = np.random.default_rng(self.shuffle_buffer_seed)
         rngstate = None
@@ -190,7 +193,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             while True:
                 rngstate = baserng._bit_generator.__getstate__()
                 # overhead to calling 'integers' is high,
-                # so request random numbers
+                # so request random numbers in batches of 1024
                 for x in baserng.integers(self.shuffle_buffer_size, size=1024):
                     rngcount += 1
                     yield x
@@ -206,6 +209,12 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     idx = next(rng)
                 else:
                     if len(buffer) == self.shuffle_buffer_size - 1:
+                        # when the buffer drains at the end we are asking
+                        # for a smaller range of random numbers than we have batched.
+                        # To match our previous behavior, reset the
+                        # state of base rng to what it would have been
+                        # in previous version of the code to generate
+                        # these smaller numbers (only happens at the very end)
                         if rngstate is not None:
                             baserng._bit_generator.__setstate__(rngstate)
                         baserng.integers(self.shuffle_buffer_size, size=rngcount % 1024)

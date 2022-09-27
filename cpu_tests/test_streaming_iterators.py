@@ -302,7 +302,9 @@ class TestStreamingIterators(unittest.TestCase):
 
         def compare(break_mode, drop_last):
             a = get_traditional_iterator(FakeTensorData(), break_mode, drop_last)
-            b = get_document_to_sequence_iterator(FakeTensorData(), break_mode, drop_last)
+            b = get_document_to_sequence_iterator(
+                FakeTensorData(), break_mode, drop_last
+            )
             a_values = list(a)
             b_values = list(b)
             self.assertEqual(len(a_values), len(b_values))
