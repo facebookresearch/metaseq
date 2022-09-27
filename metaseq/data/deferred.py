@@ -108,7 +108,8 @@ class DeferredTensor:
             size_tup[0], lambda: self.realize().new_full(size_tup, value)
         )
 
-    def __torch_function__(self, fn, types, args, kwargs={}):
+    @classmethod
+    def __torch_function__(cls, fn, types, args, kwargs={}):
         if (
             fn is torch.cat
             and len(args) == 1
