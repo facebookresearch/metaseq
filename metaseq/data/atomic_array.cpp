@@ -113,6 +113,14 @@ struct AtomicArray {
         memcpy(self->buffer.buf, buf, self->buffer.len);
         Py_RETURN_NONE;
     }
+    static PyObject* from_tensor_data_ptr(AtomicArray* self, PyObject* obj) {
+        uint64_t p = PyLong_AsLongLong(obj);
+        if (PyErr_Occurred()) {
+            return nullptr;
+        }
+        memcpy(self->buffer.buf, (void*)p, self->buffer.len);
+        Py_RETURN_NONE;
+    }
 };
 
 
@@ -135,6 +143,9 @@ static PyMethodDef tp_methods[] = {
     },
     {"__setstate__", (PyCFunction) AtomicArray::__setstate__, METH_O,
             "Un-pickle the object"
+    },
+    {"from_tensor_data_ptr", (PyCFunction) AtomicArray::from_tensor_data_ptr, METH_O,
+            "load data from a tensor"
     },
     {nullptr}
 };

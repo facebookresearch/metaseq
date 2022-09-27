@@ -328,11 +328,11 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                 else:
                     len_tensor = torch.empty(
-                        4 * len(dataset), dtype=torch.int8, device="cuda"
+                        4 * len(dataset.dataset), dtype=torch.int8, device="cuda"
                     )
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                     len_tensor = len_tensor.cpu()
-                    dataset.len_cache.from_tensor(len_tensor)
+                    dataset.len_cache.from_tensor_data_ptr(len_tensor.data_ptr())
 
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n
