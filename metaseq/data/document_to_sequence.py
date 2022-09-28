@@ -34,14 +34,48 @@ Document = Union[
 # It is done this way so that if we need to actually tokenize the document
 # represented by an index, we can replace it with a Tensor in all
 # the Sequence fragments that reference the document.
-SequenceFragment = Tuple[
-    List[Document], int, int # document, offset, length
-]
+SequenceFragment = Tuple[List[Document], int, int]  # document, offset, length
 
 
 class Sequence(TypedDict):
-    block: List[SequenceFragment] # These are torch.cat'd together to get the whole sequence
+    block: List[
+        SequenceFragment
+    ]  # These are torch.cat'd together to get the whole sequence
     ids: List[int]
+
+
+def blocked_random(seed, normal_size):
+    """
+    Create a function that returns random numbers based on seed.
+    Block calls to numpy's integers function because it has high overhead.
+    """
+    baserng = np.random.default_rng(seed)
+    state = None
+    buf = None
+    n = 0
+
+    def integers(high):
+        nonlocal state, buf, n
+        if high == normal_size:
+            if n % 1024 == 0:
+                state = baserng._bit_generator.__getstate__()
+                buf = baserng.integers(normal_size, size=1024)
+            r = buf[n % 1024]
+            n += 1
+            return r
+        if high == normal_size - 1:
+            # when the buffer drains at the end we are asking
+            # for a smaller range of random numbers than we have batched.
+            # To match our previous behavior, reset the
+            # state of base rng to what it would have been
+            # in previous version of the code to generate
+            # these smaller numbers (only happens at the very end).
+            if state is not None:
+                baserng._bit_generator.__setstate__(state)
+                baserng.integers(normal_size, size=n % 1024)
+        return baserng.integers(high)
+
+    return integers
 
 
 class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
@@ -187,10 +221,10 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         def documents() -> Iterable[Tuple[int, Document]]:
             """
-                Generator that produces whole documents in a shuffled order (permute_documents=True).
-                It returns a tuple of (number_of_tokens, List[Document]).
-                When the number of tokens is already in the `len_cache`, we defer actually loading
-                the document because we might end up skipping it entirely.
+            Generator that produces whole documents in a shuffled order (permute_documents=True).
+            It returns a tuple of (number_of_tokens, List[Document]).
+            When the number of tokens is already in the `len_cache`, we defer actually loading
+            the document because we might end up skipping it entirely.
             """
             for idx in indices:
                 ln = self.len_cache[idx]
@@ -215,43 +249,18 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         # block_itr returns sequences from documents in order
         # we need to shuffle up this order to avoid having batches full of sequences from
         # one document. This is done with a "shuffle-buffer" that randomizes access
-        baserng = np.random.default_rng(self.shuffle_buffer_seed)
-        rngstate = None
-        rngcount = 0
-
-        def create_rng():
-            nonlocal rngstate, rngcount
-            while True:
-                rngstate = baserng._bit_generator.__getstate__()
-                # overhead to calling 'integers' is high,
-                # so request random numbers in batches of 1024
-                for x in baserng.integers(self.shuffle_buffer_size, size=1024):
-                    rngcount += 1
-                    yield x
-
-        rng = None if self.shuffle_buffer_seed is None else iter(create_rng())
 
         buffer = []
 
+        random = (
+            blocked_random(self.shuffle_buffer_seed, self.shuffle_buffer_size)
+            if self.shuffle_buffer_seed is not None
+            else lambda x: 0
+        )
+
         def get_next_item_and_replace_in_buffer(replacement_item: Sequence) -> Sequence:
             # return a random item from the buffer and replace with a new item
-            if rng is not None:
-                if len(buffer) == self.shuffle_buffer_size:
-                    idx = next(rng)
-                else:
-                    if len(buffer) == self.shuffle_buffer_size - 1:
-                        # when the buffer drains at the end we are asking
-                        # for a smaller range of random numbers than we have batched.
-                        # To match our previous behavior, reset the
-                        # state of base rng to what it would have been
-                        # in previous version of the code to generate
-                        # these smaller numbers (only happens at the very end)
-                        if rngstate is not None:
-                            baserng._bit_generator.__setstate__(rngstate)
-                        baserng.integers(self.shuffle_buffer_size, size=rngcount % 1024)
-                    idx = baserng.integers(len(buffer))
-            else:
-                idx = 0
+            idx = random(len(buffer))
             item = buffer[idx]
             if replacement_item is not None:
                 buffer[idx] = replacement_item
@@ -284,7 +293,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 # we perform any document loading that we deferred in the skipping process.
                 elem["ids"] = torch.LongTensor(elem["ids"])
                 subsequences = []
-                # assemble the sequence form the SequenceFragment objects
+                # assemble the sequence form the SequenceFragment
                 for doc, start, ln in elem["block"]:
                     # doc[0] can be (1) "padding", (2) a tensor of tokens,
                     # or (3) and index into self.dataset that hasn't been loaded yet.
