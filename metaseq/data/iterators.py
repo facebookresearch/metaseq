@@ -18,6 +18,7 @@ from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+from ctypes import c_int, sizeof, memmove, addressof
 
 logger = logging.getLogger(__name__)
 
@@ -326,12 +327,15 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                     len_tensor = torch.frombuffer(bytearray(b), dtype=torch.int8).cuda()
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                 else:
-                    len_tensor = torch.empty(
-                        4 * len(dataset.dataset), dtype=torch.int8, device="cuda"
-                    )
+                    n_bytes = sizeof(c_int) * len(dataset.dataset)
+                    len_tensor = torch.empty(n_bytes, dtype=torch.int8, device="cuda")
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                     len_tensor = len_tensor.cpu()
-                    dataset.len_cache.from_tensor_data_ptr(len_tensor.data_ptr())
+                    memmove(
+                        addressof(dataset.len_cache.data),
+                        len_tensor.data_ptr(),
+                        n_bytes,
+                    )
 
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n
