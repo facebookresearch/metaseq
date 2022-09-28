@@ -11,9 +11,51 @@ import torch
 
 from metaseq.data import data_utils
 import time
-from metaseq.data.atomic_array import AtomicArray
 
 from typing import Union, List, Iterable, Tuple, TypedDict, Literal
+
+from multiprocessing import Array, Lock
+from contextlib import contextmanager
+from ctypes import c_int, sizeof, memmove, addressof
+
+
+class LockingArray:
+    def __init__(self, size, num_workers=1):
+        # each worker is only allowed to write to its set of elements in the array
+        # the worker locks should be uncontested in normal runs resulting in low overhead.
+
+        # the training process can read the array by locking all the worker locks at once
+        # when it needs to get the array for checkpointing
+
+        self.data = Array("i", size, lock=False)
+        self.set_num_workers(num_workers)
+
+    def set_num_workers(self, num_workers):
+        self.worker_locks = [Lock() for _ in range(num_workers)]
+
+    @contextmanager
+    def _lock_all(self):
+        locked = []
+        try:
+            for l in self.worker_locks:
+                l.acquire()
+                locked.append(l)
+            yield
+        finally:
+            for l in reversed(locked):
+                l.release()
+
+    def __getstate__(self):
+        with self._lock_all():
+            all_bytes = bytes(self.data)
+        return (all_bytes, len(self.worker_locks))
+
+    def __setstate__(self, state):
+        all_bytes, num_workers = state
+        ln = len(all_bytes) // sizeof(c_int)
+        self.__init__(ln, num_workers)
+        memmove(addressof(self.data), all_bytes, len(all_bytes))
+
 
 # Documents can be in one of three states:
 # (1) A torch.Tensor holding the tokens in the document
@@ -148,7 +190,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         # This is an atomic array because it shared among the dataloader workers and the training
         # process.
         self.len_cache = (
-            AtomicArray(len(self.dataset)) if len_cache is None else len_cache
+            LockingArray(len(self.dataset)) if len_cache is None else len_cache
         )
 
         self.block_size = block_size
@@ -199,6 +241,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         assert not self._started_iteration
         self.shuffle_buffer_size = new_shuffle_buffer_size
 
+    def set_num_workers(self, num_workers):
+        self.len_cache.set_num_workers(max(1, num_workers))
+
     def __iter__(self):
         skip_time = 0
         t0 = time.time()
@@ -231,13 +276,13 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             the document because we might end up skipping it entirely.
             """
             for idx in indices:
-                ln = self.len_cache[idx]
+                ln = self.len_cache.data[idx]
                 if ln == 0:
                     # Cache miss: we don't know the number of tokens
                     # so we have to load and tokenize the document.
                     r = self.dataset[idx]
                     ln = r.shape[0]
-                    self.len_cache[idx] = ln
+                    self.len_cache.data[idx] = ln
                     yield (ln, [r])
                 else:
                     # Cache hit: we know the number of tokens, so we can
@@ -291,8 +336,17 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         # Finally, we iterate through our shuffled sequences, skipping the first to_skip
         # and performing any tokenization we delayed during the skipping process.
-        for i, elem in enumerate(sequences()):
-            if i >= to_skip:
+        seq_it = iter(sequences())
+
+        try:
+            with self.len_cache.worker_locks[worker_id]:
+                for i in range(to_skip):
+                    next(seq_it)
+            t1 = time.time()
+            skip_time = t1 - t0
+            while True:
+                with self.len_cache.worker_locks[worker_id]:
+                    elem = next(seq_it)
                 # we know we are not skipping this sequence, so
                 # we perform any document loading that we deferred in the skipping process.
                 elem["ids"] = torch.LongTensor(elem["ids"])
@@ -319,10 +373,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 elem["block"] = torch.cat(subsequences)
                 elem["skip_time"] = skip_time
                 yield elem
-            elif i + 1 == to_skip:
-                # for timing purposes record how long skipping took
-                t1 = time.time()
-                skip_time = t1 - t0
+        except StopIteration:
+            return
 
 
 def yield_single_sentences_pad_8(iterable, block_size, drop_last) -> Iterable[Sequence]:

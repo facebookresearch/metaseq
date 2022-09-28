@@ -78,11 +78,6 @@ extensions = [
         language="c++",
         extra_compile_args=extra_compile_args,
     ),
-    Extension(
-        "metaseq.data.atomic_array",
-        sources=["metaseq/data/atomic_array.cpp"],
-        language="c++",
-    ),
 ]
 
 

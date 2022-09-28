@@ -279,10 +279,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         while not isinstance(dataset, DocumentToSequenceDataset):
             dataset = dataset.dataset
         logger.debug(
-            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
+            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache.data)} "
             f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
         )
-
         return {
             "epoch": epoch,
             "sequences_consumed": sequences_consumed,

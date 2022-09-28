@@ -13,9 +13,10 @@ from metaseq.data import (
     StreamingTokenBlockDataset,
     PartitionedStreamingDataset,
 )
-from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset, LockingArray
 
 import random
+import pickle
 
 
 class TensorListDataset(torch.utils.data.Dataset):
@@ -110,7 +111,9 @@ class TestStreamingIterators(unittest.TestCase):
                 collate_fn=epoch_batch_itr.collate_fn,
                 drop_last=epoch_batch_itr.drop_last,
             )
-            new_epoch_batch_itr.load_state_dict(epoch_batch_itr.state_dict())
+            # pickle the state_dict to test picklability
+            psd = pickle.dumps(epoch_batch_itr.state_dict())
+            new_epoch_batch_itr.load_state_dict(pickle.loads(psd))
             return new_epoch_batch_itr, new_epoch_batch_itr.next_epoch_itr()
 
         self._test_streaming_epoch_batch_iterator(drop_last=True, hook_fn=hook_fn)
@@ -230,6 +233,7 @@ class TestStreamingIterators(unittest.TestCase):
         dataset, fake_dataset, token_dataset = create_dataset(
             drop_last=True, break_mode="none"
         )
+        token_dataset.set_num_workers(2)
         dataloader1 = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=1,
@@ -247,6 +251,7 @@ class TestStreamingIterators(unittest.TestCase):
         dataset, fake_dataset, token_dataset = create_dataset(
             drop_last=True, break_mode="none"
         )
+        token_dataset.set_num_workers(2)
         token_dataset.len_cache = len_cache
         token_dataset.to_skip = consumed
         token_dataset.worker_offset = ITERS - 1
@@ -320,6 +325,16 @@ class TestStreamingIterators(unittest.TestCase):
         compare("none", True)
         compare("eos_pad_8", True)
         compare("complete", True)
+
+    def test_locking_array(self):
+        l = LockingArray(20, 8)
+        for i in range(20):
+            l.data[i] = i
+        l2 = pickle.loads(pickle.dumps(l))
+        assert len(l2.data) == 20
+        assert len(l2.worker_locks) == 8
+        for i in range(20):
+            assert l2.data[i] == i
 
 
 if __name__ == "__main__":
