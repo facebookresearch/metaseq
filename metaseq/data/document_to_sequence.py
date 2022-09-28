@@ -53,26 +53,30 @@ def blocked_random(seed, normal_size):
     state = None
     buf = None
     n = 0
+    use_batch = True
 
     def integers(high):
-        nonlocal state, buf, n
-        if high == normal_size:
-            if n % 1024 == 0:
-                state = baserng._bit_generator.__getstate__()
-                buf = baserng.integers(normal_size, size=1024)
-            r = buf[n % 1024]
-            n += 1
-            return r
-        if high == normal_size - 1:
-            # when the buffer drains at the end we are asking
+        nonlocal state, buf, n, use_batch
+        if use_batch:
+            # in the common case we ask for high=shuffle_buffer_size
+            # we can batch calls to numpy to generate these values
+            if high == normal_size:
+                if n % 1024 == 0:
+                    state = baserng._bit_generator.__getstate__()
+                    buf = baserng.integers(normal_size, size=1024)
+                r = buf[n % 1024]
+                n += 1
+                return r
+
+            # when the buffer drains at the end, we start asking
             # for a smaller range of random numbers than we have batched.
             # To match our previous behavior, reset the
-            # state of base rng to what it would have been
-            # in previous version of the code to generate
-            # these smaller numbers (only happens at the very end).
+            # state to what it would have been before batching
+            # and generate the final numbers without batching
             if state is not None:
                 baserng._bit_generator.__setstate__(state)
                 baserng.integers(normal_size, size=n % 1024)
+            use_batch = False
         return baserng.integers(high)
 
     return integers
