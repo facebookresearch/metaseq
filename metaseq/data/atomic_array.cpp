@@ -13,6 +13,11 @@ struct Owned {
     PyObject* obj;
 };
 
+// This custom object is a wrapper around multiprocessing.Array
+// that makes it possible to read and write integer values to it
+// across multiple processes without having to use lock objects.
+// Otherwise it behaves the same as normal multiprocessing.Array
+
 struct AtomicArray {
     PyObject_HEAD
     Py_buffer buffer;
@@ -28,6 +33,9 @@ struct AtomicArray {
         return init_size(self, size);
     }
     static int init_size(AtomicArray* self, PyObject *size) {
+        // Pythonic pseudocode:
+        // self.buffer = GetBuffer(multiprocessing.Array("i", size, lock=False))
+        // self.size = self.buffer.len / self.buffer.itemsize
         self->buffer.obj = nullptr;
         Owned multiprocessing = PyImport_ImportModule("multiprocessing");
         if (!multiprocessing.obj) {
@@ -52,6 +60,7 @@ struct AtomicArray {
         return self->size;
     }
     static PyObject * sq_item(AtomicArray * self, Py_ssize_t idx) {
+        // self[idx]
         if (idx < 0 || idx >= self->size) {
             PyErr_Format(PyExc_IndexError, "%n", idx);
             return nullptr;
@@ -61,6 +70,7 @@ struct AtomicArray {
         return PyLong_FromLong(dst);
     }
     static int sq_ass_item(AtomicArray * self, Py_ssize_t idx, PyObject* pyvalue) {
+        // self[idx] = pyvalue
         if (idx < 0 || idx >= self->size) {
             PyErr_Format(PyExc_IndexError, "%n", idx);
             return -1;
@@ -77,6 +87,7 @@ struct AtomicArray {
         Py_TYPE(self)->tp_free(self);
     }
     static PyObject* __getstate__(AtomicArray* self) {
+        // return (self.size, bytes(self.buffer))
         Owned bytes = PyBytes_FromStringAndSize(nullptr, self->buffer.len);
         if (!bytes.obj) {
             return nullptr;
@@ -94,6 +105,9 @@ struct AtomicArray {
         return PyTuple_Pack(2, ln.obj, bytes.obj);
     }
     static PyObject* __setstate__(AtomicArray* self, PyObject* state) {
+        // size, bytes = state
+        // self.__init__(size)
+        // <load bytes into self.buffer>
         PyObject* ln = PyTuple_GetItem(state, 0);
         if (!ln) {
             return nullptr;
@@ -114,6 +128,7 @@ struct AtomicArray {
         Py_RETURN_NONE;
     }
     static PyObject* from_tensor_data_ptr(AtomicArray* self, PyObject* obj) {
+        // self.buffer = <values in tensor>
         uint64_t p = PyLong_AsLongLong(obj);
         if (PyErr_Occurred()) {
             return nullptr;
