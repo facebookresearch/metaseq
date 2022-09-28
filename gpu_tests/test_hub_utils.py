@@ -188,7 +188,7 @@ class TestHubUtils(unittest.TestCase):
             if key == "token_scores":
                 # Getting rid of the initial "None" element
                 self.assertTrue(
-                    np.allclose(EXPECTED_OUTPUT[key][1:], generated_beam[key][1:])
+                    np.allclose(EXPECTED_OUTPUT[key][1:], generated_beam[key][1:], atol=1e-2)
                 )
                 # Ensure that the score associated to </s> is None
                 self.assertIsNone(generated_beam[key][0])
@@ -215,9 +215,9 @@ class TestHubUtils(unittest.TestCase):
         )
         # TOKEN_SCORES[1:] is done to skip the first "None"
         self.assertTrue(
-            np.allclose(TOKEN_SCORES[1:], generated_beam["positional_scores"].cpu())
+            np.allclose(TOKEN_SCORES[1:], generated_beam["positional_scores"].cpu(), atol=1e-2)
         )
-        self.assertTrue(np.isclose(-3.4824, generated_beam["score"].item()))
+        self.assertTrue(np.isclose(-3.4824, generated_beam["score"].item(), atol=1e-2))
 
     def tearDown(self):
         # Tear down model parallel
