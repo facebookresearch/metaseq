@@ -94,7 +94,6 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     version.parse(torch.__version__) < version.parse("1.9.1"),
     "test requires a pytorch version of at least 1.9.1",
 )
-@unittest.skip('Testing')
 class TestHFCompatibility(unittest.TestCase):
     def test_singleton_metaseq_hf_compatibility(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
