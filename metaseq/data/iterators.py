@@ -323,7 +323,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             else:
                 if distributed_utils.get_global_rank() == 0:
                     dataset.len_cache = state_dict["tokenization_cache"]
-                    l, b = dataset.len_cache.__getstate__()
+                    b, _ = dataset.len_cache.__getstate__()
                     len_tensor = torch.frombuffer(bytearray(b), dtype=torch.int8).cuda()
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                 else:
