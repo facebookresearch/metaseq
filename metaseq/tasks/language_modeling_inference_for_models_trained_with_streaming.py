@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 
 import numpy as np
-import torch
 from omegaconf import II
 
 from metaseq import utils
