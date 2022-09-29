@@ -637,7 +637,7 @@ def floating_point_precision_convertor(
 
 
 def get_model_init_dtype(args):
-    if getattr(args, "memory_efficient_fp16", False):
+    if getattr(args, "memory_efficient_fp16", False) or getattr(args, "inference", False):
         return torch.bfloat16 if getattr(args, "bf16", False) else torch.half
     return torch.float32
 

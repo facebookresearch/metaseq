@@ -251,8 +251,6 @@ class TransformerDecoder(IncrementalDecoder):
     def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
         self.args = args
         super().__init__(dictionary)
-        import torch
-
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
@@ -306,7 +304,7 @@ class TransformerDecoder(IncrementalDecoder):
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
-        self.embed_positions = self.embed_positions.to(device).to(dtype)
+        self.embed_positions.to(device).to(dtype)
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
@@ -365,7 +363,7 @@ class TransformerDecoder(IncrementalDecoder):
                 embed_dim,
                 elementwise_affine=not getattr(args, "disable_affine_ln", False),
             )
-            self.layer_norm = self.layer_norm.to(device).to(dtype)
+            self.layer_norm.to(device).to(dtype)
         else:
             self.layer_norm = None
 

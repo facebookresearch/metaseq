@@ -217,7 +217,7 @@ class TransformerDecoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(
             self.embed_dim, elementwise_affine=affine_ln
         )
-        self.self_attn_layer_norm = self.self_attn_layer_norm.to(device).to(dtype)
+        self.self_attn_layer_norm.to(device).to(dtype)
 
         if no_encoder_attn:
             self.encoder_attn = None
@@ -259,7 +259,7 @@ class TransformerDecoderLayer(nn.Module):
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
-        self.final_layer_norm = self.final_layer_norm.to(device).to(dtype)
+        self.final_layer_norm.to(device).to(dtype)
 
         self.need_attn = True
         self.onnx_trace = False
