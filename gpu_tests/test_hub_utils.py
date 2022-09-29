@@ -143,7 +143,7 @@ def test_generator_interface(data_regression, ndarrays_regression):
     ndarray_data = {
         "token_scores": np.array(
             [
-                np.nan if elem == None else elem
+                np.nan if elem is None else elem
                 for elem in generated_beam["token_scores"]
             ]
         )
