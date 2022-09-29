@@ -30,7 +30,6 @@ class SequenceGenerator(nn.Module):
         profile=False,
     ):
         """Generates translations of a given source sentence.
-
         Args:
             models: ensemble of models
             beam_size (int, optional): beam width (default: 1)
@@ -102,8 +101,6 @@ class SequenceGenerator(nn.Module):
             bos_token (int, optional): beginning of sentence token
                 (default: self.eos)
         """
-        # if torch.distributed.get_rank() == 0:
-        #     from metaseq import pdb; pdb.set_trace()
         incremental_states = torch.jit.annotate(
             Dict[str, Dict[str, Optional[Tensor]]], {}
         )
@@ -213,7 +210,6 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
-        # ====== generation started ================
         for step in range(start_step, max_len + 1):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -281,23 +277,15 @@ class SequenceGenerator(nn.Module):
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
-        # if torch.distributed.get_rank() == 0:
-        #     print('=== tokens:')
-        #     print(retval["tokens"])
-        #     print('=== scores:')
-        #     print(retval["scores"])
         return retval
 
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
-
         See `"The Curious Case of Neural Text Degeneration"
         (Holtzman et al., 2019) <https://arxiv.org/abs/1904.09751>`_.
-
         Args:
             lprobs: (bsz x input_beam_size x vocab_size)
                 the model's log-probabilities over the vocabulary at the current step
-
         Return: A tuple of (trimed_probs, truncated_indices) where:
             trimed_probs: (bsz x input_beam_size x ?)
                 the model's probabilities over the elements selected to sample from. The
