@@ -81,7 +81,9 @@ def save_checkpoint(
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
-    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = save_for_epoch or save_for_updates
+    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
+        training_finished and cfg.save_last_checkpoint
+    )
 
     extra_state = {"train_iterator": epoch_itr.state_dict(), "val_loss": val_loss}
     if hasattr(save_checkpoint, "best"):
