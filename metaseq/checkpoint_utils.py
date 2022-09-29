@@ -543,7 +543,7 @@ def load_model_ensemble_and_task(
         assert num_shards > 0
         for shard_idx in range(num_shards):
             if num_shards == 1:
-                filename = filename.replace(".pt", suffix + ".pt")
+                filename = re.sub('.pt$', suffix + ".pt", filename)
             else:
                 filename = orig_filename[:-3] + f"_part{shard_idx}.pt"
             if state is None:
