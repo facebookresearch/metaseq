@@ -8,6 +8,7 @@ import math
 import torch
 from torch import nn
 
+import metaseq.utils as utils
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
 
@@ -142,7 +143,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
         )
 
@@ -157,7 +158,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def forward_attention(

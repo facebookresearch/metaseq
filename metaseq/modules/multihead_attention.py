@@ -37,6 +37,7 @@ class MultiheadAttention(nn.Module):
         self_attention=False,
         encoder_decoder_attention=False,
         initialize_params_on_gpu=False,
+        dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -66,24 +67,28 @@ class MultiheadAttention(nn.Module):
             embed_dim,
             bias=bias,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=dtype,
         )
         self.v_proj = Linear(
             self.vdim,
             embed_dim,
             bias=bias,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=dtype,
         )
         self.q_proj = Linear(
             embed_dim,
             embed_dim,
             bias=bias,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=dtype,
         )
         self.out_proj = Linear(
             embed_dim,
             embed_dim,
             bias=bias,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            dtype=dtype,
         )
         torch.set_rng_state(random_state)
         if add_bias_kv:
