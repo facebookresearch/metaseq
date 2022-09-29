@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import unittest
 import os
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
 from metaseq.hub_utils import GeneratorInterface, GeneratorHubInterface
@@ -14,24 +13,6 @@ import torch
 
 
 PROMPT = [133, 313, 1224, 15, 5, 856, 17527, 594, 98, 5, 11471, 3820, 19, 514, 4]
-TOKEN_SCORES = [
-    None,
-    -2.436279535293579,
-    -6.024158477783203,
-    -7.712856292724609,
-    -4.207103729248047,
-    -1.188389539718628,
-    -6.652636528015137,
-    -0.9851812124252319,
-    -0.04523317888379097,
-    -4.7183380126953125,
-    -2.6682472229003906,
-    -4.960669040679932,
-    -7.002664089202881,
-    -1.146365761756897,
-    -1.3687334060668945,
-    -1.1196397542953491,
-]
 
 
 def default_post_build_model_hook(model, task):
@@ -143,91 +124,60 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
     return hypothesis
 
 
-class TestHubUtils(unittest.TestCase):
-    def test_generator_interface(self):
-        model_path = os.path.join(os.path.dirname(__file__), "125m")
-        cfg = create_generation_config_with_defaults(
-            model_path, ddp_backend="fully_sharded"
+############ TEST FUNCTIONS ############
+def test_generator_interface(data_regression, ndarrays_regression):
+    model_path = os.path.join(os.path.dirname(__file__), "125m")
+    cfg = create_generation_config_with_defaults(
+        model_path, ddp_backend="fully_sharded"
+    )
+
+    overall_generation = distributed_utils.call_main(
+        cfg, generate_using_generator_interface
+    )
+    # We can potentially pass a list of inputs to the generate function.
+    # Here, we look at the first (and only) generation
+    [generation_for_prompt] = overall_generation
+    # We use best_of = 1, so we get only one beam search result
+    [generated_beam] = generation_for_prompt
+
+    ndarray_data = {
+        "token_scores": np.array(
+            [
+                np.nan if elem == None else elem
+                for elem in generated_beam["token_scores"]
+            ]
         )
+    }
+    generated_beam.pop("token_scores")
 
-        overall_generation = distributed_utils.call_main(
-            cfg, generate_using_generator_interface
-        )
-        # We can potentially pass a list of inputs to the generate function.
-        # Here, we look at the first (and only) generation
-        [generation_for_prompt] = overall_generation
-        # We use best_of = 1, so we get only one beam search result
-        [generated_beam] = generation_for_prompt
-
-        EXPECTED_OUTPUT = {
-            "text": "The man turned on the faucet so the toilet filled with water.",
-            "tokens": [
-                "</s>",
-                "The",
-                " man",
-                " turned",
-                " on",
-                " the",
-                " f",
-                "auc",
-                "et",
-                " so",
-                " the",
-                " toilet",
-                " filled",
-                " with",
-                " water",
-                ".",
-            ],
-            "text_offset": [0, 3, 7, 14, 17, 21, 23, 26, 28, 31, 35, 42, 49, 54, 60],
-            "token_scores": TOKEN_SCORES,
-            "top_logprobs": None,
-        }
-
-        for key in EXPECTED_OUTPUT:
-            if key == "token_scores":
-                # Getting rid of the initial "None" element
-                self.assertTrue(
-                    np.allclose(
-                        EXPECTED_OUTPUT[key][1:], generated_beam[key][1:], atol=1e-2
-                    )
-                )
-                # Ensure that the score associated to </s> is None
-                self.assertIsNone(generated_beam[key][0])
-            else:
-                self.assertEqual(EXPECTED_OUTPUT[key], generated_beam[key])
-
-    def test_generator_hub_interface(self):
-        model_path = os.path.join(os.path.dirname(__file__), "125m")
-        cfg = create_generation_config_with_defaults(
-            model_path, ddp_backend="fully_sharded"
-        )
-
-        overall_generation = distributed_utils.call_main(
-            cfg, generate_using_generator_hub_interface, model_path=model_path
-        )
-        # We can potentially pass a list of inputs to the generate function.
-        # Here, we look at the first (and only) generation
-        [generation_for_prompt] = overall_generation
-        # We use best_of = 1, so we get only one beam search result
-        [generated_beam] = generation_for_prompt
-
-        self.assertTrue(
-            torch.equal(torch.tensor(PROMPT), generated_beam["tokens"].cpu())
-        )
-        # TOKEN_SCORES[1:] is done to skip the first "None"
-        self.assertTrue(
-            np.allclose(
-                TOKEN_SCORES[1:], generated_beam["positional_scores"].cpu(), atol=1e-2
-            )
-        )
-        self.assertTrue(np.isclose(-3.4824, generated_beam["score"].item(), atol=1e-2))
-
-    def tearDown(self):
-        # Tear down model parallel
-        destroy_model_parallel()
-        distributed_utils._USE_MEGATRON = False
+    ndarrays_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+    data_regression.check(generated_beam)
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_generator_hub_interface(data_regression, ndarrays_regression):
+    model_path = os.path.join(os.path.dirname(__file__), "125m")
+    cfg = create_generation_config_with_defaults(
+        model_path, ddp_backend="fully_sharded"
+    )
+
+    overall_generation = distributed_utils.call_main(
+        cfg, generate_using_generator_hub_interface, model_path=model_path
+    )
+    # We can potentially pass a list of inputs to the generate function.
+    # Here, we look at the first (and only) generation
+    [generation_for_prompt] = overall_generation
+    # We use best_of = 1, so we get only one beam search result
+    [generated_beam] = generation_for_prompt
+
+    ndarray_data = {
+        key: value.cpu()
+        for key, value in generated_beam.items()
+        if key in ["tokens", "score", "positional_scores"]
+    }
+    ndarrays_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+
+
+def teardown_function():
+    # Tear down model parallel
+    destroy_model_parallel()
+    distributed_utils._USE_MEGATRON = False
