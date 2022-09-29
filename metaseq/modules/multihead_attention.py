@@ -20,6 +20,7 @@ from metaseq.modules.linear import Linear
 @with_incremental_state
 class MultiheadAttention(nn.Module):
     """Multi-headed attention.
+
     See "Attention Is All You Need" for more details.
     """
 
@@ -147,6 +148,7 @@ class MultiheadAttention(nn.Module):
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
+
         Args:
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
@@ -427,4 +429,4 @@ class MultiheadAttention(nn.Module):
         return self.set_incremental_state(incremental_state, "attn_state", buffer)
 
     def apply_sparse_mask(self, attn_weights, tgt_len: int, src_len: int, bsz: int):
-        return 
+        return attn_weights

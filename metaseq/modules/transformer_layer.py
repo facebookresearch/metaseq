@@ -204,8 +204,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.normalize_before = args.decoder_normalize_before
 
-        import torch
-        
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -214,27 +212,22 @@ class TransformerDecoderLayer(nn.Module):
 
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
+        affine_ln = not getattr(args, "disable_affine_ln", False)
 
-        import torch
-        if torch.distributed.get_rank() == 0:
-            from metaseq import pdb; pdb.set_trace()
-
-        self.self_attn_layer_norm = LayerNorm(self.embed_dim).to(device).to(dtype)
-
-        # if initialize_params_on_gpu:
-        #     self.self_attn_layer_norm = utils.floating_point_precision_convertor(
-        #         self.self_attn_layer_norm.cuda(),
-        #         fp16=getattr(args, "fp16", False),
-        #         memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-        #         bf16=getattr(args, "bf16", False),
-        #     )
+        self.self_attn_layer_norm = LayerNorm(
+            self.embed_dim, elementwise_affine=affine_ln
+        )
+        self.self_attn_layer_norm = self.self_attn_layer_norm.to(device).to(dtype)
 
         if no_encoder_attn:
             self.encoder_attn = None
             self.encoder_attn_layer_norm = None
         else:
             self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
-            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim).to(device).to(dtype)
+            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim)
+            self.encoder_attn_layer_norm = self.encoder_attn_layer_norm.to(device).to(
+                dtype
+            )
 
         ffn_dim = args.decoder_ffn_embed_dim
 
@@ -251,6 +244,7 @@ class TransformerDecoderLayer(nn.Module):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             dtype=utils.get_model_init_dtype(args),
+            disable_bias=getattr(args, "disable_bias", False),
         )
 
         self.fc2 = self.build_fc2(
@@ -261,9 +255,11 @@ class TransformerDecoderLayer(nn.Module):
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
+            disable_bias=getattr(args, "disable_bias", False),
         )
 
-        self.final_layer_norm = LayerNorm(self.embed_dim).to(device).to(dtype)
+        self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
+        self.final_layer_norm = self.final_layer_norm.to(device).to(dtype)
 
         self.need_attn = True
         self.onnx_trace = False
@@ -271,17 +267,28 @@ class TransformerDecoderLayer(nn.Module):
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
+        self,
+        input_dim,
+        output_dim,
+        initialize_params_on_gpu=False,
+        disable_bias=False,
+        **unused_args
     ):
         return Linear(
             input_dim,
             output_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            bias=not disable_bias,
             dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_fc2(
-        self, input_dim, output_dim, initialize_params_on_gpu=False, **unused_args
+        self,
+        input_dim,
+        output_dim,
+        initialize_params_on_gpu=False,
+        disable_bias=False,
+        **unused_args
     ):
         return Linear(
             input_dim,
@@ -306,6 +313,11 @@ class TransformerDecoderLayer(nn.Module):
             self_attention=not getattr(args, "cross_self_attention", False),
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
+            ),
+            bias=not getattr(
+                args,
+                "disable_bias",
+                False,
             ),
             dtype=utils.get_model_init_dtype(args),
         )
@@ -375,6 +387,7 @@ class TransformerDecoderLayer(nn.Module):
             need_attn (bool, optional): return attention weights
             need_head_weights (bool, optional): return attention weights
                 for each head (default: return average over heads).
+
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """

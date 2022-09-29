@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
-
 from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
@@ -38,6 +37,7 @@ class TransformerEncoder(BaseEncoder):
     """
     Transformer encoder consisting of *args.encoder_layers* layers. Each layer
     is a :class:`TransformerEncoderLayer`.
+
     Args:
         args (argparse.Namespace): parsed command-line arguments
         dictionary (~metaseq.data.Dictionary): encoding dictionary
@@ -131,6 +131,7 @@ class TransformerEncoder(BaseEncoder):
                 shape `(batch)`
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
+
         Returns:
             dict:
                 - **encoder_out** (Tensor): the last encoder layer's output of
@@ -160,6 +161,7 @@ class TransformerEncoder(BaseEncoder):
                 shape `(batch)`
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
+
         Returns:
             dict:
                 - **encoder_out** (Tensor): the last encoder layer's output of
@@ -237,6 +239,7 @@ class TransformerDecoder(IncrementalDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`TransformerDecoderLayer`.
+
     Args:
         args (argparse.Namespace): parsed command-line arguments
         dictionary (~metaseq.data.Dictionary): decoding dictionary
@@ -249,6 +252,7 @@ class TransformerDecoder(IncrementalDecoder):
         self.args = args
         super().__init__(dictionary)
         import torch
+
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
@@ -266,11 +270,6 @@ class TransformerDecoder(IncrementalDecoder):
         self.max_target_positions = args.max_target_positions
         self.embed_tokens = embed_tokens
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
-
-
-        import torch 
-        if torch.distributed.get_rank() == 0:
-            from metaseq import pdb; pdb.set_trace()
 
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
@@ -572,6 +571,7 @@ class TransformerDecoder(IncrementalDecoder):
         """
         Includes several features from "Jointly Learning to Align and
         Translate with Transformer Models" (Garg et al., EMNLP 2019).
+
         Args:
             prev_output_tokens (LongTensor): previous decoder outputs of shape
                 `(batch, tgt_len)`, for teacher forcing
@@ -585,6 +585,7 @@ class TransformerDecoder(IncrementalDecoder):
                 default `None` will recompute embeddings
             self_attn_padding_mask (torch.Tensor, optional): precomputed padding
                 mask for self-attention (default None will recompute mask)
+
         Returns:
             tuple:
                 - the decoder's output of shape `(batch, tgt_len, vocab)`
