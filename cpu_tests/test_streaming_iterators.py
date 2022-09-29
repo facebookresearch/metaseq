@@ -82,7 +82,9 @@ class FakeTensorData(torch.utils.data.Dataset):
 
 class TestStreamingIterators(unittest.TestCase):
     def test_streaming_counting_iterator(self):
-        ref = list((0, i) for i in range(10)) # extra 0 is the worker_id that StreamingCountingIterator expects
+        ref = list(
+            (0, i) for i in range(10)
+        )  # extra 0 is the worker_id that StreamingCountingIterator expects
         itr = iterators.StreamingCountingIterator(ref, 0, 1, 1)
         for i, (_, ref_i) in enumerate(ref):
             self.assertTrue(itr.has_next())
@@ -246,7 +248,7 @@ class TestStreamingIterators(unittest.TestCase):
             num_workers=3,
             pin_memory=True,
             drop_last=True,
-            collate_fn=collate_with_worker_id
+            collate_fn=collate_with_worker_id,
         )
         iterator1 = iterators.StreamingCountingIterator(dataloader1, 3, 1, 1)
 
