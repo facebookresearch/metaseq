@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 import os
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
 from metaseq.hub_utils import GeneratorInterface, GeneratorHubInterface
