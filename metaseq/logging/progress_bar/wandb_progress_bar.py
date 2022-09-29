@@ -23,7 +23,7 @@ except ImportError:
 class WandBProgressBarWrapper(BaseProgressBar):
     """Log to Weights & Biases."""
 
-    def __init__(self, wrapped_bar, wandb_project, run_name=None):
+    def __init__(self, wrapped_bar, wandb_project, run_name=None, wandb_dir=None):
         super().__init__(
             wrapped_bar, epoch=wrapped_bar.epoch, prefix=wrapped_bar.prefix
         )
@@ -34,7 +34,7 @@ class WandBProgressBarWrapper(BaseProgressBar):
 
         # reinit=False to ensure if wandb.init() is called multiple times
         # within one process it still references the same run
-        wandb.init(project=wandb_project, reinit=False, name=run_name)
+        wandb.init(project=wandb_project, reinit=False, name=run_name, dir=wandb_dir)
 
     def __len__(self):
         return len(self.wrapped_bar)
