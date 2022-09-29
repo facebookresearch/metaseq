@@ -129,17 +129,20 @@ class StreamingCountingIterator(object):
         self.num_shards = num_shards
 
         self.n = 0
+        self.next_worker = 0
         self.sequences_consumed = [0 for _ in range(self.num_workers)]
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        self.sequences_consumed[self.n % self.num_workers] += (
+        worker_id, r = next(self._peekable_itr)
+        self.sequences_consumed[worker_id] += (
             self.batch_size * self.num_shards
         )
+        self.next_worker = (worker_id + 1) % self.num_workers
         self.n += 1
-        return next(self._peekable_itr)
+        return r
 
     def __len__(self):
         return 0
@@ -271,10 +274,12 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             epoch = self.epoch + 1
             sequences_consumed = [0 for _ in range(self.num_workers)]
             n = 0
+            next_worker = 0
         else:
             epoch = self.epoch
             sequences_consumed = self._itr.sequences_consumed
             n = self._itr.n
+            next_worker = self._itr.next_worker
 
         dataset = self.dataset
         while not isinstance(dataset, DocumentToSequenceDataset):
@@ -290,6 +295,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             if distributed_utils.get_global_rank() == 0
             else None,
             "n": n,
+            "next_worker": next_worker,
         }
 
     def load_state_dict(self, state_dict):
@@ -306,6 +312,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         ):
             sequences_consumed = state_dict["sequences_consumed"]
             n = state_dict["n"]
+            next_worker = state_dict["next_worker"]
 
             logger.info(f"Skipping {sequences_consumed} sequences in each worker...")
             num_workers = 1 if self.num_workers == 0 else self.num_workers
@@ -316,7 +323,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             while not isinstance(dataset, DocumentToSequenceDataset):
                 dataset = dataset.dataset
             dataset.to_skip = sequences_consumed
-            dataset.worker_offset = n
+            dataset.worker_offset = next_worker
             global_group = distributed_utils.get_global_group()
             if global_group is None:
                 dataset.len_cache = state_dict["tokenization_cache"]
@@ -340,6 +347,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n
             self._itr.sequences_consumed = sequences_consumed
+            self._itr.next_worker = next_worker
         else:
             self._itr = self._get_iterator_for_epoch(self.epoch)
             # checkpoint from before sequences_consumed was added, slow fast forward...
@@ -362,11 +370,17 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         if self.num_workers > 0:
             os.environ["PYTHONWARNINGS"] = "ignore:semaphore_tracker:UserWarning"
 
+        def collate_with_worker_id(items):
+            r = self.collate_fn(items)
+            worker_info = torch.utils.data.get_worker_info()
+            assert worker_info or self.num_workers == 0
+            return (worker_info.id if worker_info else 0, r)
+
         itr = torch.utils.data.DataLoader(
             dataset=self.dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=collate_with_worker_id,
             pin_memory=True,
             drop_last=self.drop_last,
             worker_init_fn=getattr(self.dataset, "worker_init_fn", None),

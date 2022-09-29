@@ -82,9 +82,9 @@ class FakeTensorData(torch.utils.data.Dataset):
 
 class TestStreamingIterators(unittest.TestCase):
     def test_streaming_counting_iterator(self):
-        ref = list(range(10))
+        ref = list((0, i) for i in range(10)) # extra 0 is the worker_id that StreamingCountingIterator expects
         itr = iterators.StreamingCountingIterator(ref, 0, 1, 1)
-        for i, ref_i in enumerate(ref):
+        for i, (_, ref_i) in enumerate(ref):
             self.assertTrue(itr.has_next())
             self.assertEqual(itr.n, i)
             self.assertEqual(next(itr), ref_i)
@@ -233,32 +233,44 @@ class TestStreamingIterators(unittest.TestCase):
         dataset, fake_dataset, token_dataset = create_dataset(
             drop_last=True, break_mode="none"
         )
-        token_dataset.set_num_workers(2)
+
+        token_dataset.set_num_workers(3)
+
+        def collate_with_worker_id(items):
+            worker_info = torch.utils.data.get_worker_info()
+            return (worker_info.id, items[0])
+
         dataloader1 = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=1,
-            num_workers=2,
+            num_workers=3,
             pin_memory=True,
             drop_last=True,
+            collate_fn=collate_with_worker_id
         )
-        consumed = [0, 0]
-        ITERS = 8
-        for i, last in zip(range(ITERS), dataloader1):
-            if i < ITERS - 1:  # don't include the last one
-                consumed[i % 2] += 1
+        iterator1 = iterators.StreamingCountingIterator(dataloader1, 3, 1, 1)
+
+        ITERS = 76
+        for i in range(ITERS - 1):
+            next(iterator1)
+
+        sequences_consumed = list(iterator1.sequences_consumed)
+        next_worker = iterator1.next_worker
+
+        last = next(iterator1)
 
         len_cache = token_dataset.len_cache
         dataset, fake_dataset, token_dataset = create_dataset(
             drop_last=True, break_mode="none"
         )
-        token_dataset.set_num_workers(2)
+        token_dataset.set_num_workers(3)
         token_dataset.len_cache = len_cache
-        token_dataset.to_skip = consumed
-        token_dataset.worker_offset = ITERS - 1
+        token_dataset.to_skip = sequences_consumed
+        token_dataset.worker_offset = next_worker
         dataloader2 = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=1,
-            num_workers=2,
+            num_workers=3,
             pin_memory=True,
             drop_last=True,
         )
