@@ -355,6 +355,9 @@ class BaseTask(object):
         sampling_topp = getattr(args, "sampling_topp", -1.0)
         assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
+        if getattr(args, "sampling_topk", False):
+            logger.warning('sampling with topk is not supported, ignoring the sampling_topk argument')
+
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
         if seq_gen_cls is None:
             seq_gen_cls = SequenceGenerator
