@@ -805,7 +805,7 @@ class GeneratorInterface:
                 mask.append(False)
                 continue
             if t in special_token_inds and i > 0:
-                # an special tokens should end things
+                # and other special tokens should end things
                 mask.append(False)
                 break
             mask.append(True)
