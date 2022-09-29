@@ -124,7 +124,7 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
     return hypothesis
 
 
-############ TEST FUNCTIONS ############
+# TEST FUNCTIONS #
 def test_generator_interface(data_regression, ndarrays_regression):
     model_path = os.path.join(os.path.dirname(__file__), "125m")
     cfg = create_generation_config_with_defaults(
