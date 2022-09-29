@@ -12,12 +12,13 @@ import queue
 import time
 from threading import Thread
 from typing import Callable, Optional
-from metaseq.data.deferred import SkipDeferredDataset, DeferredDataset
 import numpy as np
 import torch
 from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+from ctypes import c_int, sizeof, memmove, addressof
 
 logger = logging.getLogger(__name__)
 
@@ -276,13 +277,12 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             n = self._itr.n
 
         dataset = self.dataset
-        while not isinstance(dataset, DeferredDataset):
+        while not isinstance(dataset, DocumentToSequenceDataset):
             dataset = dataset.dataset
         logger.debug(
-            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache)} "
+            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache.data)} "
             f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
         )
-
         return {
             "epoch": epoch,
             "sequences_consumed": sequences_consumed,
@@ -313,30 +313,29 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 len(sequences_consumed) == num_workers
             ), "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
             dataset = self.dataset
-            while not isinstance(dataset, SkipDeferredDataset):
+            while not isinstance(dataset, DocumentToSequenceDataset):
                 dataset = dataset.dataset
             dataset.to_skip = sequences_consumed
-            while not isinstance(dataset, DeferredDataset):
-                if hasattr(dataset, "worker_offset"):
-                    dataset.worker_offset = n
-                dataset = dataset.dataset
-
+            dataset.worker_offset = n
             global_group = distributed_utils.get_global_group()
             if global_group is None:
                 dataset.len_cache = state_dict["tokenization_cache"]
             else:
                 if distributed_utils.get_global_rank() == 0:
                     dataset.len_cache = state_dict["tokenization_cache"]
-                    l, b = dataset.len_cache.__getstate__()
+                    b, _ = dataset.len_cache.__getstate__()
                     len_tensor = torch.frombuffer(bytearray(b), dtype=torch.int8).cuda()
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                 else:
-                    len_tensor = torch.empty(
-                        4 * len(dataset), dtype=torch.int8, device="cuda"
-                    )
+                    n_bytes = sizeof(c_int) * len(dataset.dataset)
+                    len_tensor = torch.empty(n_bytes, dtype=torch.int8, device="cuda")
                     distributed_utils.broadcast(len_tensor, 0, global_group)
                     len_tensor = len_tensor.cpu()
-                    dataset.len_cache.from_tensor(len_tensor)
+                    memmove(
+                        addressof(dataset.len_cache.data),
+                        len_tensor.data_ptr(),
+                        n_bytes,
+                    )
 
             self._itr = self._get_iterator_for_epoch(self.epoch)
             self._itr.n = n

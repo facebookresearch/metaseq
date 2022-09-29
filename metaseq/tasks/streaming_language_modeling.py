@@ -21,17 +21,14 @@ from metaseq.data import (
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
-    StreamingShuffleDataset,
-    StreamingTokenBlockDataset,
     StreamingSrcTgtDataset,
     data_utils,
     iterators,
 )
 
-from metaseq.data.deferred import DeferredDataset, SkipDeferredDataset
-
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -337,19 +334,8 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # DeferredDataset keeps a cache that maps dataset idx -> number of tokens in the data.
-        # When the token count is known, it defers actually loading the dataset element, avoiding
-        # tokenization. Computations on the tensors are also deferred until the value is actually needed.
-
-        # SkipDeferredDataset later may choose to skip over deferred tensors, never causing them to be
-        # tokenized by settings its `to_skip` property to non-zero.
-        dataset = DeferredDataset(dataset)
-
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
         # chunk into blocks of tokens
-        self.datasets[split] = StreamingTokenBlockDataset(
+        self.datasets[split] = DocumentToSequenceDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -358,9 +344,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
-            # 1284 is a randomly-generated offset to decouple the seed used here
-            # from the seed used above in StreamingShuffleDataset
-            seed=1284 + self.args.seed,
+            seed=self.args.seed,
         )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
@@ -458,21 +442,17 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, StreamingTokenBlockDataset) or isinstance(
+        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.set_num_workers(num_workers)
 
-        # SkipDeferredDataset may optionally skip elements before iteration starts,
-        # allowing it to fast-forward without returning elements to the data loader,
-        # and without tokenizing the files it is skipping.
-        # It also removes all the deferred tensors introduced by DeferredDataset
-        skip_dataset = SkipDeferredDataset(dataset, 0)
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
-            skip_dataset,
+            dataset,
             num_shards=num_shards,
             shard_id=shard_id,
             drop_last=skip_remainder_batch,
