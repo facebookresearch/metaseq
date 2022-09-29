@@ -132,7 +132,6 @@ def yield_single_sentences_pad_8(iterable, block_size, drop_last, padding_idx):
     return the example as is, without packing, truncating to block_size in cases of
     very long examples.
     """
-
     for idx, item in enumerate(iterable):
         cur_block = []
         cur_block_ids = []

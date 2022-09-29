@@ -121,7 +121,6 @@ class TransformerEncoderLayer(nn.Module):
                 `attn_mask[tgt_i, src_j] = 1` means that when calculating the
                 embedding for `tgt_i`, we exclude (mask out) `src_j`. This is
                 useful for strided self-attention.
-
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
@@ -208,22 +207,17 @@ class TransformerDecoderLayer(nn.Module):
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
+        device = torch.cuda.current_device() if initialize_params_on_gpu else None
+        dtype = utils.get_model_init_dtype(args)
+
         self.nh = args.decoder_attention_heads
         self.head_dim = int(self.embed_dim / self.nh)
-
         affine_ln = not getattr(args, "disable_affine_ln", False)
 
         self.self_attn_layer_norm = LayerNorm(
             self.embed_dim, elementwise_affine=affine_ln
         )
-
-        if initialize_params_on_gpu:
-            self.self_attn_layer_norm = utils.floating_point_precision_convertor(
-                self.self_attn_layer_norm.cuda(),
-                fp16=getattr(args, "fp16", False),
-                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                bf16=getattr(args, "bf16", False),
-            )
+        self.self_attn_layer_norm.to(device).to(dtype)
 
         if no_encoder_attn:
             self.encoder_attn = None
@@ -231,13 +225,9 @@ class TransformerDecoderLayer(nn.Module):
         else:
             self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim)
-            if initialize_params_on_gpu:
-                self.encoder_attn_layer_norm = utils.floating_point_precision_convertor(
-                    self.encoder_attn_layer_norm.cuda(),
-                    fp16=getattr(args, "fp16", False),
-                    memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                    bf16=getattr(args, "bf16", False),
-                )
+            self.encoder_attn_layer_norm = self.encoder_attn_layer_norm.to(device).to(
+                dtype
+            )
 
         ffn_dim = args.decoder_ffn_embed_dim
 
@@ -253,7 +243,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
         )
 
@@ -264,26 +254,16 @@ class TransformerDecoderLayer(nn.Module):
             full_megatron_init=getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
-            dtype=self._get_model_init_dtype(),
+            dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
-        if initialize_params_on_gpu:
-            self.final_layer_norm = utils.floating_point_precision_convertor(
-                self.final_layer_norm.cuda(),
-                fp16=getattr(args, "fp16", False),
-                memory_efficient_fp16=getattr(args, "memory_efficient_fp16", False),
-                bf16=getattr(args, "bf16", False),
-            )
+        self.final_layer_norm.to(device).to(dtype)
+
         self.need_attn = True
         self.onnx_trace = False
         self.args = args
-
-    def _get_model_init_dtype(self):
-        if getattr(self.args, "memory_efficient_fp16", False):
-            return torch.bfloat16 if getattr(self.args, "bf16", False) else torch.half
-        return torch.float32
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
@@ -299,6 +279,7 @@ class TransformerDecoderLayer(nn.Module):
             output_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
             bias=not disable_bias,
+            dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_fc2(
@@ -313,7 +294,7 @@ class TransformerDecoderLayer(nn.Module):
             input_dim,
             output_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
-            bias=not disable_bias,
+            dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_self_attention(
@@ -338,6 +319,7 @@ class TransformerDecoderLayer(nn.Module):
                 "disable_bias",
                 False,
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def build_encoder_attention(self, embed_dim, args):
@@ -351,6 +333,7 @@ class TransformerDecoderLayer(nn.Module):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
     def prepare_for_onnx_export_(self):

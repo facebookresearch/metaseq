@@ -30,7 +30,6 @@ class SequenceGenerator(nn.Module):
         profile=False,
     ):
         """Generates translations of a given source sentence.
-
         Args:
             models: ensemble of models
             beam_size (int, optional): beam width (default: 1)
@@ -282,14 +281,11 @@ class SequenceGenerator(nn.Module):
 
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
-
         See `"The Curious Case of Neural Text Degeneration"
         (Holtzman et al., 2019) <https://arxiv.org/abs/1904.09751>`_.
-
         Args:
             lprobs: (bsz x input_beam_size x vocab_size)
                 the model's log-probabilities over the vocabulary at the current step
-
         Return: A tuple of (trimed_probs, truncated_indices) where:
             trimed_probs: (bsz x input_beam_size x ?)
                 the model's probabilities over the elements selected to sample from. The

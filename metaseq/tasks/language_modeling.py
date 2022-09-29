@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
-import torch
 from omegaconf import II
 
 from metaseq import utils
@@ -323,29 +322,6 @@ class LanguageModelingTask(LegacyTask):
             },
             sizes=[np.array(src_lengths)],
         )
-
-    def inference_step(self, generator, models, sample, prefix_tokens=None, **kwargs):
-        with torch.no_grad():
-            # Generation will always be conditioned on bos_token
-            if getattr(self.args, "add_bos_token", False):
-                bos_token = self.source_dictionary.bos()
-            else:
-                bos_token = self.source_dictionary.eos()
-
-            # SequenceGenerator doesn't use src_tokens directly, we need to
-            # pass the `prefix_tokens` argument instead
-            if prefix_tokens is None and sample["net_input"]["src_tokens"].nelement():
-                prefix_tokens = sample["net_input"]["src_tokens"]
-                if prefix_tokens[:, 0].eq(bos_token).all():
-                    prefix_tokens = prefix_tokens[:, 1:]
-
-            return generator.generate(
-                models,
-                sample,
-                prefix_tokens=prefix_tokens,
-                bos_token=bos_token,
-                **kwargs,
-            )
 
     def eval_lm_dataloader(
         self,

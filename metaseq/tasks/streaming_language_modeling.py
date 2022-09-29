@@ -21,14 +21,14 @@ from metaseq.data import (
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
-    StreamingShuffleDataset,
-    StreamingTokenBlockDataset,
     StreamingSrcTgtDataset,
     data_utils,
     iterators,
 )
+
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -334,11 +334,8 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
         # chunk into blocks of tokens
-        self.datasets[split] = StreamingTokenBlockDataset(
+        self.datasets[split] = DocumentToSequenceDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -347,9 +344,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
-            # 1284 is a randomly-generated offset to decouple the seed used here
-            # from the seed used above in StreamingShuffleDataset
-            seed=1284 + self.args.seed,
+            seed=self.args.seed,
         )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
@@ -447,12 +442,13 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, StreamingTokenBlockDataset) or isinstance(
+        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.set_num_workers(num_workers)
 
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
@@ -464,6 +460,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
+
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,
@@ -471,6 +468,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             drop_last=skip_remainder_batch,
             num_workers=num_workers,
             epoch=epoch,
+            num_shards=num_shards,
         )
 
     @property
