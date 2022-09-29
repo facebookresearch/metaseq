@@ -102,6 +102,8 @@ class SequenceGenerator(nn.Module):
             bos_token (int, optional): beginning of sentence token
                 (default: self.eos)
         """
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
         incremental_states = torch.jit.annotate(
             Dict[str, Dict[str, Optional[Tensor]]], {}
         )
@@ -211,6 +213,7 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
+        # ====== generation started ================
         for step in range(start_step, max_len + 1):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -278,6 +281,11 @@ class SequenceGenerator(nn.Module):
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
+        # if torch.distributed.get_rank() == 0:
+        #     print('=== tokens:')
+        #     print(retval["tokens"])
+        #     print('=== scores:')
+        #     print(retval["scores"])
         return retval
 
     def _sample_topp(self, lprobs):
