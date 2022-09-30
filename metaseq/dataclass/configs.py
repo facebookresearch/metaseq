@@ -265,13 +265,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "[deprecated] this is now defined per Criterion"},
     )
-    heartbeat_timeout: int = field(
-        default=-1,
-        metadata={
-            "help": "kill the job if no progress is made in N seconds; "
-            "set to -1 to disable"
-        },
-    )
+
     broadcast_buffers: bool = field(
         default=False,
         metadata={
