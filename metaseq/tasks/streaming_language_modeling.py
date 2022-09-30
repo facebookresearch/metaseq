@@ -171,6 +171,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def _tokenize_one_json(self, json):
         if "tids" in json: # Han: tids (processed token ids) have priority over text
+            logger.info(f"DEBUG: loading ex with score: {json['score']}")
             return torch.LongTensor(
                 # append an end-of-document symbol after each document
                 json["tids"]
@@ -321,6 +322,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         dataset = torch.utils.data.ConcatDataset(datasets)
 
         # shuffle order across epochs
+        logger.info(f"DEBUG: seed {self.args.seed}")
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
         # chunk into blocks of tokens

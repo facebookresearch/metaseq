@@ -70,7 +70,8 @@ def main(cfg: DictConfig) -> None:
     if cfg.common.log_file is not None:
         handler = logging.FileHandler(filename=cfg.common.log_file)
         logger.addHandler(handler)
-
+        
+    logger.info(f"DEBUG: metaseq_cli.train seed {cfg.common.seed}")
     np.random.seed(cfg.common.seed)
     utils.set_torch_seed(cfg.common.seed)
 
@@ -349,6 +350,7 @@ def train(
         #     # ) # Han: we probably don't need this
         # else:
         #     valid_losses, should_stop = train(i, samples)
+        logger.info(f"DEBUG: train step {i}")
         valid_losses, should_stop = train(i, samples)
         if should_stop:
             break
