@@ -20,7 +20,7 @@ from metaseq.models import (
     register_model,
     register_model_architecture,
 )
-from metaseq.models.transformer import (
+from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
     TransformerDecoder,
 )

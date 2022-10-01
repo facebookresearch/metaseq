@@ -6,7 +6,7 @@ from torch import nn as nn
 
 from metaseq.distributed import fsdp_wrap, utils as distributed_utils
 from metaseq.models import BaseEncoder
-from metaseq.models.transformer import DEFAULT_MIN_PARAMS_TO_WRAP
+from metaseq.models.transformer_decoder import DEFAULT_MIN_PARAMS_TO_WRAP
 from metaseq.modules import Dropout, PositionalEmbedding, LayerNorm, TransformerEncoderLayer
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
 

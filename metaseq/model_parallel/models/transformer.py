@@ -9,7 +9,7 @@ from metaseq.model_parallel.modules import (
     ModelParallelTransformerDecoderLayer,
     ModelParallelTransformerEncoderLayer,
 )
-from metaseq.models.transformer import TransformerDecoder
+from metaseq.models.transformer_decoder import TransformerDecoder
 from metaseq.models.transformer_encoder import TransformerEncoder
 
 try:
