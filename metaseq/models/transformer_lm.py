@@ -24,7 +24,7 @@ from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
     TransformerDecoder,
 )
-from metaseq.models.embedding import Embedding
+from metaseq.modules.embedding import Embedding
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 

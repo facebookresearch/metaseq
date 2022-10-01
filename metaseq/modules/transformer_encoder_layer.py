@@ -9,8 +9,7 @@ import torch
 from torch import nn as nn, Tensor
 
 from metaseq import utils
-from metaseq.modules import LayerNorm, Dropout, Linear, MultiheadAttention
-from metaseq.modules.feedforward_network import FeedForwardNetwork
+from metaseq.modules import LayerNorm, Dropout, Linear, MultiheadAttention, FeedForwardNetwork
 
 
 class TransformerEncoderLayer(nn.Module):

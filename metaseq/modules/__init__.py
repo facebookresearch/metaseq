@@ -14,6 +14,7 @@ from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .transformer_decoder_layer import TransformerDecoderLayer
 from .transformer_encoder_layer import TransformerEncoderLayer
 from .linear import Linear
+from .feedforward_network import FeedForwardNetwork
 
 __all__ = [
     "Dropout",
@@ -27,4 +28,5 @@ __all__ = [
     "SinusoidalPositionalEmbedding",
     "TransformerDecoderLayer",
     "Linear",
+    "FeedForwardNetwork",
 ]
