@@ -11,7 +11,7 @@ from .learned_positional_embedding import LearnedPositionalEmbedding
 from .multihead_attention import MultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
-from .transformer_layer import TransformerDecoderLayer
+from .transformer_decoder_layer import TransformerDecoderLayer
 from .transformer_encoder_layer import TransformerEncoderLayer
 from .linear import Linear
 
