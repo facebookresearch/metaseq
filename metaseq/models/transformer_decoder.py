@@ -585,5 +585,3 @@ class TransformerDecoder(IncrementalDecoder):
             return self._future_mask
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]
-
-
