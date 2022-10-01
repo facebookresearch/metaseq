@@ -29,5 +29,5 @@ __all__ = [
     "Linear",
     "FeedForwardNetwork",
     "TransformerDecoderLayer",
-    "TransformerEncoderLayer"
+    "TransformerEncoderLayer",
 ]
