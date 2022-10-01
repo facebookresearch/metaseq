@@ -184,12 +184,6 @@ class CommonConfig(MetaseqDataclass):
     profile: bool = field(
         default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
     )
-    plasma_path: Optional[str] = field(
-        default="/tmp/plasma",
-        metadata={
-            "help": "path to run plasma_store, defaults to /tmp/plasma. Paths outside /tmp tend to fail."
-        },
-    )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
     )

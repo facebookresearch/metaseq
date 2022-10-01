@@ -45,8 +45,6 @@ class TokenBlockDataset(BaseDataset):
         break_mode=None,
         include_targets=False,
         document_sep_len=1,
-        split_path=None,
-        plasma_path=None,
     ):
 
         super().__init__()
@@ -71,7 +69,7 @@ class TokenBlockDataset(BaseDataset):
     @staticmethod
     def _build_slice_indices(
         sizes, break_mode, document_sep_len, block_size
-    ) -> Tuple[np.ndarray]:
+    ):
         """Use token_block_utils_fast to build arrays for indexing into self.dataset"""
         try:
             from metaseq.data.token_block_utils_fast import (

@@ -121,7 +121,6 @@ class LanguageModelingConfig(MetaseqDataclass):
         "dataset.dataset_impl"
     )
     data_buffer_size: int = II("dataset.data_buffer_size")
-    plasma_path: str = II("common.plasma_path")
 
 
 # TODO(susanz): Deprecate this task. This pre-date StreamingLanguageModelingTask,
@@ -225,8 +224,6 @@ class LanguageModelingTask(LegacyTask):
                 eos=self.dictionary.eos(),
                 break_mode="complete_doc",
                 include_targets=False,
-                split_path=split_path,
-                plasma_path=self.args.plasma_path,
             )
             with data_utils.numpy_seed(self.args.seed + epoch):
                 shuffle = np.random.permutation(len(dataset))
@@ -246,8 +243,6 @@ class LanguageModelingTask(LegacyTask):
             eos=self.dictionary.eos(),
             break_mode=self.args.sample_break_mode,
             include_targets=True,
-            split_path=split_path,
-            plasma_path=self.args.plasma_path,
         )
         add_eos_for_other_targets = (
             self.args.sample_break_mode is not None
