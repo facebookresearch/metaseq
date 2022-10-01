@@ -190,7 +190,7 @@ class PlasmaStore:
     @staticmethod
     def start(path=DEFAULT_PLASMA_PATH, nbytes: int = GB100) -> subprocess.Popen:
         if not PYARROW_AVAILABLE:
-            raise ImportError("please run pip install pyarrow to use --use_plasma_view")
+            raise ImportError("please run pip install pyarrow")
         # best practice is to allocate more space than we need. The limitation seems to be the size of /dev/shm
         _server = subprocess.Popen(["plasma_store", "-m", str(nbytes), "-s", path])
         plasma.connect(path, num_retries=200)  # If we can't connect we fail immediately

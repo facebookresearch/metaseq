@@ -45,7 +45,6 @@ class TokenBlockDataset(BaseDataset):
         break_mode=None,
         include_targets=False,
         document_sep_len=1,
-        use_plasma_view=False,
         split_path=None,
         plasma_path=None,
     ):
@@ -62,26 +61,12 @@ class TokenBlockDataset(BaseDataset):
         _sizes, block_to_dataset_index, slice_indices = self._build_slice_indices(
             sizes, break_mode, document_sep_len, block_size
         )
-        if use_plasma_view:
-            plasma_id = (block_size, document_sep_len, str(break_mode), len(dataset))
-            self._slice_indices = plasma_utils.PlasmaView(
-                slice_indices, split_path, (plasma_id, 0), plasma_path=plasma_path
-            )
-            self._sizes = plasma_utils.PlasmaView(
-                _sizes, split_path, (plasma_id, 1), plasma_path=plasma_path
-            )
-            self._block_to_dataset_index = plasma_utils.PlasmaView(
-                block_to_dataset_index,
-                split_path,
-                (plasma_id, 2),
-                plasma_path=plasma_path,
-            )
-        else:
-            self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
-            self._sizes = plasma_utils.PlasmaArray(_sizes)
-            self._block_to_dataset_index = plasma_utils.PlasmaArray(
-                block_to_dataset_index
-            )
+
+        self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
+        self._sizes = plasma_utils.PlasmaArray(_sizes)
+        self._block_to_dataset_index = plasma_utils.PlasmaArray(
+            block_to_dataset_index
+        )
 
     @staticmethod
     def _build_slice_indices(

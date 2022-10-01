@@ -184,9 +184,6 @@ class CommonConfig(MetaseqDataclass):
     profile: bool = field(
         default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
     )
-    use_plasma_view: bool = field(
-        default=False, metadata={"help": "Store indices and sizes in shared memory"}
-    )
     plasma_path: Optional[str] = field(
         default="/tmp/plasma",
         metadata={
