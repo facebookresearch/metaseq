@@ -22,10 +22,6 @@ from metaseq.modules.layer_norm import LayerNorm
 from metaseq.modules.linear import Linear
 
 
-def _linear(x, weight, bias=None):
-    return F.linear(x, weight, bias)
-
-
 def _ffn(x, fc1, activation_fn, fc2, dropout_module):
     x_shape = x.shape
     x = x.reshape(-1, x.size(-1))
@@ -50,9 +46,9 @@ def _ffn(x, fc1, activation_fn, fc2, dropout_module):
         x = activation_fn(x)
         x, _ = fc2(x)
     elif has_fused_bias_gelu and activation_fn == gelu:
-        x = _linear(x, fc1.weight)
+        x = F.linear(x, fc1.weight, None)
         x = fused_bias_gelu(x, fc1.bias)
-        x = _linear(x, fc2.weight, fc2.bias)
+        x = F.linear(x, fc2.weight, fc2.bias)
     else:
         x = fc1(x)
         x = activation_fn(x)
