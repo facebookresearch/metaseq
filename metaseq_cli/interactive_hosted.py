@@ -298,7 +298,9 @@ def completions(engine=None):
     # beam search top n
     if "n" in generation_args:
         if int(generation_args["n"]) > MAX_BEAM:
-            logger.warning(f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM')
+            logger.warning(
+                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
+            )
         generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
@@ -309,7 +311,9 @@ def completions(engine=None):
         if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
             # cut off the prompt to always fit with number of generations we need
             # +1 to always have the EOS token
-            logger.warning(f'input too long, truncated to {MAX_SEQ_LEN - gen_len - 1} to avoid OOM')
+            logger.warning(
+                f"input too long, truncated to {MAX_SEQ_LEN - gen_len - 1} to avoid OOM"
+            )
             prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
         request_object = {"input": prompt, **generation_args}
         BATCH_QUEUE.put(
