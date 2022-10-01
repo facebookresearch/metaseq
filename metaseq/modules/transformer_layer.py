@@ -22,7 +22,7 @@ from metaseq.modules.layer_norm import LayerNorm
 from metaseq.modules.linear import Linear
 
 
-def _ffn(x, fc1, activation_fn, fc2, dropout_module):
+def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
     x_shape = x.shape
     x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
@@ -148,7 +148,7 @@ class TransformerEncoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
-        x = _ffn(
+        x = FeedForwardNetwork(
             x,
             self.fc1,
             self.activation_fn,
@@ -474,7 +474,7 @@ class TransformerDecoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
-        x = _ffn(
+        x = FeedForwardNetwork(
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,
