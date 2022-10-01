@@ -29,7 +29,6 @@ from metaseq import (
     utils,
 )
 from metaseq.data import iterators, data_utils
-from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
