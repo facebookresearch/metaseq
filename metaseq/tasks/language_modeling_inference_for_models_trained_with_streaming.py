@@ -119,7 +119,6 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingConfig(MetaseqDatacl
     )
     data_buffer_size: int = II("dataset.data_buffer_size")
     tpu: bool = II("common.tpu")
-    use_plasma_view: bool = II("common.use_plasma_view")
     plasma_path: str = II("common.plasma_path")
     update_freq: List[int] = II("optimization.update_freq")
 
@@ -226,7 +225,6 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             eos=self.dictionary.eos(),
             break_mode=self.args.sample_break_mode,
             include_targets=True,
-            use_plasma_view=self.args.use_plasma_view,
             split_path=split_path,
             plasma_path=self.args.plasma_path,
         )
