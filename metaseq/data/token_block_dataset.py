@@ -62,14 +62,10 @@ class TokenBlockDataset(BaseDataset):
 
         self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
         self._sizes = plasma_utils.PlasmaArray(_sizes)
-        self._block_to_dataset_index = plasma_utils.PlasmaArray(
-            block_to_dataset_index
-        )
+        self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
 
     @staticmethod
-    def _build_slice_indices(
-        sizes, break_mode, document_sep_len, block_size
-    ):
+    def _build_slice_indices(sizes, break_mode, document_sep_len, block_size):
         """Use token_block_utils_fast to build arrays for indexing into self.dataset"""
         try:
             from metaseq.data.token_block_utils_fast import (
