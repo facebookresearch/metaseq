@@ -49,8 +49,11 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.tokenizer = tokenizer
 
         self.threadlocal = threading.local()
+        # resolve symlinks to for cached indexes. This lets us re-use indexes
+        # across our experiments using differently composed datasets
+        resolved_path = Path(path).resolve()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
-        self.cache = Path(f"{path}.fairseq.idx.npy")
+        self.cache = Path(f"{resolved_path}.fairseq.idx.npy")
         # only build the cache in on the primary worker to prevent overloading nfs
         if distributed_utils.get_global_rank() != 0:
             distributed_utils.global_barrier()
