@@ -111,20 +111,3 @@ class IncrementalDecoder(BaseDecoder):
                 result = module.reorder_incremental_state(incremental_state, new_order)
                 if result is not None:
                     incremental_state = result
-
-    def set_beam_size(self, beam_size):
-        """Sets the beam size in the decoder and all children."""
-        if getattr(self, "_beam_size", -1) != beam_size:
-            seen = set()
-
-            def apply_set_beam_size(module):
-                if (
-                    module != self
-                    and hasattr(module, "set_beam_size")
-                    and module not in seen
-                ):
-                    seen.add(module)
-                    module.set_beam_size(beam_size)
-
-            self.apply(apply_set_beam_size)
-            self._beam_size = beam_size
