@@ -61,10 +61,7 @@ class TransformerEncoder(BaseEncoder):
             self.layers.append(self.build_encoder_layer(args))
         self.num_layers = len(self.layers)
 
-        if args.encoder_normalize_before:
-            self.layer_norm = LayerNorm(embed_dim)
-        else:
-            self.layer_norm = None
+        self.layer_norm = LayerNorm(embed_dim)
 
     def build_encoder_layer(self, args):
         layer = TransformerEncoderLayer(args)

@@ -19,15 +19,7 @@ from metaseq.modules import (
 
 
 class TransformerEncoderLayer(nn.Module):
-    """Encoder layer block.
-
-    In the original paper each operation (multi-head attention or FFN) is
-    postprocessed with: `dropout -> add residual -> layernorm`. In the
-    tensor2tensor code they suggest that learning is more robust when
-    preprocessing each layer with layernorm and postprocessing with:
-    `dropout -> add residual`. We default to the approach in the paper, but the
-    tensor2tensor approach can be enabled by setting
-    *args.encoder_normalize_before* to ``True``.
+    """Pre-norm Encoder layer block.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
@@ -40,7 +32,6 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.normalize_before = args.encoder_normalize_before
         ffn_dim = args.encoder_ffn_embed_dim
         self.activation_fn = utils.get_activation_fn(
             activation=getattr(args, "activation_fn", "relu") or "relu"
@@ -89,8 +80,7 @@ class TransformerEncoderLayer(nn.Module):
             attn_mask = attn_mask.masked_fill(attn_mask.to(torch.bool), -1e8)
 
         residual = x
-        if self.normalize_before:
-            x = self.self_attn_layer_norm(x)
+        x = self.self_attn_layer_norm(x)
         x, _ = self.self_attn(
             query=x,
             key=x,
@@ -102,12 +92,9 @@ class TransformerEncoderLayer(nn.Module):
 
         x = self.dropout_module(x)
         x = self.residual_connection(x, residual)
-        if not self.normalize_before:
-            x = self.self_attn_layer_norm(x)
 
         residual = x
-        if self.normalize_before:
-            x = self.final_layer_norm(x)
+        x = self.final_layer_norm(x)
         x = FeedForwardNetwork(
             x,
             self.fc1,
@@ -117,6 +104,4 @@ class TransformerEncoderLayer(nn.Module):
         )
         l_aux = None
         x = self.residual_connection(x, residual)
-        if not self.normalize_before:
-            x = self.final_layer_norm(x)
         return x, l_aux
