@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from omegaconf import DictConfig
 from torch import Tensor
 
 from metaseq.dataclass.utils import gen_parser_from_dataclass
