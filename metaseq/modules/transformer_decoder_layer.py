@@ -25,15 +25,9 @@ from metaseq.modules.fused_bias_gelu import (
 
 
 class TransformerDecoderLayer(nn.Module):
-    """Decoder layer block.
+    """Pre-norm Decoder layer block.
 
-    In the original paper each operation (multi-head attention, encoder
-    attention or FFN) is postprocessed with: `dropout -> add residual ->
-    layernorm`. In the tensor2tensor code they suggest that learning is more
-    robust when preprocessing each layer with layernorm and postprocessing with:
-    `dropout -> add residual`. We default to the approach in the paper, but the
-    tensor2tensor approach can be enabled by setting
-    *args.decoder_normalize_before* to ``True``.
+    Note that we have found model training to require pre-norm to remain stable.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
@@ -60,7 +54,6 @@ class TransformerDecoderLayer(nn.Module):
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
         )
-        self.normalize_before = args.decoder_normalize_before
 
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
@@ -254,8 +247,7 @@ class TransformerDecoderLayer(nn.Module):
 
         residual = x
 
-        if self.normalize_before:
-            x = self.self_attn_layer_norm(x)
+        x = self.self_attn_layer_norm(x)
         if prev_self_attn_state is not None:
             prev_key, prev_value = prev_self_attn_state[:2]
             saved_state: Dict[str, Optional[Tensor]] = {
@@ -301,13 +293,10 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
-        if not self.normalize_before:
-            x = self.self_attn_layer_norm(x)
 
         if self.encoder_attn is not None and encoder_out is not None:
             residual = x
-            if self.normalize_before:
-                x = self.encoder_attn_layer_norm(x)
+            x = self.encoder_attn_layer_norm(x)
             if prev_attn_state is not None:
                 prev_key, prev_value = prev_attn_state[:2]
                 saved_state: Dict[str, Optional[Tensor]] = {
@@ -331,11 +320,9 @@ class TransformerDecoderLayer(nn.Module):
             )
             x = self.dropout_module(x)
             x = self.residual_connection(x, residual)
-            if not self.normalize_before:
-                x = self.encoder_attn_layer_norm(x)
+
         residual = x
-        if self.normalize_before:
-            x = self.final_layer_norm(x)
+        x = self.final_layer_norm(x)
         x = FeedForwardNetwork(
             x,
             fc1=self.fc1,
@@ -345,8 +332,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         l_aux = None
         x = self.residual_connection(x, residual)
-        if not self.normalize_before:
-            x = self.final_layer_norm(x)
         if self.onnx_trace and incremental_state is not None:
             saved_state = self.self_attn._get_input_buffer(incremental_state)
             assert saved_state is not None
