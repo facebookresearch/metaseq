@@ -215,8 +215,6 @@ class TransformerDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        if need_head_weights:
-            need_attn = True
 
         residual = x
 
