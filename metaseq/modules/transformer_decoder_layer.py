@@ -160,20 +160,6 @@ class TransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
         )
 
-    def build_encoder_attention(self, embed_dim, args):
-        return MultiheadAttention(
-            embed_dim,
-            args.decoder_attention_heads,
-            kdim=getattr(args, "encoder_embed_dim", None),
-            vdim=getattr(args, "encoder_embed_dim", None),
-            dropout=args.attention_dropout,
-            encoder_decoder_attention=True,
-            initialize_params_on_gpu=getattr(
-                args, "tensor_parallel_init_model_on_gpu", False
-            ),
-            dtype=utils.get_model_init_dtype(args),
-        )
-
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
