@@ -191,7 +191,7 @@ class GeneratorHubInterface(nn.Module):
         if not skip_prepare_for_inference:
             for model in self.models:
                 # For moe models and eval_lm
-                model.prepare_for_inference_(cfg)
+                model.make_generation_fast_()
 
         # Load alignment dictionary for unknown word replacement
         # (None if no unknown word replacement, empty if no path to align dictionary)

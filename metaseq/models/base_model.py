@@ -98,20 +98,9 @@ class BaseModel(nn.Module):
             if hasattr(m, "set_num_updates") and m != self:
                 m.set_num_updates(num_updates)
 
-    def prepare_for_inference_(self, cfg: DictConfig):
-        """Prepare model for inference."""
-        kwargs = {}
-        kwargs["beamable_mm_beam_size"] = (
-            None
-            if getattr(cfg.generation, "no_beamable_mm", False)
-            else getattr(cfg.generation, "beam", 5)
-        )
-        self.make_generation_fast_(**kwargs)
-
     def make_generation_fast_(self, **kwargs):
         """
         Legacy entry point to optimize model for faster generation.
-        Prefer prepare_for_inference_.
         """
         if self._is_generation_fast:
             return  # only apply once
