@@ -31,14 +31,11 @@ class TransformerDecoderLayer(nn.Module):
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
-        no_encoder_attn (bool, optional): whether to attend to encoder outputs
-            (default: False).
     """
 
     def __init__(
         self,
         args,
-        no_encoder_attn=False,
         add_bias_kv=False,
         add_zero_attn=False,
     ):
@@ -70,15 +67,8 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.self_attn_layer_norm.to(device).to(dtype)
 
-        if no_encoder_attn:
-            self.encoder_attn = None
-            self.encoder_attn_layer_norm = None
-        else:
-            self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
-            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim)
-            self.encoder_attn_layer_norm = self.encoder_attn_layer_norm.to(device).to(
-                dtype
-            )
+        self.encoder_attn = None
+        self.encoder_attn_layer_norm = None
 
         ffn_dim = args.decoder_ffn_embed_dim
 

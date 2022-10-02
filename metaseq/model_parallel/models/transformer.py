@@ -48,8 +48,8 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
     is a :class:`ModelParallelTransformerDecoderLayer`.
     """
 
-    def build_base_decoder_layer(self, args, no_encoder_attn=False, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args, no_encoder_attn)
+    def build_base_decoder_layer(self, args, **kwargs):
+        return ModelParallelTransformerDecoderLayer(args)
 
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
