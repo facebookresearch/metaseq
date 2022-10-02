@@ -99,7 +99,6 @@ class TransformerDecoderLayer(nn.Module):
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
 
-        self.need_attn = True
         self.onnx_trace = False
         self.args = args
 
@@ -241,5 +240,5 @@ class TransformerDecoderLayer(nn.Module):
             return x, attn, self_attn_state
         return x, attn, None, l_aux
 
-    def make_generation_fast_(self, need_attn: bool = False, **kwargs):
-        self.need_attn = need_attn
+    def make_generation_fast_(self, **kwargs):
+        pass
