@@ -56,9 +56,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     decoder_attention_heads: int = field(
         default=8, metadata={"help": "num decoder attention heads"}
     )
-    decoder_normalize_before: bool = field(
-        default=False, metadata={"help": "apply layernorm before each decoder block"}
-    )
     share_decoder_input_output_embed: bool = field(
         default=False, metadata={"help": "share decoder input and output embeddings"}
     )
@@ -226,9 +223,6 @@ def base_lm_architecture(args):
         args, "decoder_output_dim", args.decoder_embed_dim
     )
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
-    # Model training is not stable without this
-    args.decoder_normalize_before = True
 
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
