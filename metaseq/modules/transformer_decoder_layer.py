@@ -193,7 +193,6 @@ class TransformerDecoderLayer(nn.Module):
         self,
         x,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        prev_self_attn_state: Optional[List[torch.Tensor]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
     ):
@@ -206,19 +205,7 @@ class TransformerDecoderLayer(nn.Module):
         """
 
         residual = x
-
         x = self.self_attn_layer_norm(x)
-        if prev_self_attn_state is not None:
-            prev_key, prev_value = prev_self_attn_state[:2]
-            saved_state: Dict[str, Optional[Tensor]] = {
-                "prev_key": prev_key,
-                "prev_value": prev_value,
-            }
-            if len(prev_self_attn_state) >= 3:
-                saved_state["prev_key_padding_mask"] = prev_self_attn_state[2]
-            assert incremental_state is not None
-            self.self_attn._set_input_buffer(incremental_state, saved_state)
-
         x, attn = self.forward_attention(
             query=x,
             key=x,
