@@ -58,6 +58,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
 
     See "Megatron-LM: https://arxiv.org/pdf/1909.08053.pdf" for more details.
     """
+
     # TODO[susanz]: unify method signatures with non-model-parallel version.
     def build_fc1(
         self,
