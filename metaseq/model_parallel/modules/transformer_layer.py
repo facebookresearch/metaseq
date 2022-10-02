@@ -148,20 +148,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             bias=not getattr(args, "disable_bias", False),
         )
 
-    def build_encoder_attention(self, embed_dim, args, **unused_kwargs):
-        return ModelParallelMultiheadAttention(
-            embed_dim=embed_dim,
-            num_heads=args.decoder_attention_heads,
-            kdim=getattr(args, "encoder_embed_dim", None),
-            vdim=getattr(args, "encoder_embed_dim", None),
-            dropout=args.attention_dropout,
-            encoder_decoder_attention=True,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
-            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            num_layers=args.decoder_layers,
-            dtype=utils.get_model_init_dtype(args),
-        )
-
     def forward_attention(
         self,
         query,
