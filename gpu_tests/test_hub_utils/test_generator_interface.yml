@@ -1,0 +1,35 @@
+text: The man turned on the faucet so the toilet filled with water.
+text_offset:
+- 0
+- 3
+- 7
+- 14
+- 17
+- 21
+- 23
+- 26
+- 28
+- 31
+- 35
+- 42
+- 49
+- 54
+- 60
+tokens:
+- </s>
+- The
+- ' man'
+- ' turned'
+- ' on'
+- ' the'
+- ' f'
+- auc
+- et
+- ' so'
+- ' the'
+- ' toilet'
+- ' filled'
+- ' with'
+- ' water'
+- .
+top_logprobs: null

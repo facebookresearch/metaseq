@@ -159,6 +159,7 @@ def do_setup(package_data):
             "omegaconf<=2.1.1",
             "pre-commit",
             "pytest",
+            "pytest-regressions",
             "regex",
             "sklearn",  # for evals
             "sacrebleu",  # for evals

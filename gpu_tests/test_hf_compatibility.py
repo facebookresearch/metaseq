@@ -1,9 +1,14 @@
-#!/usr/bin/env python3
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 import os
 from metaseq import checkpoint_utils, tasks, utils
 from transformers import OPTForCausalLM
 from packaging import version
 import torch
+import torch.distributed as dist
 import unittest
 import torch.nn.functional as F
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
@@ -11,6 +16,7 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
+from megatron.mpu import destroy_model_parallel
 
 
 prompts = [
@@ -27,7 +33,7 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 
     prompt_ids = []
     for prompt in prompts:
-        input_ids = tensorize_input(tokenizer, prompt)
+        input_ids = tensorize_input(tokenizer, prompt).cuda()
         # Pad sequence to length 32 to avoid Megatron assertion errors
         orig_dims.append(input_ids.shape[1])
         input_ids = F.pad(
@@ -80,6 +86,10 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
         logits[:orig_dim].unsqueeze(0)
         for logits, orig_dim in zip(gathered_logits, orig_dims)
     ]
+
+    # Destroy torch distributed process groups. This needs to be executed in each spawned process
+    # https://github.com/pytorch/pytorch/issues/48203
+    dist.destroy_process_group()
     return trimmed_logits
 
 
@@ -103,10 +113,10 @@ class TestHFCompatibility(unittest.TestCase):
 
         model = checkpoint[0][0].eval()
 
-        hf_model = OPTForCausalLM.from_pretrained(model_path)
+        hf_model = OPTForCausalLM.from_pretrained(model_path).cuda()
 
         for prompt in prompts:
-            input_ids = tensorize_input(tokenizer, prompt)
+            input_ids = tensorize_input(tokenizer, prompt).cuda()
             with torch.no_grad():
                 logits_metaseq = model(input_ids)[0]
                 logits_hf = hf_model(input_ids)[0]
@@ -116,7 +126,7 @@ class TestHFCompatibility(unittest.TestCase):
 
             # Assert that HF and metaseq versions of the same model predict the same logits
             self.assertTrue(
-                torch.allclose(logits_metaseq.cpu(), logits_hf.cpu(), atol=1e-3)
+                torch.allclose(logits_metaseq.cpu().float(), logits_hf.cpu(), atol=1e-1)
             )
 
             # Assert that HF and metaseq versions of the same model predict the same word
@@ -143,7 +153,7 @@ class TestHFCompatibility(unittest.TestCase):
         model = checkpoint[0][0].eval()
 
         for prompt, logits_mp in zip(prompts, mp_logits_list):
-            input_ids = tensorize_input(tokenizer, prompt)
+            input_ids = tensorize_input(tokenizer, prompt).cuda()
             with torch.no_grad():
                 logits_metaseq = model(input_ids)[0]
 
@@ -159,6 +169,11 @@ class TestHFCompatibility(unittest.TestCase):
 
             # Assert that MP and metaseq versions of the same model predict the same word
             self.assertEqual(metaseq_next_token, mp_next_token)
+
+    def tearDown(self):
+        # Tear down model parallel
+        destroy_model_parallel()
+        distributed_utils._USE_MEGATRON = False
 
 
 if __name__ == "__main__":

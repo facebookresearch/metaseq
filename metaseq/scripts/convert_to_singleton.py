@@ -49,7 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger("convert_to_singleton")
 
 
-def create_generation_config_with_defaults(model_path):
+def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"):
     files = glob.glob(f"{model_path}/reshard*.pt")
 
     MP = len(files)
@@ -62,6 +62,8 @@ def create_generation_config_with_defaults(model_path):
         str(MP),
         "--distributed-world-size",
         str(MP),
+        "--ddp-backend",
+        ddp_backend,
         "--task",
         "language_modeling",
         "--bpe-merges",

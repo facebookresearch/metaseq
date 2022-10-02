@@ -104,6 +104,7 @@ def fsdp_enable_wrap(
         compute_dtype = torch.float32
     fsdp_config = {
         "process_group": group,
+        "process_group_reduce_scatter": group,
         "reshard_after_forward": not cfg.no_reshard_after_forward,
         "mixed_precision": cfg.fp16 and not cfg.memory_efficient_fp16,
         "fp32_reduce_scatter": cfg.fp32_reduce_scatter,
