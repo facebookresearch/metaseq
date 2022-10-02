@@ -61,11 +61,9 @@ class TransformerDecoder(IncrementalDecoder):
         args (argparse.Namespace): parsed command-line arguments
         dictionary (~metaseq.data.Dictionary): decoding dictionary
         embed_tokens (torch.nn.Embedding): output embedding
-        no_encoder_attn (bool, optional): whether to attend to encoder outputs
-            (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -128,12 +126,7 @@ class TransformerDecoder(IncrementalDecoder):
         self.layers = nn.ModuleList([])
         layers = []
         for i in range(args.decoder_layers):
-            layers.append(
-                self.build_decoder_layer(
-                    args,
-                    no_encoder_attn=no_encoder_attn,
-                )
-            )
+            layers.append(self.build_decoder_layer(args))
         if getattr(self.args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
             assert (
                 len(layers) % self.args.fsdp_checkpoint_wrap_layer_frequency == 0
@@ -254,11 +247,11 @@ class TransformerDecoder(IncrementalDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args, no_encoder_attn=False):
-        return TransformerDecoderLayer(args, no_encoder_attn=no_encoder_attn)
+    def build_base_decoder_layer(self, args):
+        return TransformerDecoderLayer(args)
 
-    def build_decoder_layer(self, args, no_encoder_attn=False):
-        layer = self.build_base_decoder_layer(args, no_encoder_attn)
+    def build_decoder_layer(self, args):
+        layer = self.build_base_decoder_layer(args)
         for name, param in layer.named_parameters():
             _log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
