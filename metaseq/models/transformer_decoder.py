@@ -471,8 +471,6 @@ class TransformerDecoder(IncrementalDecoder):
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == last_layer_idx)),
-                need_head_weights=bool((idx == last_layer_idx)),
             )
             l_aux.append(l_aux_i)
             if layer_attn is not None and idx == last_layer_idx:
