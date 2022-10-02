@@ -176,7 +176,6 @@ class GeneratorHubInterface(nn.Module):
         cfg,
         task,
         models,
-        moe_disable_padding=True,
         skip_prepare_for_inference=False,
     ):
         super().__init__()

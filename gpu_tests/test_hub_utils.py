@@ -107,7 +107,6 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
         x["args"],
         x["task"],
         x["models"],
-        moe_disable_padding=False,
         skip_prepare_for_inference=True,
     )
 
