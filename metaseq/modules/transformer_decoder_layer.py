@@ -67,9 +67,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.self_attn_layer_norm.to(device).to(dtype)
 
-        self.encoder_attn = None
-        self.encoder_attn_layer_norm = None
-
         ffn_dim = args.decoder_ffn_embed_dim
 
         self.activation_fn = utils.get_activation_fn(
@@ -283,34 +280,6 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
-
-        if self.encoder_attn is not None and encoder_out is not None:
-            residual = x
-            x = self.encoder_attn_layer_norm(x)
-            if prev_attn_state is not None:
-                prev_key, prev_value = prev_attn_state[:2]
-                saved_state: Dict[str, Optional[Tensor]] = {
-                    "prev_key": prev_key,
-                    "prev_value": prev_value,
-                }
-                if len(prev_attn_state) >= 3:
-                    saved_state["prev_key_padding_mask"] = prev_attn_state[2]
-                assert incremental_state is not None
-                self.encoder_attn._set_input_buffer(incremental_state, saved_state)
-
-            x, attn = self.encoder_attn(
-                query=x,
-                key=encoder_out,
-                value=encoder_out,
-                key_padding_mask=encoder_padding_mask,
-                incremental_state=incremental_state,
-                static_kv=True,
-                need_weights=need_attn or (not self.training and self.need_attn),
-                need_head_weights=need_head_weights,
-            )
-            x = self.dropout_module(x)
-            x = self.residual_connection(x, residual)
-
         residual = x
         x = self.final_layer_norm(x)
         x = FeedForwardNetwork(
