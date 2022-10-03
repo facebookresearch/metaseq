@@ -7,163 +7,21 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 
 from metaseq import utils
-from metaseq.modules import gelu, MultiheadAttention
-from metaseq.modules.dropout import Dropout
+from metaseq.modules import (
+    gelu,
+    MultiheadAttention,
+    Dropout,
+    FeedForwardNetwork,
+    LayerNorm,
+    Linear,
+)
 from metaseq.modules.fused_bias_gelu import (
-    fused_bias_gelu,
     has_fused_bias_gelu,
     load_megatron_fused_kernel,
 )
-from metaseq.modules.layer_norm import LayerNorm
-from metaseq.modules.linear import Linear
-
-
-def _linear(x, weight, bias=None):
-    return F.linear(x, weight, bias)
-
-
-def _ffn(x, fc1, activation_fn, fc2, dropout_module):
-    x_shape = x.shape
-    x = x.reshape(-1, x.size(-1))
-    # apex fused bias gelu is not yet supported with megatron model parallel
-    # TODO [namangoyal]: Find better way to do this
-    model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
-    if (
-        model_parallel
-        and activation_fn == gelu
-        and has_fused_bias_gelu
-        and fc1.bias is not None
-    ):
-        # here, we do the bias computation outside fc1 and fc2 to take advantage of fused_bias_gelu
-        assert fc1.skip_bias_add
-        x, bias_fc1 = fc1(x)
-        x = fused_bias_gelu(x, bias_fc1)
-        x, bias_fc2 = fc2(x)
-        x = x + bias_fc2
-    elif model_parallel:
-        # here, we do the bias computation inside fc1 and fc2 AND gather_output
-        x, _ = fc1(x)
-        x = activation_fn(x)
-        x, _ = fc2(x)
-    elif has_fused_bias_gelu and activation_fn == gelu:
-        x = _linear(x, fc1.weight)
-        x = fused_bias_gelu(x, fc1.bias)
-        x = _linear(x, fc2.weight, fc2.bias)
-    else:
-        x = fc1(x)
-        x = activation_fn(x)
-        x = fc2(x)
-    x = x.view(x_shape)
-    x = dropout_module(x)
-    return x
-
-
-class TransformerEncoderLayer(nn.Module):
-    """Encoder layer block.
-
-    In the original paper each operation (multi-head attention or FFN) is
-    postprocessed with: `dropout -> add residual -> layernorm`. In the
-    tensor2tensor code they suggest that learning is more robust when
-    preprocessing each layer with layernorm and postprocessing with:
-    `dropout -> add residual`. We default to the approach in the paper, but the
-    tensor2tensor approach can be enabled by setting
-    *args.encoder_normalize_before* to ``True``.
-
-    Args:
-        args (argparse.Namespace): parsed command-line arguments
-    """
-
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        self.embed_dim = args.encoder_embed_dim
-        self.self_attn = self.build_self_attention(self.embed_dim, args)
-        self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.normalize_before = args.encoder_normalize_before
-        ffn_dim = args.encoder_ffn_embed_dim
-        self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, "activation_fn", "relu") or "relu"
-        )
-        self.fc1 = Linear(self.embed_dim, ffn_dim)
-        self.fc2 = Linear(ffn_dim, self.embed_dim)
-        self.final_layer_norm = LayerNorm(self.embed_dim)
-
-    def build_self_attention(self, embed_dim, args):
-        return MultiheadAttention(
-            embed_dim,
-            args.encoder_attention_heads,
-            dropout=args.attention_dropout,
-            self_attention=True,
-        )
-
-    def residual_connection(self, x, residual):
-        return residual + x
-
-    def forward(
-        self,
-        x,
-        encoder_padding_mask: Optional[Tensor],
-        attn_mask: Optional[Tensor] = None,
-    ):
-        """
-        Args:
-            x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
-            encoder_padding_mask (ByteTensor): binary ByteTensor of shape
-                `(batch, seq_len)` where padding elements are indicated by ``1``.
-            attn_mask (ByteTensor): binary tensor of shape `(tgt_len, src_len)`,
-                where `tgt_len` is the length of output and `src_len` is the
-                length of input, though here both are equal to `seq_len`.
-                `attn_mask[tgt_i, src_j] = 1` means that when calculating the
-                embedding for `tgt_i`, we exclude (mask out) `src_j`. This is
-                useful for strided self-attention.
-        Returns:
-            encoded output of shape `(seq_len, batch, embed_dim)`
-        """
-        # anything in original attn_mask = 1, becomes -1e8
-        # anything in original attn_mask = 0, becomes 0
-        # Note that we cannot use -inf here, because at some edge cases,
-        # the attention weight (before softmax) for some padded element in query
-        # will become -inf, which results in NaN in model parameters
-        if attn_mask is not None:
-            attn_mask = attn_mask.masked_fill(attn_mask.to(torch.bool), -1e8)
-
-        residual = x
-        if self.normalize_before:
-            x = self.self_attn_layer_norm(x)
-        x, _ = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
-            key_padding_mask=encoder_padding_mask,
-            need_weights=False,
-            attn_mask=attn_mask,
-        )
-
-        x = self.dropout_module(x)
-        x = self.residual_connection(x, residual)
-        if not self.normalize_before:
-            x = self.self_attn_layer_norm(x)
-
-        residual = x
-        if self.normalize_before:
-            x = self.final_layer_norm(x)
-        x = _ffn(
-            x,
-            self.fc1,
-            self.activation_fn,
-            self.fc2,
-            self.dropout_module,
-        )
-        l_aux = None
-        x = self.residual_connection(x, residual)
-        if not self.normalize_before:
-            x = self.final_layer_norm(x)
-        return x, l_aux
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -478,7 +336,7 @@ class TransformerDecoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
-        x = _ffn(
+        x = FeedForwardNetwork(
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,

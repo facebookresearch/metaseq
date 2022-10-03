@@ -94,37 +94,3 @@ class IncrementalDecoder(BaseDecoder):
         order changes between time steps based on the selection of beams.
         """
         pass
-
-    def reorder_incremental_state_scripting(
-        self,
-        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
-        new_order: Tensor,
-    ):
-        """Main entry point for reordering the incremental state.
-
-        Due to limitations in TorchScript, we call this function in
-        :class:`metaseq.sequence_generator.SequenceGenerator` instead of
-        calling :func:`reorder_incremental_state` directly.
-        """
-        for module in self.modules():
-            if hasattr(module, "reorder_incremental_state"):
-                result = module.reorder_incremental_state(incremental_state, new_order)
-                if result is not None:
-                    incremental_state = result
-
-    def set_beam_size(self, beam_size):
-        """Sets the beam size in the decoder and all children."""
-        if getattr(self, "_beam_size", -1) != beam_size:
-            seen = set()
-
-            def apply_set_beam_size(module):
-                if (
-                    module != self
-                    and hasattr(module, "set_beam_size")
-                    and module not in seen
-                ):
-                    seen.add(module)
-                    module.set_beam_size(beam_size)
-
-            self.apply(apply_set_beam_size)
-            self._beam_size = beam_size
