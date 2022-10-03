@@ -80,9 +80,9 @@ class HistoryMeter(Meter):
     @property
     def avg(self):
         if type(self.history[0]) is dict:
-            return sum([h["value"] for h in self.history])/len(self.history)
+            return sum([h["value"] for h in self.history]) / len(self.history)
         else:
-            return sum(self.history)/len(self.history)
+            return sum(self.history) / len(self.history)
 
     @property
     def smoothed_value(self) -> float:
