@@ -16,6 +16,10 @@ def Embedding(
     initialize_params_on_gpu=False,
     dtype: Optional[torch.dtype] = None,
 ):
+    """
+    Returns an embedding initialized to normal(0, 1/sqrt(embedding_dim))
+    with the padding token embedding initialized to 0.
+    """
     # Passing weights initialized on GPU.
     device = torch.cuda.current_device() if initialize_params_on_gpu else None
     if dtype is None:
