@@ -11,12 +11,13 @@ import os
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional
-from tokenizers import ByteLevelBPETokenizer
+from transformers import GPT2Tokenizer
 
 import numpy as np
 import torch
 from omegaconf import open_dict
 from torch import nn
+from tqdm import tqdm
 
 from metaseq import checkpoint_utils, tasks
 from metaseq import utils
@@ -104,8 +105,8 @@ def from_pretrained(
     }
 
 
-def tensorize_input(tokenizer, prompt):
-    input_ids = torch.LongTensor(tokenizer.encode(prompt).ids).unsqueeze(0)
+def tensorize_input(tokenizer, prompts):
+    input_ids = tokenizer(prompts, return_tensors="pt").input_ids
     input_ids = torch.cat([torch.tensor([[0]]), input_ids], dim=-1)
     input_ids = input_ids
     return input_ids
@@ -113,7 +114,7 @@ def tensorize_input(tokenizer, prompt):
 
 def get_next_token(logits, tokenizer):
     pred_next_token = torch.argmax(logits[0, -1], -1)
-    next_token = tokenizer.decode([pred_next_token])
+    next_token = tokenizer.convert_ids_to_tokens([pred_next_token])
     next_token = next_token[0].replace("Ġ", "")
     return next_token
 
@@ -121,7 +122,8 @@ def get_next_token(logits, tokenizer):
 def setup_vocab_and_merges(model_path):
     vocab_file = os.path.join(model_path, "gpt2-vocab.json")
     merges_file = os.path.join(model_path, "gpt2-merges.txt")
-    tokenizer = ByteLevelBPETokenizer.from_file(vocab_file, merges_file)
+    tokenizer = GPT2Tokenizer(vocab_file, merges_file)
+    tokenizer.save_pretrained(model_path)
     return vocab_file, merges_file, tokenizer
 
 
@@ -141,6 +143,15 @@ class GeneratorHubInterface(nn.Module):
     def setup_task(self):
         self.src_dict = self.task.source_dictionary
         self.tgt_dict = self.task.target_dictionary
+
+        # store special token indices for
+        self._pad_token_ind = self.tgt_dict.pad_index
+        self._special_token_inds = [
+            self.tgt_dict.eos_index,
+            self.tgt_dict.pad_index,
+            self.tgt_dict.bos_index,
+            self.tgt_dict.unk_index,
+        ]
 
         if "langs" in self.cfg.task:
             self.langs = self.cfg.task.langs
@@ -240,6 +251,7 @@ class GeneratorHubInterface(nn.Module):
         batch_size=None,
         **kwargs,
     ) -> List[List[Dict[str, torch.Tensor]]]:
+        import torch
         if torch.is_tensor(tokenized_sentences) and tokenized_sentences.dim() == 1:
             return self.generate(
                 tokenized_sentences.unsqueeze(0),
@@ -255,7 +267,6 @@ class GeneratorHubInterface(nn.Module):
             gen_args.beam = beam
             for k, v in kwargs.items():
                 setattr(gen_args, k, v)
-
         generator = self.task.build_generator(self.models, gen_args)
 
         inference_step_args = inference_step_args or {}
@@ -270,7 +281,7 @@ class GeneratorHubInterface(nn.Module):
         )
         # To ensure even batch count across workers, some batches might be dummy batches. We shouldn't score these.
         first_batch = None
-        for batch in batches:
+        for batch in tqdm(batches):
             is_dummy_batch = False
             if not first_batch and "net_input" in batch:
                 first_batch = batch
@@ -281,13 +292,46 @@ class GeneratorHubInterface(nn.Module):
                 else:
                     continue
             batch = utils.apply_to_sample(lambda t: t.to(self.device), batch)
+
             translations = self.task.inference_step(
                 generator, self.models, batch, **inference_step_args
             )
+            
             if is_dummy_batch:  # Don't score it or add it to hypotheses
                 continue
-            for id, hypos in zip(batch["id"].tolist(), translations):
-                results.append((id, hypos))
+            if isinstance(translations, list):
+                # For SequenceScorer
+                for id, hypos in zip(batch["id"].tolist(), translations):
+                    results.append((id, hypos))
+            else:
+                # For Sequence Generator
+
+                for id, i in zip(
+                    batch["id"].tolist(), range(translations["tokens"].size(0))
+                ):
+                    beams = []
+                    for j in range(0, translations["tokens"].size(1)):
+
+                        (
+                            tokens,
+                            scores,
+                            distributions,
+                        ) = GeneratorInterface._filter_special(
+                            self._pad_token_ind,
+                            self._special_token_inds,
+                            translations["tokens"][i][j],
+                            translations["scores"][i][j],
+                            distributions=None,
+                        )
+                        beams.append(
+                            {
+                                "id": id,
+                                "tokens": [x.item() for x in list(tokens)],
+                                "positional_scores": [s.item() for s in list(scores)],
+                            }
+                        )
+
+                    results.append((id, beams))
 
         # sort output to match input order
         outputs = [hypos for _, hypos in sorted(results, key=lambda x: x[0])]
@@ -326,6 +370,7 @@ class GeneratorHubInterface(nn.Module):
                                 )
                             )
                         )
+
         return outputs
 
     def get_sentence_and_language(self, sentence: str):
@@ -628,7 +673,6 @@ class GeneratorInterface:
             self.cfg.generation.max_len_a = 0
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
-
             need_logprobs = True if logprobs > 0 else False
             generator = self.task.build_generator(
                 self.models,
@@ -645,7 +689,7 @@ class GeneratorInterface:
             translations = self.task.inference_step(generator, self.models, batch)
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
-            
+
             all_tokens = translations["tokens"].cpu()[: len(inputs)]
             all_scores = translations["scores"].cpu()[: len(inputs)]
             if logprobs > 0:
@@ -665,7 +709,11 @@ class GeneratorInterface:
                     prompt_len = lengths[i]
 
                     tokens, scores, distributions = self._filter_special(
-                        tokens, scores, distributions
+                        self._pad_token_ind,
+                        self._special_token_inds,
+                        tokens,
+                        scores,
+                        distributions,
                     )
 
                     if echo:
@@ -730,8 +778,10 @@ class GeneratorInterface:
         )
         return retval
 
+    @staticmethod
     def _filter_special(
-        self,
+        pad_token_ind,
+        special_token_inds,
         tokens: List[int],
         scores: List[float],
         distributions,
@@ -747,12 +797,12 @@ class GeneratorInterface:
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):
-            if t == self._pad_token_ind:
+            if t == pad_token_ind:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t in self._special_token_inds and i > 0:
-                # and other special tokens should end things
+            if t in special_token_inds and i > 0:
+                # an special tokens should end things
                 mask.append(False)
                 break
             mask.append(True)

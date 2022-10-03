@@ -164,12 +164,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
 
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
-
-        if max(args.update_freq) > 1:
-            raise NotImplementedError(
-                "--update-freq is not compatible with StreamingLanguageModelingTask"
-            )
-
+            
         self.sentinel_end = "<eoss>"
         self.sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
