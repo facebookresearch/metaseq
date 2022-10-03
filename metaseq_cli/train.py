@@ -626,6 +626,8 @@ def validate(
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
             valid_losses.append(stats[cfg.checkpoint.best_checkpoint_metric])
     stats = get_valid_stats(cfg, trainer, combined_agg.get_smoothed_values())
+    if "batch_loss" in stats:
+        del stats["batch_loss"]
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 
