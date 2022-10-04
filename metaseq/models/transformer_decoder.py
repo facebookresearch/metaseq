@@ -175,14 +175,11 @@ class TransformerDecoder(IncrementalDecoder):
 
         self.num_layers = len(self.layers)
 
-        if args.decoder_normalize_before:
-            self.layer_norm = LayerNorm(
-                embed_dim,
-                elementwise_affine=not getattr(args, "disable_affine_ln", False),
-            )
-            self.layer_norm.to(device).to(dtype)
-        else:
-            self.layer_norm = None
+        self.layer_norm = LayerNorm(
+            embed_dim,
+            elementwise_affine=not getattr(args, "disable_affine_ln", False),
+        )
+        self.layer_norm.to(device).to(dtype)
 
         self.project_out_dim = (
             Linear(
