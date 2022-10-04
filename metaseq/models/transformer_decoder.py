@@ -27,8 +27,6 @@ from metaseq.modules.checkpoint_activations import checkpoint_wrapper
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MAX_SOURCE_POSITIONS = 1024
-DEFAULT_MAX_TARGET_POSITIONS = 1024
 DEFAULT_MIN_PARAMS_TO_WRAP = int(1e8)
 
 
@@ -40,6 +38,7 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
     def forward(self, x, **kwargs):
         l_aux = []
         inner_states = []
+        layer_attn = None
         for layer in self.layers:
             x, layer_attn, _, l_aux_i = layer(x, **kwargs)
             inner_states.append(x)
