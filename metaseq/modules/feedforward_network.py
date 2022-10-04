@@ -10,7 +10,7 @@ from metaseq.modules import Linear, gelu
 from metaseq.modules.fused_bias_gelu import has_fused_bias_gelu, fused_bias_gelu
 
 
-def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
+def FeedForwardNetwork(x, fc1, activation_fn, fc2):
     x_shape = x.shape
     x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
@@ -42,5 +42,4 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
         x = activation_fn(x)
         x = fc2(x)
     x = x.view(x_shape)
-    x = dropout_module(x)
     return x

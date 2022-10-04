@@ -13,7 +13,6 @@ from metaseq.distributed import fsdp_wrap, utils as distributed_utils
 from metaseq.models import BaseEncoder
 from metaseq.models.transformer_decoder import DEFAULT_MIN_PARAMS_TO_WRAP
 from metaseq.modules import (
-    Dropout,
     PositionalEmbedding,
     LayerNorm,
     TransformerEncoderLayer,
@@ -36,8 +35,6 @@ class TransformerEncoder(BaseEncoder):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
-
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
@@ -99,7 +96,6 @@ class TransformerEncoder(BaseEncoder):
         x = embed = self.embed_scale * token_embedding
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
-        x = self.dropout_module(x)
         return x, embed
 
     def forward(

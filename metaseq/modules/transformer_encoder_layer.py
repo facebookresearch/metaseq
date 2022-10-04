@@ -11,7 +11,6 @@ from torch import nn as nn, Tensor
 from metaseq import utils
 from metaseq.modules import (
     LayerNorm,
-    Dropout,
     Linear,
     MultiheadAttention,
     FeedForwardNetwork,
@@ -31,7 +30,6 @@ class TransformerEncoderLayer(nn.Module):
         self.embed_dim = args.encoder_embed_dim
         self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         ffn_dim = args.encoder_ffn_embed_dim
         self.activation_fn = utils.get_activation_fn(
             activation=getattr(args, "activation_fn", "relu") or "relu"
@@ -44,7 +42,6 @@ class TransformerEncoderLayer(nn.Module):
         return MultiheadAttention(
             embed_dim,
             args.encoder_attention_heads,
-            dropout=args.attention_dropout,
             self_attention=True,
         )
 
@@ -89,10 +86,7 @@ class TransformerEncoderLayer(nn.Module):
             need_weights=False,
             attn_mask=attn_mask,
         )
-
-        x = self.dropout_module(x)
         x = self.residual_connection(x, residual)
-
         residual = x
         x = self.final_layer_norm(x)
         x = FeedForwardNetwork(
@@ -100,7 +94,6 @@ class TransformerEncoderLayer(nn.Module):
             self.fc1,
             self.activation_fn,
             self.fc2,
-            self.dropout_module,
         )
         l_aux = None
         x = self.residual_connection(x, residual)

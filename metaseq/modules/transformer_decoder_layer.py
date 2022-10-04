@@ -13,7 +13,6 @@ from metaseq import utils
 from metaseq.modules import (
     gelu,
     MultiheadAttention,
-    Dropout,
     FeedForwardNetwork,
     LayerNorm,
     Linear,
@@ -43,7 +42,6 @@ class TransformerDecoderLayer(nn.Module):
         load_megatron_fused_kernel()
         self.args = args
         self.embed_dim = args.decoder_embed_dim
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.self_attn = self.build_self_attention(
             self.embed_dim,
@@ -144,7 +142,6 @@ class TransformerDecoderLayer(nn.Module):
         return MultiheadAttention(
             embed_dim,
             args.decoder_attention_heads,
-            dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
             self_attention=not getattr(args, "cross_self_attention", False),
@@ -185,7 +182,6 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=need_weights,
             attn_mask=attn_mask,
         )
-        x = self.dropout_module(x)
         return self.residual_connection(x, residual), attn
 
     def forward(
@@ -222,7 +218,6 @@ class TransformerDecoderLayer(nn.Module):
             fc1=self.fc1,
             activation_fn=self.activation_fn,
             fc2=self.fc2,
-            dropout_module=self.dropout_module,
         )
         l_aux = None
         x = self.residual_connection(x, residual)
