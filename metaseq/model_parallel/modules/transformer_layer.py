@@ -44,7 +44,6 @@ class ModelParallelTransformerEncoderLayer(TransformerEncoderLayer):
         return ModelParallelMultiheadAttention(
             embed_dim,
             args.encoder_attention_heads,
-            dropout=args.attention_dropout,
             self_attention=True,
         )
 
@@ -137,7 +136,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         return ModelParallelMultiheadAttention(
             embed_dim=embed_dim,
             num_heads=args.decoder_attention_heads,
-            dropout=args.attention_dropout,
             self_attention=not getattr(args, "cross_self_attention", False),
             use_cpu_initialization=not getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
@@ -169,17 +167,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             need_weights=need_weights,
             attn_mask=attn_mask,
         )
-        # Note [naman]: got rid off fused bias, dropout and residual cause
-        # now we dont use dropout. And we dont use jit scripting also cause
-        # it seems to use additional gpu memory for activations for dropout
-        # even when its disabled.
+        # Note [naman]: got rid off fused bias and residual
         if attn_bias is not None:
             attn_output = attn_output + attn_bias.view(1, 1, -1)
-
-        x = torch.nn.functional.dropout(
-            attn_output,
-            p=self.args.dropout,
-            training=self.training,
-        )
-        x = x + residual
-        return x, attn_weights
+        return attn_output + residual, attn_weights
