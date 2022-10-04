@@ -5,7 +5,7 @@
 
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn

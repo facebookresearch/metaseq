@@ -15,7 +15,6 @@ from metaseq.incremental_decoding_utils import with_incremental_state
 
 try:
     from megatron.mpu import (
-        get_cuda_rng_tracker,
         get_tensor_model_parallel_world_size,
         ColumnParallelLinear,
         RowParallelLinear,
