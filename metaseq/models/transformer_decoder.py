@@ -368,7 +368,6 @@ class TransformerDecoder(IncrementalDecoder):
         prev_output_tokens,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
-        src_lengths: Optional[Any] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
