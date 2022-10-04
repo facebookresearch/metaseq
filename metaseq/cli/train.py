@@ -853,6 +853,8 @@ def validate(
                 stats["accuracy"] = float(sum(acc)) / (len(acc) + 1e-6)
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
     stats = add_num_updates_to_stats(trainer, combined_agg.get_smoothed_values())
+    if "batch_loss" in stats:
+        del stats["batch_loss"]
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 
