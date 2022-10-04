@@ -77,22 +77,12 @@ class HistoryMeter(Meter):
         assert type(val) is list
         self.history.extend(val)
 
-    def state_dict(self):
-        return {
-            "history": self.history,
-            "round": self.round,
-        }
-
-    def load_state_dict(self, state_dict):
-        self.history = state_dict["history"]
-        self.round = state_dict.get("round", None)
-
     @property
     def avg(self):
         if type(self.history[0]) is dict:
-            return sum([h["value"] for h in self.history])
+            return sum([h["value"] for h in self.history]) / len(self.history)
         else:
-            return sum(self.history)
+            return sum(self.history) / len(self.history)
 
     @property
     def smoothed_value(self) -> float:
