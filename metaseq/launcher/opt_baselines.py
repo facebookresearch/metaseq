@@ -271,20 +271,6 @@ def get_grid(args):
         ),
         hyperparam("--total-num-update", total_updates),
         hyperparam(
-            "--dropout",
-            0.1,
-            save_dir_key=lambda val: f"dr{val}" if not no_save_params else "",
-        ),
-        hyperparam(
-            "--attention-dropout",
-            0.1,
-            save_dir_key=lambda val: f"atdr{val}" if not no_save_params else "",
-        ),
-        hyperparam(
-            "--no-emb-dropout",
-            save_dir_key=lambda _: "0emb_dr" if not no_save_params else "",
-        ),
-        hyperparam(
             "--weight-decay",
             0.1,
             save_dir_key=lambda val: f"wd{val}" if not no_save_params else "",

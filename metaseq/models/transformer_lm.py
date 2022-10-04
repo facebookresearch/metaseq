@@ -36,10 +36,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
         default="relu", metadata={"help": "activation function to use"}
     )
-    dropout: float = field(default=0.1, metadata={"help": "dropout probability"})
-    attention_dropout: float = field(
-        default=0.0, metadata={"help": "dropout probability for attention weights"}
-    )
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
     )
@@ -135,9 +131,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
     )
-    no_emb_dropout: Optional[bool] = field(
-        default=False, metadata={"help": "Avoid emb dropout for decoder"}
-    )
     disable_bias: Optional[bool] = field(
         default=False,
         metadata={
@@ -202,9 +195,6 @@ class TransformerLanguageModel(LanguageModel):
 
 
 def base_lm_architecture(args):
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
-
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
@@ -236,8 +226,6 @@ def transformer_lm_gpt(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072)
     args.decoder_layers = getattr(args, "decoder_layers", 12)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 12)
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")
     base_lm_architecture(args)
 
@@ -248,7 +236,5 @@ def transformer_lm_gpt2_tiny(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)
     args.decoder_layers = getattr(args, "decoder_layers", 2)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 1)
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")
     base_lm_architecture(args)

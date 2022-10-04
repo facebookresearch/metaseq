@@ -97,8 +97,6 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
 
 def base_lm_architecture(args):
     args.activation_fn = getattr(args, "activation_fn", "relu")
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_output_dim = getattr(
         args, "decoder_output_dim", args.decoder_embed_dim
@@ -122,7 +120,5 @@ def transformer_lm_megatron(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072 * 4)
     args.decoder_layers = getattr(args, "decoder_layers", 72)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 32)
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")
     base_lm_architecture(args)
