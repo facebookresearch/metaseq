@@ -12,7 +12,6 @@ from torch import Tensor, nn
 
 from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
-from metaseq.modules.dropout import Dropout
 
 try:
     from megatron.mpu import (
@@ -51,7 +50,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         num_heads,
         kdim=None,
         vdim=None,
-        dropout=0.0,
         bias=True,
         self_attention=False,
         encoder_decoder_attention=False,
@@ -78,7 +76,6 @@ class ModelParallelMultiheadAttention(nn.Module):
             self.num_heads_partition * self.model_parallel_size == num_heads
         ), "Number of heads must be divisible by model parallel size"
 
-        self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
         self.head_dim = embed_dim // num_heads
         assert (
             self.head_dim * num_heads == self.embed_dim
@@ -405,10 +402,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                         "interactive_hosted.py for an example.\n\n"
                         f"Original Exception: {e}"
                     )
-
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_probs)
-
         else:
             q *= self.scaling
 
@@ -521,10 +514,7 @@ class ModelParallelMultiheadAttention(nn.Module):
                 )
 
             attn_weights_float = utils.softmax(attn_weights, dim=-1)
-            attn_weights = attn_weights_float.type_as(attn_weights)
-
-            with get_cuda_rng_tracker().fork():
-                attn_probs = self.dropout_module(attn_weights)
+            attn_probs = attn_weights_float.type_as(attn_weights)
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
