@@ -16,7 +16,6 @@ from metaseq import utils
 from metaseq.distributed import utils as distributed_utils, fsdp_wrap
 from metaseq.models import IncrementalDecoder
 from metaseq.modules import (
-    Dropout,
     LayerNorm,
     PositionalEmbedding,
     TransformerDecoderLayer,
@@ -67,11 +66,6 @@ class TransformerDecoder(IncrementalDecoder):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
-
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-
-        if getattr(args, "no_emb_dropout", False):
-            self.dropout_module = None
 
         self.share_input_output_embed = args.share_decoder_input_output_embed
         input_embed_dim = embed_tokens.embedding_dim
@@ -356,9 +350,6 @@ class TransformerDecoder(IncrementalDecoder):
 
         if positions is not None:
             x += positions
-
-        if self.dropout_module is not None:
-            x = self.dropout_module(x)
 
         return x, embed, positions
 
