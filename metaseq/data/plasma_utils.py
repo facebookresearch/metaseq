@@ -89,25 +89,3 @@ class PlasmaArray:
             self._server = None
             self._server_tmp.close()
             self._server_tmp = None
-
-
-DEFAULT_PLASMA_PATH = "/tmp/plasma"
-GB100 = (1024**3) * 100
-
-
-class PlasmaStore:
-    def __init__(self, path=DEFAULT_PLASMA_PATH, nbytes: int = GB100):
-
-        self.server = self.start(path, nbytes)
-
-    def __del__(self):
-        self.server.kill()
-
-    @staticmethod
-    def start(path=DEFAULT_PLASMA_PATH, nbytes: int = GB100) -> subprocess.Popen:
-        if not PYARROW_AVAILABLE:
-            raise ImportError("please run pip install pyarrow")
-        # best practice is to allocate more space than we need. The limitation seems to be the size of /dev/shm
-        _server = subprocess.Popen(["plasma_store", "-m", str(nbytes), "-s", path])
-        plasma.connect(path, num_retries=200)  # If we can't connect we fail immediately
-        return _server
