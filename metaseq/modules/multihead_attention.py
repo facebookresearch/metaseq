@@ -13,7 +13,6 @@ from torch.nn import Parameter
 
 from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
-from metaseq.modules.dropout import Dropout
 from metaseq.modules.linear import Linear
 
 
@@ -30,7 +29,6 @@ class MultiheadAttention(nn.Module):
         num_heads,
         kdim=None,
         vdim=None,
-        dropout=0.0,
         bias=True,
         add_bias_kv=False,
         add_zero_attn=False,
@@ -44,10 +42,7 @@ class MultiheadAttention(nn.Module):
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-
         self.num_heads = num_heads
-        self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
-
         self.head_dim = embed_dim // num_heads
         assert (
             self.head_dim * num_heads == self.embed_dim
@@ -198,10 +193,10 @@ class MultiheadAttention(nn.Module):
                 self.bias_k,
                 self.bias_v,
                 self.add_zero_attn,
-                self.dropout_module.p,
+                0.0,  # dropout
                 self.out_proj.weight,
                 self.out_proj.bias,
-                self.training or self.dropout_module.apply_during_inference,
+                self.training,
                 key_padding_mask,
                 need_weights,
                 attn_mask,
@@ -367,8 +362,7 @@ class MultiheadAttention(nn.Module):
         attn_weights_float = utils.softmax(
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )
-        attn_weights = attn_weights_float.type_as(attn_weights)
-        attn_probs = self.dropout_module(attn_weights)
+        attn_probs = attn_weights_float.type_as(attn_weights)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
