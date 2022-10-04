@@ -367,7 +367,6 @@ class TransformerDecoder(IncrementalDecoder):
         self,
         prev_output_tokens,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        features_only: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
@@ -380,8 +379,6 @@ class TransformerDecoder(IncrementalDecoder):
                 `(batch, tgt_len)`, for teacher forcing
             incremental_state (dict): dictionary used for storing state during
                 :ref:`Incremental decoding`
-            features_only (bool, optional): only return features without
-                applying output layer (default: False).
             token_embeddings (torch.Tensor, optional): precomputed embeddings
                 default `None` will recompute embeddings
             self_attn_padding_mask (torch.Tensor, optional): precomputed padding
@@ -401,8 +398,7 @@ class TransformerDecoder(IncrementalDecoder):
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
-        if not features_only:
-            x = self.output_layer(x)
+        x = self.output_layer(x)
         return x, extra
 
     def extract_features(
