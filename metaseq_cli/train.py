@@ -94,68 +94,145 @@ def main(cfg: DictConfig) -> None:
             )
             return
 
-    # Setup task, e.g., translation, language modeling, etc.
-    task = tasks.setup_task(cfg.task)
+    task = None
+    model = None
+    criterion = None
+    trainer = None
 
-    assert cfg.criterion, "Please specify criterion to train a model"
+    def reset():
+        nonlocal task
+        nonlocal model
+        nonlocal criterion
+        nonlocal trainer
 
-    # Build model and criterion
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
-        extra = {
-            "use_sharded_state": cfg.distributed_training.use_sharded_state,
-        }
+        # Setup task, e.g., translation, language modeling, etc.
+        task = tasks.setup_task(cfg.task)
 
-        with fsdp_enable_wrap(cfg.distributed_training, **extra):
-            model = fsdp_wrap(
-                task.build_model(cfg.model),
-                process_group=distributed_utils.get_data_parallel_group(),
+        assert cfg.criterion, "Please specify criterion to train a model"
+
+        # Build model and criterion
+        if cfg.distributed_training.ddp_backend == "fully_sharded":
+            extra = {
+                "use_sharded_state": cfg.distributed_training.use_sharded_state,
+            }
+
+            with fsdp_enable_wrap(cfg.distributed_training, **extra):
+                model = fsdp_wrap(
+                    task.build_model(cfg.model),
+                    process_group=distributed_utils.get_data_parallel_group(),
+                )
+        else:
+            model = task.build_model(cfg.model)
+        criterion = task.build_criterion(cfg.criterion)
+
+        logger.info(model)
+        logger.info("task: {}".format(task.__class__.__name__))
+        logger.info("model: {}".format(model.__class__.__name__))
+        logger.info("criterion: {}".format(criterion.__class__.__name__))
+        logger.info(
+            "num. model params: {:,} (num. trained: {:,})".format(
+                sum(getattr(p, "_orig_size", p).numel() for p in model.parameters()),
+                sum(
+                    getattr(p, "_orig_size", p).numel()
+                    for p in model.parameters()
+                    if p.requires_grad
+                ),
             )
-    else:
-        model = task.build_model(cfg.model)
-    criterion = task.build_criterion(cfg.criterion)
-
-    logger.info(model)
-    logger.info("task: {}".format(task.__class__.__name__))
-    logger.info("model: {}".format(model.__class__.__name__))
-    logger.info("criterion: {}".format(criterion.__class__.__name__))
-    logger.info(
-        "num. model params: {:,} (num. trained: {:,})".format(
-            sum(getattr(p, "_orig_size", p).numel() for p in model.parameters()),
-            sum(
-                getattr(p, "_orig_size", p).numel()
-                for p in model.parameters()
-                if p.requires_grad
-            ),
         )
-    )
-    logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
+        logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
 
-    # Load valid dataset (we load training data below, based on the latest checkpoint)
-    # We load the valid dataset AFTER building the model
-    data_utils.raise_if_valid_subsets_unintentionally_ignored(cfg)
-    if cfg.dataset.combine_valid_subsets:
-        task.load_dataset("valid", combine=True, epoch=1)
-    else:
-        for valid_sub_split in cfg.dataset.valid_subset.split(","):
-            task.load_dataset(valid_sub_split, combine=False, epoch=1)
+        # Load valid dataset (we load training data below, based on the latest checkpoint)
+        # We load the valid dataset AFTER building the model
+        data_utils.raise_if_valid_subsets_unintentionally_ignored(cfg)
+        if cfg.dataset.combine_valid_subsets:
+            task.load_dataset("valid", combine=True, epoch=1)
+        else:
+            for valid_sub_split in cfg.dataset.valid_subset.split(","):
+                task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
-    # Build trainer
-    if cfg.common.model_parallel_size == 1:
-        trainer = Trainer(cfg, task, model, criterion)
-    else:
-        trainer = MegatronTrainer(cfg, task, model, criterion)
-    logger.info(
-        "training on {} devices (GPUs/TPUs)".format(
-            cfg.distributed_training.distributed_world_size
+        # Build trainer
+        if cfg.common.model_parallel_size == 1:
+            trainer = Trainer(cfg, task, model, criterion)
+        else:
+            trainer = MegatronTrainer(cfg, task, model, criterion)
+        logger.info(
+            "training on {} devices (GPUs/TPUs)".format(
+                cfg.distributed_training.distributed_world_size
+            )
         )
-    )
-    logger.info(
-        "max tokens per GPU = {} and batch size per GPU = {}".format(
-            cfg.dataset.max_tokens,
-            cfg.dataset.batch_size,
+        logger.info(
+            "max tokens per GPU = {} and batch size per GPU = {}".format(
+                cfg.dataset.max_tokens,
+                cfg.dataset.batch_size,
+            )
         )
-    )
-    logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
+        logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
+
+    valid_losses = []
+
+    @torch.no_grad()
+    def get_state(
+        training_finished=False,
+    ):
+        extra_state = {"train_iterator": epoch_itr.state_dict()}
+        try:
+            extra_state["val_loss"] = valid_losses[0]
+        except ValueError:
+            pass
+        if hasattr(checkpoint_utils.save_checkpoint, "best"):
+            extra_state.update({"best": checkpoint_utils.save_checkpoint.best})
+        trainer.consolidate_optimizer()
+        return trainer.get_state(
+                extra_state,
+                training_finished=training_finished,
+            )
+
+    @torch.no_grad()
+    def set_state(state):
+        """
+        Load a state and restore the training iterator.
+
+        *passthrough_args* will be passed through to
+        ``trainer.get_train_iterator``.
+        """
+
+        reset_optimizer = cfg.reset_optimizer
+        reset_lr_scheduler = cfg.reset_lr_scheduler
+        import ast
+        optimizer_overrides = ast.literal_eval(cfg.optimizer_overrides)
+        reset_meters = cfg.reset_meters
+        reset_dataloader = cfg.reset_dataloader
+
+        extra_state = trainer.set_state(
+            state,
+            reset_optimizer,
+            reset_lr_scheduler,
+            optimizer_overrides,
+            reset_meters=reset_meters,
+        )
+
+        if (
+            extra_state is not None
+            and "best" in extra_state
+            and not reset_optimizer
+            and not reset_meters
+        ):
+            checkpoint_utils.save_checkpoint.best = extra_state["best"]
+
+        if extra_state is not None and not reset_dataloader:
+            # restore iterator from checkpoint
+            itr_state = extra_state["train_iterator"]
+            epoch_itr = trainer.get_train_iterator(
+                epoch=itr_state["epoch"], disable_iterator_cache=True
+            )
+            epoch_itr.load_state_dict(itr_state)
+        else:
+            epoch_itr = trainer.get_train_iterator(epoch=1, disable_iterator_cache=True)
+        trainer.lr_step(epoch_itr.epoch)
+        return extra_state, epoch_itr
+        
+
+    reset()
 
     # Load the latest checkpoint if one is available and restore the
     # corresponding train iterator

@@ -370,20 +370,28 @@ class Trainer(object):
             state_dicts[filename] = state_dict
         return state_dicts
 
-    def save_checkpoint(
-        self, filename, extra_state, training_finished=False, async_callback_fn=None
-    ):
-        """Save all training state in a checkpoint file."""
+    def get_state(self, extra_state, training_finished=False, filename="dummy_filename"):
+        """Return all training state."""
         # call state_dict on all ranks in case it needs internal communication
         state_dicts = self.state_dict(filename, training_finished)
         for filename, state_dict in state_dicts.items():
-            logger.info(f"Saving checkpoint to {filename}")
             state_dict = utils.move_to_cpu(
                 state_dict,
                 # keep params in FP16 when training with --memory-efficient-fp16
                 cast_to_fp32=not self.cfg.common.memory_efficient_fp16,
             )
             state_dict["extra_state"].update(extra_state)
+            state_dicts[filename] = state_dict
+        return state_dicts
+
+
+    def save_checkpoint(
+        self, filename, extra_state, training_finished=False, async_callback_fn=None
+    ):
+        """Save all training state in a checkpoint file."""
+        state_dicts = self.get_state(extra_state, training_finished, filename)
+        for filename, state_dict in state_dicts.items():
+            logger.info(f"Saving checkpoint to {filename}")
             if self.should_save_checkpoint_on_current_rank:
                 checkpoint_utils.torch_persistent_save(
                     state_dict,
@@ -392,6 +400,95 @@ class Trainer(object):
                     async_callback_fn=async_callback_fn,
                 )
             logger.info(f"Finished saving checkpoint to {filename}")
+
+    def set_state(self, state,
+                reset_optimizer=False,
+                reset_lr_scheduler=False,
+                optimizer_overrides=None,
+                reset_meters=False,):
+        """
+        set all training state
+        """
+        extra_state, self._optim_history, last_optim_state = None, [], None
+
+        is_distributed = self.data_parallel_world_size > 1
+        load_on_all_ranks = (
+                self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
+                # FSDP requires loading checkpoint shards on all ranks
+                or self.is_fsdp
+            )
+
+        
+        last_optim_state = state.get("last_optimizer_state", None)
+
+        # load model parameters
+        self.model.load_state_dict(state["model"], strict=True)
+        # save memory for later steps
+        if utils.has_parameters(self.get_criterion()):
+            self.get_criterion().load_state_dict(
+                state["criterion"], strict=True
+            )
+
+        extra_state = state["extra_state"]
+        self._optim_history = state["optimizer_history"]
+
+        if last_optim_state is not None and not reset_optimizer:
+            # rebuild optimizer after loading model, since params may have changed
+            self._build_optimizer()
+
+            # only reload optimizer and lr_scheduler if they match
+            last_optim = self._optim_history[-1]
+            assert (
+                last_optim["criterion_name"] == self.get_criterion().__class__.__name__
+            ), (
+                f"Criterion does not match; please reset the optimizer "
+                f"(--reset-optimizer). {last_optim['criterion_name']} vs "
+                f"{self.get_criterion().__class__.__name__}"
+            )
+            assert last_optim["optimizer_name"] == self.optimizer.__class__.__name__, (
+                f"Optimizer does not match; please reset the optimizer "
+                f"(--reset-optimizer). {last_optim['optimizer_name']} vs "
+                f"{self.optimizer.__class__.__name__}"
+            )
+
+            if not reset_lr_scheduler:
+                self.lr_scheduler.load_state_dict(last_optim["lr_scheduler_state"])
+
+            elif self.is_fsdp and not self.use_sharded_state:
+                last_optim_state = self.model.get_shard_from_optim_state_dict(
+                    last_optim_state
+                )
+
+            self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
+            self.set_num_updates(last_optim["num_updates"])
+
+        if extra_state is not None:
+            itr_state = extra_state["train_iterator"]
+            epoch = itr_state["epoch"]
+
+            if "previous_training_time" in extra_state:
+                self._previous_training_time = extra_state["previous_training_time"]
+                self._start_time = time.time()
+
+            self.lr_step(epoch)
+
+            if (
+                itr_state.get("version", 1) >= 2
+                and itr_state["iterations_in_epoch"] == 0
+            ):
+                # reset meters at start of epoch
+                reset_meters = True
+
+            if "metrics" in extra_state and not reset_meters:
+                metrics.load_state_dict(extra_state["metrics"])
+
+                # reset TimeMeters, since their start times don't make sense anymore
+                for meter in metrics.get_meters("default"):
+                    if isinstance(meter, meters.TimeMeter):
+                        meter.reset()
+
+        return extra_state
+
 
     def load_checkpoint(
         self,
