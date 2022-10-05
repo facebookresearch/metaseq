@@ -47,8 +47,6 @@ DEFAULT_PORT = constants_module.DEFAULT_PORT
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 
-app = Flask(__name__)
-
 # global state (mutable!)
 cfg = None
 port = DEFAULT_PORT
@@ -164,6 +162,91 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                 continue
 
 
+def _validate_key(key):
+    # denylist a few placeholders various people have used
+    if key == "":
+        return False
+    if "YOUR_NAME_HERE" in key:
+        return False
+    if "$USER" in key:
+        return False
+    if "your-key-here" in key:
+        return False
+    return True
+
+
+def _create_error_response(msg, http_code, **others):
+    error_dict = {
+        "message": msg,
+        "type": "invalid_request_error",
+        "param": None,
+        "code": None,
+        **others,
+    }
+    response = jsonify({"error": error_dict})
+    response.status = http_code
+    return response
+
+
+def fix_prompts(prompts):
+    # prompt can be 4 types:
+    # - str. Basic case. Return one generation.
+    # - list of ints. Pretokenized. Return one generation
+    # - list of str. Multiple generations, one per prompt
+    # - list of list of ints. Pretokenized multiple generations.
+
+    # our approach is to turn everything into the last case
+    if isinstance(prompts, str):
+        # single string. tokenize and turn it to the single pre-tokenized case
+        prompts = [generator.encode_fn(prompts)]
+    assert isinstance(prompts, list)
+    assert len(prompts) > 0
+    if isinstance(prompts[0], str):
+        # multi string
+        prompts = [generator.encode_fn(p) for p in prompts]
+    elif isinstance(prompts[0], int):
+        # single pre-tokenized
+        prompts = [prompts]
+    assert isinstance(prompts[0], list)
+    # final case: multi pre-tokenized
+    assert len(prompts[0]) > 0
+
+    return prompts
+
+
+def fix_generation_args(generation_args):
+    if "min_tokens" in generation_args:
+        generation_args["min_tokens"] = int(generation_args["min_tokens"])
+    if "max_tokens" in generation_args:
+        generation_args["max_tokens"] = int(generation_args["max_tokens"])
+    if "stop" in generation_args:
+        stop = generation_args["stop"]
+        if stop is None:
+            pass
+        elif isinstance(stop, str):
+            stop = [generator.encode_fn(stop)[0]]
+        else:
+            stop = [generator.encode_fn(s)[0] for s in stop]
+        generation_args["stop"] = stop
+    if "temperature" in generation_args:
+        generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
+    else:
+        generation_args["temperature"] = 1.0
+    if "top_p" in generation_args:
+        generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
+    else:
+        generation_args["top_p"] = 1.0
+    # beam search top n
+    if "n" in generation_args:
+        if int(generation_args["n"]) > MAX_BEAM:
+            logger.warning(
+                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
+            )
+        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
+    else:
+        generation_args["n"] = 1
+
+
 def worker_main(cfg1: MetaseqConfig, namespace_args=None):
     # disable multithreading in tokenizers and torch, as different Flask threads
     # may then fight for resources.
@@ -206,153 +289,95 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
                 pass
 
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    # pass through HTTP errors
-    if isinstance(e, HTTPException):
-        return e
+if __name__ == "__main__":
+    app = Flask(__name__)
 
-    http_code = 400 if isinstance(e, ValueError) else 500
-    return _create_error_response(
-        str(e), http_code, stacktrace=traceback.format_tb(e.__traceback__)
-    )
+    @app.route("/completions", methods=["POST"])
+    @app.route("/v1/engines/<engine>/completions", methods=["POST"])
+    @app.route("/v2/engines/<engine>/completions", methods=["POST"])
+    @app.route("/engines/<engine>/completions", methods=["POST"])
+    def completions(engine=None):
+        # before anything else, check that we've got a valid API key
+        if not _validate_key(request.headers.get("authorization", "")):
+            return _create_error_response("Invalid API key or API key missing.", 401)
 
+        prompts = request.json["prompt"]
+        del request.json["prompt"]
+        generation_args = request.json
 
-def _validate_key(key):
-    # denylist a few placeholders various people have used
-    if key == "":
-        return False
-    if "YOUR_NAME_HERE" in key:
-        return False
-    if "$USER" in key:
-        return False
-    if "your-key-here" in key:
-        return False
-    return True
+        results = compute_gptz(prompts, generation_args)
+        # transform the result into the openai format
+        return OAIResponse(results).__dict__()
 
+    @app.route("/")
+    def index():
+        # TODO(roller): decouple demopage.html
+        fn = pkg_resources.resource_filename("metaseq", "service/index.html")
+        with open(fn) as f:
+            return f.read()
 
-def _create_error_response(msg, http_code, **others):
-    error_dict = {
-        "message": msg,
-        "type": "invalid_request_error",
-        "param": None,
-        "code": None,
-        **others,
-    }
-    response = jsonify({"error": error_dict})
-    response.status = http_code
-    return response
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        # pass through HTTP errors
+        if isinstance(e, HTTPException):
+            return e
 
-
-@app.route("/completions", methods=["POST"])
-@app.route("/v1/engines/<engine>/completions", methods=["POST"])
-@app.route("/v2/engines/<engine>/completions", methods=["POST"])
-@app.route("/engines/<engine>/completions", methods=["POST"])
-def completions(engine=None):
-    # before anything else, check that we've got a valid API key
-    if not _validate_key(request.headers.get("authorization", "")):
-        return _create_error_response("Invalid API key or API key missing.", 401)
-
-    # prompt can be 4 types:
-    # - str. Basic case. Return one generation.
-    # - list of ints. Pretokenized. Return one generation
-    # - list of str. Multiple generations, one per prompt
-    # - list of list of ints. Pretokenized multiple generations.
-
-    # our approach is to turn everything into the last case
-
-    prompts = request.json["prompt"]
-    del request.json["prompt"]
-    generation_args = request.json
-
-    if isinstance(prompts, str):
-        # single string. tokenize and turn it to the single pre-tokenized case
-        prompts = [generator.encode_fn(prompts)]
-    assert isinstance(prompts, list)
-    assert len(prompts) > 0
-    if isinstance(prompts[0], str):
-        # multi string
-        prompts = [generator.encode_fn(p) for p in prompts]
-    elif isinstance(prompts[0], int):
-        # single pre-tokenized
-        prompts = [prompts]
-    assert isinstance(prompts[0], list)
-    # final case: multi pre-tokenized
-    assert len(prompts[0]) > 0
-
-    if "min_tokens" in generation_args:
-        generation_args["min_tokens"] = int(generation_args["min_tokens"])
-    if "max_tokens" in generation_args:
-        generation_args["max_tokens"] = int(generation_args["max_tokens"])
-    if "stop" in generation_args:
-        stop = generation_args["stop"]
-        if stop is None:
-            pass
-        elif isinstance(stop, str):
-            stop = [generator.encode_fn(stop)[0]]
-        else:
-            stop = [generator.encode_fn(s)[0] for s in stop]
-        generation_args["stop"] = stop
-    if "temperature" in generation_args:
-        generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
-    else:
-        generation_args["temperature"] = 1.0
-    if "top_p" in generation_args:
-        generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
-    else:
-        generation_args["top_p"] = 1.0
-    # beam search top n
-    if "n" in generation_args:
-        if int(generation_args["n"]) > MAX_BEAM:
-            logger.warning(
-                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
-            )
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
-    else:
-        generation_args["n"] = 1
-
-    ret_queue = queue.Queue()
-    for i, prompt in enumerate(prompts):
-        gen_len = generation_args.get("max_tokens", 0)
-        if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
-            # cut off the prompt to always fit with number of generations we need
-            # +1 to always have the EOS token
-            logger.warning(
-                f"input too long, truncated to {MAX_SEQ_LEN - gen_len - 1} to avoid OOM"
-            )
-            prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
-        request_object = {"input": prompt, **generation_args}
-        BATCH_QUEUE.put(
-            WorkItem(
-                cost=len(prompt) + gen_len,
-                uid=i,
-                return_queue=ret_queue,
-                data=request_object,
-                prompt_len=len(prompt),
-                gen_len=gen_len,
-            )
+        http_code = 400 if isinstance(e, ValueError) else 500
+        return _create_error_response(
+            str(e), http_code, stacktrace=traceback.format_tb(e.__traceback__)
         )
-    unordered_results = []
-    for _ in prompts:
-        unordered_results.append(ret_queue.get())
-    # resort results by the original ordering
-    # weirdly, openai returns to you a flat list if you gave multiple prompts
-    reordered = sorted(unordered_results, key=lambda x: x[0])
-    results = []
-    for prompt, (_, generations) in zip(prompts, reordered):
-        if isinstance(generations, Exception):
-            raise generations
-        results += generations
-    # transform the result into the openai format
-    return OAIResponse(results).__dict__()
 
+    try:
+        from celery import Celery
 
-@app.route("/")
-def index():
-    # TODO(roller): decouple demopage.html
-    fn = pkg_resources.resource_filename("metaseq", "service/index.html")
-    with open(fn) as f:
-        return f.read()
+        celery_app = Celery("metaseq.cli.interactive_hosted")
+        celery_app.config_from_object("celeryconfig")
+
+        @celery_app.task
+        def compute_gptz(prompts, generation_args):
+            prompts = fix_prompts(prompts)
+            fix_generation_args(generation_args)
+
+            ret_queue = queue.Queue()
+            for i, prompt in enumerate(prompts):
+                gen_len = generation_args.get("max_tokens", 0)
+                if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
+                    # cut off the prompt to always fit with number of generations we need
+                    # +1 to always have the EOS token
+                    logger.warning(
+                        f"input too long, truncated to {MAX_SEQ_LEN - gen_len - 1} to avoid OOM"
+                    )
+                    prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
+                request_object = {"input": prompt, **generation_args}
+                logger.info(f"celery request: {request_object}")
+                BATCH_QUEUE.put(
+                    WorkItem(
+                        cost=len(prompt) + gen_len,
+                        uid=i,
+                        return_queue=ret_queue,
+                        data=request_object,
+                        prompt_len=len(prompt),
+                        gen_len=gen_len,
+                    )
+                )
+            unordered_results = []
+            for _ in prompts:
+                unordered_results.append(ret_queue.get())
+            # resort results by the original ordering
+            # weirdly, openai returns to you a flat list if you gave multiple prompts
+            reordered = sorted(unordered_results, key=lambda x: x[0])
+            results = []
+            for prompt, (_, generations) in zip(prompts, reordered):
+                if isinstance(generations, Exception):
+                    raise generations
+                results += generations
+            return results
+
+    except ModuleNotFoundError:
+        print(
+            "Not starting with celery--module not found (try `pip install celery` if you're trying to use this feature)"
+        )
+        celery_app = None
 
 
 def cli_main():
@@ -387,4 +412,13 @@ if __name__ == "__main__":
         import socket
 
         os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()
+    # Start the celery worker on a background thread in threadpool mode
+    if os.getenv("START_CELERY") == "true" and celery_app:
+        from threading import Thread
+
+        t = Thread(
+            target=celery_app.worker_main,
+            args=(["worker", "--concurrency=10", "--queues=gptz", "--pool=threads"],),
+        )
+        t.start()
     cli_main()
