@@ -51,15 +51,11 @@ class IncrementalDecoder(BaseDecoder):
     def __init__(self, dictionary):
         super().__init__(dictionary)
 
-    def forward(
-        self, prev_output_tokens, encoder_out=None, incremental_state=None, **kwargs
-    ):
+    def forward(self, prev_output_tokens, incremental_state=None, **kwargs):
         """
         Args:
             prev_output_tokens (LongTensor): shifted output tokens of shape
                 `(batch, tgt_len)`, for teacher forcing
-            encoder_out (dict, optional): output from the encoder, used for
-                encoder-side attention
             incremental_state (dict, optional): dictionary used for storing
                 state during :ref:`Incremental decoding`. Note that this
                 dictionary is modified inline iff incremental_state is not None.
@@ -71,9 +67,7 @@ class IncrementalDecoder(BaseDecoder):
         """
         raise NotImplementedError
 
-    def extract_features(
-        self, prev_output_tokens, encoder_out=None, incremental_state=None, **kwargs
-    ):
+    def extract_features(self, prev_output_tokens, incremental_state=None, **kwargs):
         """
         Returns:
             tuple:

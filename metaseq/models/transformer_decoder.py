@@ -61,11 +61,9 @@ class TransformerDecoder(IncrementalDecoder):
         args (argparse.Namespace): parsed command-line arguments
         dictionary (~metaseq.data.Dictionary): decoding dictionary
         embed_tokens (torch.nn.Embedding): output embedding
-        no_encoder_attn (bool, optional): whether to attend to encoder outputs
-            (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -128,12 +126,8 @@ class TransformerDecoder(IncrementalDecoder):
         self.layers = nn.ModuleList([])
         layers = []
         for i in range(args.decoder_layers):
-            layers.append(
-                self.build_decoder_layer(
-                    args,
-                    no_encoder_attn=no_encoder_attn,
-                )
-            )
+            layers.append(self.build_decoder_layer(args))
+
         if getattr(self.args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
             assert (
                 len(layers) % self.args.fsdp_checkpoint_wrap_layer_frequency == 0
@@ -254,11 +248,11 @@ class TransformerDecoder(IncrementalDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args, no_encoder_attn=False):
-        return TransformerDecoderLayer(args, no_encoder_attn=no_encoder_attn)
+    def build_base_decoder_layer(self, args):
+        return TransformerDecoderLayer(args)
 
-    def build_decoder_layer(self, args, no_encoder_attn=False):
-        layer = self.build_base_decoder_layer(args, no_encoder_attn)
+    def build_decoder_layer(self, args):
+        layer = self.build_base_decoder_layer(args)
         for name, param in layer.named_parameters():
             _log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
@@ -373,7 +367,6 @@ class TransformerDecoder(IncrementalDecoder):
     def forward(
         self,
         prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
         src_lengths: Optional[Any] = None,
@@ -387,8 +380,6 @@ class TransformerDecoder(IncrementalDecoder):
         Args:
             prev_output_tokens (LongTensor): previous decoder outputs of shape
                 `(batch, tgt_len)`, for teacher forcing
-            encoder_out (optional): output from the encoder, used for
-                encoder-side attention
             incremental_state (dict): dictionary used for storing state during
                 :ref:`Incremental decoding`
             features_only (bool, optional): only return features without
@@ -408,7 +399,6 @@ class TransformerDecoder(IncrementalDecoder):
         # incremental state
         x, extra = self.extract_features(
             prev_output_tokens,
-            encoder_out=encoder_out,
             incremental_state=incremental_state,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
@@ -420,14 +410,12 @@ class TransformerDecoder(IncrementalDecoder):
     def extract_features(
         self,
         prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
-            encoder_out=encoder_out,
             incremental_state=incremental_state,
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
@@ -436,7 +424,6 @@ class TransformerDecoder(IncrementalDecoder):
     def extract_features_scriptable(
         self,
         prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]],
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         token_embeddings: Optional[Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
@@ -477,27 +464,13 @@ class TransformerDecoder(IncrementalDecoder):
         # instead of all inner representations, as thats the only thing being logged and storing
         # all intermediate representation causes OOM for large models during validation.
         inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
-        if encoder_out is None:
-            l_aux = []
-        else:
-            l_aux = encoder_out["l_aux"] if "l_aux" in encoder_out else []
+        l_aux = []
         for idx, layer in enumerate(self.layers):
             x, layer_attn, _, l_aux_i = layer(
                 x,
-                encoder_out=encoder_out["encoder_out"][0]
-                if (encoder_out is not None and len(encoder_out["encoder_out"]) > 0)
-                else None,
-                encoder_padding_mask=encoder_out["encoder_padding_mask"][0]
-                if (
-                    encoder_out is not None
-                    and len(encoder_out["encoder_padding_mask"]) > 0
-                )
-                else None,
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
-                need_attn=bool((idx == last_layer_idx)),
-                need_head_weights=bool((idx == last_layer_idx)),
             )
             l_aux.append(l_aux_i)
             if layer_attn is not None and idx == last_layer_idx:

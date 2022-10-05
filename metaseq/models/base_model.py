@@ -106,7 +106,6 @@ class BaseModel(nn.Module):
             if getattr(cfg.generation, "no_beamable_mm", False)
             else getattr(cfg.generation, "beam", 5)
         )
-        kwargs["need_attn"] = False
         self.make_generation_fast_(**kwargs)
 
     def make_generation_fast_(self, **kwargs):

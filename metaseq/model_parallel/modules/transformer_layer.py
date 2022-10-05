@@ -59,6 +59,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
     See "Megatron-LM: https://arxiv.org/pdf/1909.08053.pdf" for more details.
     """
 
+    # TODO[susanz]: unify method signatures with non-model-parallel version.
     def build_fc1(
         self,
         input_dim,
@@ -94,6 +95,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             bias=not disable_bias,
         )
 
+    # TODO[susanz]: unify method signatures with non-model-parallel version.
     def build_fc2(
         self,
         input_dim,
@@ -145,20 +147,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
-        )
-
-    def build_encoder_attention(self, embed_dim, args, **unused_kwargs):
-        return ModelParallelMultiheadAttention(
-            embed_dim=embed_dim,
-            num_heads=args.decoder_attention_heads,
-            kdim=getattr(args, "encoder_embed_dim", None),
-            vdim=getattr(args, "encoder_embed_dim", None),
-            dropout=args.attention_dropout,
-            encoder_decoder_attention=True,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
-            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            num_layers=args.decoder_layers,
-            dtype=utils.get_model_init_dtype(args),
         )
 
     def forward_attention(
