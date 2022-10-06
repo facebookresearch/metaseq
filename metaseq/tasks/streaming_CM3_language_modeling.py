@@ -213,6 +213,9 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             )
             tokenizer.decoder = decoders.ByteLevel()
             return tokenizer
+        else:
+            return Tokenizer(models.BPE()).from_file(args.spm_path)
+
         raise ValueError("What tokenizer are you trying to use?")
 
     def _initialize_metaseq_dictionary(self, args):

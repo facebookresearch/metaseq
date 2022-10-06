@@ -100,14 +100,8 @@ class JsonlDataset(torch.utils.data.Dataset):
         try:
             item = json.loads(item)
         except json.decoder.JSONDecodeError:
-            raise json.decoder.JSONDecodeError(
-                doc=self.path,
-                pos=position,
-                msg=(
-                    f"Error while loading JSONL line in file {self.path} at byte "
-                    f"{position}. Contents of line:\n{item}"
-                ),
-            )
+            item = item.strip()[10:-2]
+            item = {"text": item}
         if self.tokenizer is not None:
             item = self.tokenizer(item)
         return item
