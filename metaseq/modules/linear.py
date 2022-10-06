@@ -29,13 +29,14 @@ class Linear(Module):
         out_features: int,
         bias: bool = True,
         initialize_params_on_gpu: bool = False,
+        dtype: torch.dtype = None,
     ) -> None:
         super(Linear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
-        dtype = torch.half if initialize_params_on_gpu else torch.float
-
+        if dtype is None:
+            dtype = torch.float
         self.weight = Parameter(
             torch.empty(out_features, in_features, device=device, dtype=dtype)
         )

@@ -19,8 +19,9 @@ Make sure to wrap the url in quotes here.  You will get a 403 error otherwise.
 By default this will download the files into the directory that the command is run in. You can also optionally include a target directory by running:
 
 ```
-bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>" "<target directory>"
+bash metaseq/scripts/download_opt175b.sh "<presigned_url_given_in_email>" -d "<target directory>"
 ```
+If the download is interrupted, you can continue the download from the latest available file by adding -c flag to the bash script.
 
 ### md5sum check
 In some cases, files may be corrupted after downloading.  To confirm this is not the case, check the [md5sum of your downloaded files](./assets/opt175b_md5sum_shards.csv).

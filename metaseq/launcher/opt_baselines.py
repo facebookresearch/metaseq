@@ -74,10 +74,10 @@ def add_extra_options_func(parser):
 def get_grid(args):
     # Infer data path if not given
     DATA_ROOT = ""
+    valid_subsets = VALID_SUBSETS
     if args.data is None and not args.benchmark:
         cluster_env = get_env_from_args(args)
         data_loc_by_env = DATA_LOCATIONS[cluster_env]
-        valid_subsets = VALID_SUBSETS
         if args.circleci:
             data_loc_by_env = "./gpu_tests/circleci"
             valid_subsets = ["BookCorpusFair"]
@@ -143,6 +143,8 @@ def get_grid(args):
             hyperparam(
                 "--dict-size", 51200 - 4
             ),  # TODO(susan): what is this -4 sorcery? relic of more nmt things?
+            hyperparam("--save-interval-epochs", 0),
+            hyperparam("--save-interval-updates", 0),
         ]
         total_updates = 50
         warmup_updates = 50
@@ -155,18 +157,21 @@ def get_grid(args):
 
     no_save_params = args.no_save_dir
     args.snapshot_code = True
+
+    if not args.benchmark:
+        grid += [
+            hyperparam(
+                "--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets)
+            ),
+            hyperparam("--save-interval-updates", 2000),
+        ]
+
     grid += [
         hyperparam("--train-subset", "train"),
-        hyperparam("--valid-subset", ",".join(f"valid/{ss}" for ss in valid_subsets)),
         hyperparam("--ignore-unused-valid-subsets"),
         hyperparam("--num-workers", 8),
         hyperparam("--num-workers-valid", 1),
         hyperparam("--validate-interval-updates", 2000),
-        hyperparam("--save-interval-updates", 2000),
-        hyperparam(
-            "--no-epoch-checkpoints"
-        ),  # only save checkpoints based on num steps
-        hyperparam("--no-best-checkpoints"),  # don't save checkpoint_best.pt
         hyperparam(
             "--memory-efficient-fp16",
             save_dir_key=lambda val: "me_fp16" if not no_save_params else "",

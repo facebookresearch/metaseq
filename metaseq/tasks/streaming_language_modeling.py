@@ -21,17 +21,17 @@ from metaseq.data import (
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
-    StreamingShuffleDataset,
-    StreamingTokenBlockDataset,
     StreamingSrcTgtDataset,
     data_utils,
     iterators,
 )
+
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import ByteLevelBPETokenizer, Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -47,6 +47,9 @@ DEFAULT_MULTICORPUS_MAX = -1
 class StreamingLanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory with JSONL files"}
+    )
+    hf_tokenizer: Optional[str] = field(
+        default="", metadata={"help": "path to a HF tokenizer json file."}
     )
     vocab_filename: Optional[str] = field(
         default="", metadata={"help": "path to bpe-vocab.json"}
@@ -124,9 +127,12 @@ class StreamingLanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        self.tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename, args.merges_filename
-        )
+        if args.hf_tokenizer:
+            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            self.tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
@@ -272,7 +278,9 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert min(shards.keys()) == 0
         assert max(shards.keys()) == len(shards) - 1
 
-        shard_idx = ((epoch - 1) // self.args.data_subshard_count) % len(shards)
+        data_subshard_count = self.args.data_subshard_count if split == "train" else 1
+
+        shard_idx = ((epoch - 1) // data_subshard_count) % len(shards)
         cur_shard_str = shards[shard_idx]
         return cur_shard_str
 
@@ -304,6 +312,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
+        data_subshard_count = self.args.data_subshard_count if split == "train" else 1
         for file in sorted(
             os.listdir(os.path.join(self.args.data, split, cur_shard_str))
         ):
@@ -314,7 +323,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
                     epoch=epoch,
-                    data_subshard_count=self.args.data_subshard_count,
+                    data_subshard_count=data_subshard_count,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -325,11 +334,8 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
         # chunk into blocks of tokens
-        self.datasets[split] = StreamingTokenBlockDataset(
+        self.datasets[split] = DocumentToSequenceDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -338,9 +344,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
-            # 1284 is a randomly-generated offset to decouple the seed used here
-            # from the seed used above in StreamingShuffleDataset
-            seed=1284 + self.args.seed,
+            seed=self.args.seed,
         )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
@@ -449,12 +453,13 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, StreamingTokenBlockDataset) or isinstance(
+        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.set_num_workers(num_workers)
 
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
@@ -466,6 +471,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
+
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,
@@ -473,6 +479,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             drop_last=skip_remainder_batch,
             num_workers=num_workers,
             epoch=epoch,
+            num_shards=num_shards,
         )
 
     @property

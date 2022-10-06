@@ -12,7 +12,6 @@ import signal
 import socket
 import struct
 import subprocess
-import warnings
 from argparse import Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -124,10 +123,13 @@ def distributed_init(cfg: MetaseqConfig):
 
         cfg = convert_namespace_to_omegaconf(cfg)
 
+    # silence torch's distributed initialization info
+    logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.WARNING)
+
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        warnings.warn("Distributed is already initialized, cannot initialize twice!")
+        logger.warning("Distributed is already initialized, cannot initialize twice!")
     else:
-        logger.info(
+        logger.debug(
             "distributed init (rank {}): {}".format(
                 cfg.distributed_training.distributed_rank,
                 cfg.distributed_training.distributed_init_method,
@@ -152,10 +154,15 @@ def distributed_init(cfg: MetaseqConfig):
 
     cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
 
+    # set global log level
     if is_master(cfg.distributed_training):
         logging.getLogger().setLevel(logging.INFO)
     else:
         logging.getLogger().setLevel(logging.WARNING)
+
+    nodelist = os.environ.get("SLURM_STEP_NODELIST")
+    if nodelist:
+        logger.info(f"SLURM nodelist: {nodelist}")
 
     if cfg.common.model_parallel_size > 1:
         try:
@@ -180,6 +187,8 @@ def distributed_init(cfg: MetaseqConfig):
 
 
 def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
+    # don't use MKL/OMP to avoid conflicting processes
+    torch.set_num_threads(1)
     if not cfg.distributed_training.distributed_no_spawn:
         # if in local spawning, i is offset by -1 since torch.multiprocessing.spawn
         # always starts at rank 0

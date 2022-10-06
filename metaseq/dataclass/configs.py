@@ -199,13 +199,6 @@ class CommonConfig(MetaseqDataclass):
     new_profiler: bool = field(
         default=False, metadata={"help": "use pytorch profiler (v2)"}
     )
-    dont_log_param_and_grad_norm: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Don't log grad/param norms for each parameter.",
-            "argparse_alias": "--quiet",
-        },
-    )
 
 
 @dataclass
@@ -272,13 +265,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "[deprecated] this is now defined per Criterion"},
     )
-    heartbeat_timeout: int = field(
-        default=-1,
-        metadata={
-            "help": "kill the job if no progress is made in N seconds; "
-            "set to -1 to disable"
-        },
-    )
+
     broadcast_buffers: bool = field(
         default=False,
         metadata={
@@ -369,9 +356,6 @@ class DatasetConfig(MetaseqDataclass):
     ignore_unused_valid_subsets: Optional[bool] = field(
         default=False,
         metadata={"help": "do not raise error if valid subsets are ignored"},
-    )
-    validate_interval: int = field(
-        default=1, metadata={"help": "validate every N epochs"}
     )
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
@@ -500,45 +484,25 @@ class CheckpointConfig(MetaseqDataclass):
             "help": "a dictionary used to override optimizer args when loading a checkpoint"
         },
     )
-    save_interval: int = field(
-        default=1, metadata={"help": "save a checkpoint every N epochs"}
+    save_interval_epochs: int = field(
+        default=1,
+        metadata={
+            "help": "save a checkpoint every N epochs"
+            "(note: one epoch is a a run over just one data shard, not of over the whole dataset, see #198)"
+        },
     )
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
     )
-    keep_interval_updates: int = field(
-        default=-1,
-        metadata={
-            "help": "keep the last N checkpoints saved with --save-interval-updates"
-        },
+    save_last_checkpoint: bool = field(
+        default=True,
+        metadata={"help": "store a last checkpoint at the end of the training run."},
     )
     keep_last_epochs: int = field(
-        default=-1, metadata={"help": "keep last N epoch checkpoints"}
+        default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
-    keep_best_checkpoints: int = field(
-        default=-1, metadata={"help": "keep best N checkpoints based on scores"}
-    )
-    no_save: bool = field(
-        default=False, metadata={"help": "don't save models or checkpoints"}
-    )
-    no_epoch_checkpoints: bool = field(
-        default=False, metadata={"help": "only store last and best checkpoints"}
-    )
-    no_last_checkpoints: bool = field(
-        default=False, metadata={"help": "don't store last checkpoints"}
-    )
-    no_best_checkpoints: bool = field(
-        default=False, metadata={"help": "don't store best checkpoints"}
-    )
-    no_save_optimizer_state: bool = field(
-        default=False,
-        metadata={"help": "don't save optimizer-state as part of checkpoint"},
-    )
-    no_save_optimizer_state_on_training_finished: bool = field(
-        default=False,
-        metadata={
-            "help": "don't save optimizer-state as part of checkpoint when training is done"
-        },
+    keep_last_updates: int = field(
+        default=-1, metadata={"help": "keep only the last N updates checkpoints"}
     )
     best_checkpoint_metric: str = field(
         default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}

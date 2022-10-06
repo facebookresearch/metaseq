@@ -135,11 +135,11 @@ def do_setup(package_data):
         install_requires=[
             # protobuf version pinned due to tensorboard not pinning a version.
             #  https://github.com/protocolbuffers/protobuf/issues/10076
-            "protobuf==3.20.1",
+            "protobuf==3.20.2",
             "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
-            "black==22.1.0",
+            "black==22.3.0",
             "click==8.0.4",
             "cython",
             'dataclasses; python_version<"3.7"',
@@ -159,6 +159,7 @@ def do_setup(package_data):
             "omegaconf<=2.1.1",
             "pre-commit",
             "pytest",
+            "pytest-regressions",
             "regex",
             "sklearn",  # for evals
             "sacrebleu",  # for evals
@@ -181,7 +182,7 @@ def do_setup(package_data):
         extras_require={
             "dev": [
                 "flake8==3.9.2",
-                "black==22.1.0",
+                "black==22.3.0",
                 # test deps
                 "iopath",
                 "transformers",

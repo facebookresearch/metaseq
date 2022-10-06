@@ -142,6 +142,15 @@ class GeneratorHubInterface(nn.Module):
         self.src_dict = self.task.source_dictionary
         self.tgt_dict = self.task.target_dictionary
 
+        # store special token indices for
+        self._pad_token_ind = self.tgt_dict.pad_index
+        self._special_token_inds = {
+            self.tgt_dict.eos_index,
+            self.tgt_dict.pad_index,
+            self.tgt_dict.bos_index,
+            self.tgt_dict.unk_index,
+        }
+
         if "langs" in self.cfg.task:
             self.langs = self.cfg.task.langs
             lang_tokens = [
@@ -283,10 +292,43 @@ class GeneratorHubInterface(nn.Module):
             translations = self.task.inference_step(
                 generator, self.models, batch, **inference_step_args
             )
+
             if is_dummy_batch:  # Don't score it or add it to hypotheses
                 continue
-            for id, hypos in zip(batch["id"].tolist(), translations):
-                results.append((id, hypos))
+            if isinstance(translations, list):
+                # For SequenceScorer
+                for id, hypos in zip(batch["id"].tolist(), translations):
+                    results.append((id, hypos))
+            else:
+                # For Sequence Generator
+
+                for id, i in zip(
+                    batch["id"].tolist(), range(translations["tokens"].size(0))
+                ):
+                    beams = []
+                    for j in range(0, translations["tokens"].size(1)):
+                        raw_tokens = translations["tokens"][i][j].tolist()
+                        raw_scores = translations["scores"][i][j].tolist()
+                        (
+                            tokens,
+                            scores,
+                            distributions,
+                        ) = GeneratorInterface._filter_special(
+                            self._pad_token_ind,
+                            self._special_token_inds,
+                            raw_tokens,
+                            raw_scores,
+                            distributions=None,
+                        )
+                        beams.append(
+                            {
+                                "id": id,
+                                "tokens": tokens,
+                                "positional_scores": scores,
+                            }
+                        )
+
+                    results.append((id, beams))
 
         # sort output to match input order
         outputs = [hypos for _, hypos in sorted(results, key=lambda x: x[0])]
@@ -493,6 +535,7 @@ class GeneratorInterface:
         task = tasks.setup_task(self.cfg.task)
 
         def _build_model(cfg, task):
+            setattr(cfg["model"], "inference", True)
             model = task.build_model(cfg.model).cuda()
             model.make_generation_fast_()
             return fsdp_wrap(model)
@@ -500,11 +543,9 @@ class GeneratorInterface:
         # Load the model
         overrides = ast.literal_eval(self.cfg.common_eval.model_overrides)
         logger.info("loading model(s) from {}".format(self.cfg.common_eval.path))
-        with fsdp_enable_wrap(
-            self.cfg.distributed_training,
-            use_sharded_state=self.cfg.distributed_training.use_sharded_state,
-        ):
-            models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
+
+        def _load_checkpoint():
+            return checkpoint_utils.load_model_ensemble_and_task(
                 utils.split_paths(self.cfg.common_eval.path),
                 arg_overrides=overrides,
                 task=task,
@@ -513,6 +554,15 @@ class GeneratorInterface:
                 num_shards=self.cfg.checkpoint.checkpoint_shard_count,
                 build_model_hook=_build_model,
             )
+
+        if self.cfg.distributed_training.ddp_backend == "fully_sharded":
+            with fsdp_enable_wrap(
+                self.cfg.distributed_training,
+                use_sharded_state=self.cfg.distributed_training.use_sharded_state,
+            ):
+                models, _model_args, _task = _load_checkpoint()
+        else:
+            models, _model_args, _task = _load_checkpoint()
         # Set dictionaries
         src_dict = task.source_dictionary
         tgt_dict = task.target_dictionary
@@ -664,7 +714,11 @@ class GeneratorInterface:
                     prompt_len = lengths[i]
 
                     tokens, scores, distributions = self._filter_special(
-                        tokens, scores, distributions
+                        self._pad_token_ind,
+                        self._special_token_inds,
+                        tokens,
+                        scores,
+                        distributions,
                     )
 
                     if echo:
@@ -732,8 +786,10 @@ class GeneratorInterface:
         )
         return retval
 
+    @staticmethod
     def _filter_special(
-        self,
+        pad_token_ind,
+        special_token_inds,
         tokens: List[int],
         scores: List[float],
         distributions,
@@ -749,11 +805,11 @@ class GeneratorInterface:
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):
-            if t == self._pad_token_ind:
+            if t == pad_token_ind:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t in self._special_token_inds and i > 0:
+            if t in special_token_inds and i > 0:
                 # and other special tokens should end things
                 mask.append(False)
                 break

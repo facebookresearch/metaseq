@@ -9,7 +9,8 @@ from metaseq.model_parallel.modules import (
     ModelParallelTransformerDecoderLayer,
     ModelParallelTransformerEncoderLayer,
 )
-from metaseq.models.transformer import TransformerDecoder, TransformerEncoder
+from metaseq.models.transformer_decoder import TransformerDecoder
+from metaseq.models.transformer_encoder import TransformerEncoder
 
 try:
     from megatron.mpu import (
@@ -47,8 +48,8 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
     is a :class:`ModelParallelTransformerDecoderLayer`.
     """
 
-    def build_base_decoder_layer(self, args, no_encoder_attn=False, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args, no_encoder_attn)
+    def build_base_decoder_layer(self, args, **kwargs):
+        return ModelParallelTransformerDecoderLayer(args)
 
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""

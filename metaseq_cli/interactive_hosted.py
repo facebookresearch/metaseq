@@ -133,11 +133,12 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                             request_object[key] = ro[key]
                 # do the actual generations
                 request_object["seed"] = random.randint(1, 20000)
-                distributed_utils.broadcast_object(
-                    request_object,
-                    src_rank=0,
-                    group=distributed_utils.get_global_group(),
-                )
+                if torch.distributed.is_initialized():
+                    distributed_utils.broadcast_object(
+                        request_object,
+                        src_rank=0,
+                        group=distributed_utils.get_global_group(),
+                    )
                 try:
                     generations = generator.generate(**request_object)
                 except RuntimeError:
@@ -175,10 +176,12 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
     models = generator.load_model()  # noqa: F841
 
     logger.info(f"loaded model {cfg.distributed_training.distributed_rank}")
-    request_object = distributed_utils.broadcast_object(
-        None, src_rank=0, group=distributed_utils.get_global_group()
-    )
-    if torch.distributed.get_rank() == 0:
+    if torch.distributed.is_initialized():
+        request_object = distributed_utils.broadcast_object(
+            None, src_rank=0, group=distributed_utils.get_global_group()
+        )
+
+    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         logger.info(f"Worker engaged! {get_my_ip()}:{port}")
         thread = threading.Thread(target=batching_loop, daemon=True)
         thread.start()
@@ -294,6 +297,10 @@ def completions(engine=None):
         generation_args["top_p"] = 1.0
     # beam search top n
     if "n" in generation_args:
+        if int(generation_args["n"]) > MAX_BEAM:
+            logger.warning(
+                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
+            )
         generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
     else:
         generation_args["n"] = 1
@@ -304,6 +311,9 @@ def completions(engine=None):
         if gen_len + len(prompt) + 1 > MAX_SEQ_LEN:
             # cut off the prompt to always fit with number of generations we need
             # +1 to always have the EOS token
+            logger.warning(
+                f"input too long, truncated to {MAX_SEQ_LEN - gen_len - 1} to avoid OOM"
+            )
             prompt = prompt[-(MAX_SEQ_LEN - gen_len - 1) :]
         request_object = {"input": prompt, **generation_args}
         BATCH_QUEUE.put(

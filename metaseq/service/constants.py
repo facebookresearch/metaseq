@@ -20,15 +20,19 @@ CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "2.7B", "resharded", "reshard.p
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
-    "--task cm3_language_modeling_inference_for_models_trained_with_streaming",
-    f"--spm-path /data/gpt-z/cm3/v1.2/tokenizers/V262144_I8192_S512_M512_R1024.json",
-    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
+    "--ddp-backend pytorch_ddp",
+    "--task language_modeling",
+    f"--bpe-merges {BPE_MERGES}",
+    f"--bpe-vocab {BPE_VOCAB}",
+    "--bpe hf_byte_bpe",
+    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    f"--path {MODEL_FILE}",
     "--beam 1 --nbest 1",
     "--bpe hf_cm3_unigram",
     # "--final-vocab-size 65536",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",
-    "--use-sharded-state",
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",

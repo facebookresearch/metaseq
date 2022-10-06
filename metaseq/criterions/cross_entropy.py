@@ -68,7 +68,7 @@ class CrossEntropyCriterion(BaseCriterion):
         ):
             with torch.no_grad():
                 # yank out the inner states we wish to instrument
-                # see transformer.py TransformerDecoder.extract_features_scriptable
+                # see transformer_decoder.py TransformerDecoder.extract_features_scriptable
                 emb, *_, actv = net_output[1]["inner_states"]
                 assert isinstance(
                     emb, dict

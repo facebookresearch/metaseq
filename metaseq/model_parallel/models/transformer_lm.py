@@ -56,7 +56,6 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             args,
             task.target_dictionary,
             embed_tokens,
-            no_encoder_attn=True,
         )
         if not args.share_decoder_input_output_embed:
             output_projection = cls.build_embedding(
@@ -114,8 +113,6 @@ def base_lm_architecture(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
-    # Model training is not stable without this
-    args.decoder_normalize_before = True
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
     )

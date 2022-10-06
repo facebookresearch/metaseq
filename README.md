@@ -40,7 +40,7 @@ We welcome PRs from the community!
 You can find information about contributing to metaseq in our [Contributing](docs/CONTRIBUTING.md) document.
 
 ## The Team
-Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Stephen Roller](https://github.com/stephenroller), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), and [Uriel Singer](https://github.com/urielsinger).
+Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Stephen Roller](https://github.com/stephenroller), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), and [David Esiobu](https://github.com/davides).
 
 Previous maintainers include:
 [Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).

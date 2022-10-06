@@ -28,6 +28,7 @@ class StreamingShuffleDataset(torch.utils.data.IterableDataset):
         assert len(dataset) > 0
 
         self.indices = None
+        self.worker_offset = 0
 
     def set_epoch(self, epoch):
         # shuffle the dataset according to the seed argument and epoch
@@ -45,7 +46,8 @@ class StreamingShuffleDataset(torch.utils.data.IterableDataset):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None and worker_info.num_workers > 1:
             chunks = np.array_split(self.indices, worker_info.num_workers)
-            indices = chunks[worker_info.id]
+            worker_id = (worker_info.id + self.worker_offset) % worker_info.num_workers
+            indices = chunks[worker_id]
         else:
             indices = self.indices
 

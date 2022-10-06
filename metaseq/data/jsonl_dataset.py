@@ -49,8 +49,11 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.tokenizer = tokenizer
 
         self.threadlocal = threading.local()
+        # resolve symlinks to for cached indexes. This lets us re-use indexes
+        # across our experiments using differently composed datasets
+        resolved_path = Path(path).resolve()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
-        self.cache = Path(f"{path}.fairseq.idx.npy")
+        self.cache = Path(f"{resolved_path}.fairseq.idx.npy")
         # only build the cache in on the primary worker to prevent overloading nfs
         if distributed_utils.get_global_rank() != 0:
             distributed_utils.global_barrier()
@@ -87,27 +90,27 @@ class JsonlDataset(torch.utils.data.Dataset):
         # For instance, for a data_subshard_count of 3 and epoch number of 1,
         # subshard_idx goes like 0, 3, 6, 9 ...
         # For more details, see https://github.com/facebookresearch/metaseq/issues/166
+        subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
+        if subshard_idx < 0 or subshard_idx >= len(self.offsets):
+            raise IndexError
+        f = self._get_mmap()
+        position = self.offsets[subshard_idx]
+        f.seek(position)
+        item = f.readline().decode("utf-8")
         try:
-            subshard_idx = self._get_subshard_id() + idx * self.data_subshard_count
-            if subshard_idx < 0 or subshard_idx >= len(self.offsets):
-                raise IndexError
-            f = self._get_mmap()
-            f.seek(self.offsets[subshard_idx])
-            item = f.readline().decode("utf-8")
             item = json.loads(item)
-            if self.tokenizer is not None:
-                item = self.tokenizer(item)
-            return item
-        except BaseException as error:
-            logger.error(f"Parse error in idx: {subshard_idx}, path: {self.path}")
-            logger.error(f"Skipping idx: {subshard_idx} with error \n\t{error}")
-            if idx + 1 < len(self):
-                return self[idx + 1]
-            else:
-                logger.error(
-                    "Index error occurred at the last sample. DATA MOST LIKELY CORRUPTED."
-                )
-                return self[0]
+        except json.decoder.JSONDecodeError:
+            raise json.decoder.JSONDecodeError(
+                doc=self.path,
+                pos=position,
+                msg=(
+                    f"Error while loading JSONL line in file {self.path} at byte "
+                    f"{position}. Contents of line:\n{item}"
+                ),
+            )
+        if self.tokenizer is not None:
+            item = self.tokenizer(item)
+        return item
 
     def __len__(self):
         # Virtual length of the dataset depends on the epoch number if the number of documents
@@ -139,15 +142,6 @@ class JsonlDataset(torch.utils.data.Dataset):
         line_num = 0
         while True:
             line = f.readline()
-            if line != b"":
-                try:
-                    json.loads(line)
-                except json.decoder.JSONDecodeError:
-                    raise json.decoder.JSONDecodeError(
-                        doc=path,
-                        pos=line_num,
-                        msg=f"Error while loading JSONL file {path} at line {line_num + 1}",
-                    )
             if line == b"":
                 break
             offsets.append(cur)

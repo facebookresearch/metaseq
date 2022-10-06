@@ -504,15 +504,13 @@ def relu_squared(x: torch.Tensor):
 
 def get_activation_fn(activation: str) -> Callable:
     """Returns the activation function corresponding to `activation`"""
-    from metaseq.modules import gelu, gelu_accurate
+    from metaseq.modules import gelu_accurate
 
     if activation == "relu":
         return F.relu
     elif activation == "relu_squared":
         return relu_squared
     elif activation == "gelu":
-        return gelu
-    elif activation == "gelu_accurate":
         return gelu_accurate
     elif activation == "tanh":
         return torch.tanh
@@ -660,6 +658,14 @@ def floating_point_precision_convertor(
         return x.bfloat16()
     else:
         return x.half()
+
+
+def get_model_init_dtype(args):
+    if getattr(args, "memory_efficient_fp16", False) or getattr(
+        args, "inference", False
+    ):
+        return torch.bfloat16 if getattr(args, "bf16", False) else torch.half
+    return torch.float32
 
 
 def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> float:

@@ -46,9 +46,6 @@ class Trainer(object):
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
-        self.dont_log_param_and_grad_norm = getattr(
-            cfg.common, "dont_log_param_and_grad_norm", False
-        )
         if self.cuda:
             self.device = torch.device("cuda")
         else:
@@ -82,7 +79,10 @@ class Trainer(object):
         self._criterion = criterion
         self._model = model
         if not self.is_fsdp:
-            if cfg.common.fp16:
+            if cfg.common.bf16:
+                self._criterion = self._criterion.bfloat16()
+                self._model = self._model.bfloat16()
+            elif cfg.common.fp16:
                 self._criterion = self._criterion.half()
                 self._model = self._model.half()
         if (
@@ -309,8 +309,6 @@ class Trainer(object):
     def consolidate_optimizer(self):
         """For OSS, we need to consolidate the state dict."""
         self._gathered_optim_state = None
-        if self.cfg.checkpoint.no_save_optimizer_state:
-            return
         if hasattr(self.optimizer.optimizer, "consolidate_state_dict"):
             self.optimizer.optimizer.consolidate_state_dict()
         elif self.is_fsdp and not self.use_sharded_state:
@@ -324,9 +322,7 @@ class Trainer(object):
 
     def state_dict(self, filename, training_finished=False) -> Dict[str, Dict]:
         model_state_dict = self.model.state_dict()
-        optim_state = None
-        if not self.cfg.checkpoint.no_save_optimizer_state:
-            optim_state = self._gathered_optim_state or self.optimizer.state_dict()
+        optim_state = self._gathered_optim_state or self.optimizer.state_dict()
         model_save_list = [
             (
                 filename,
@@ -362,11 +358,8 @@ class Trainer(object):
                     "previous_training_time": self.cumulative_training_time(),
                 },
             }
-            if not self.cfg.checkpoint.no_save_optimizer_state or (
-                self.cfg.checkpoint.no_save_optimizer_state_on_training_finished
-                and training_finished
-            ):
-                state_dict["last_optimizer_state"] = optimizer_state_dict
+
+            state_dict["last_optimizer_state"] = optimizer_state_dict
 
             if self.is_fsdp and self.use_sharded_state:
                 state_dict[
@@ -641,7 +634,7 @@ class Trainer(object):
         self._dummy_batch = batch
 
     @metrics.aggregate("train")
-    def train_step(self, samples, raise_oom=False):
+    def train_step(self, samples):
         """Do forward, backward and parameter update."""
         self._set_seed()
         self.model.train()
@@ -651,7 +644,7 @@ class Trainer(object):
         metrics.log_start_time("train_wall", priority=800, round=0)
 
         # forward and backward pass
-        logging_outputs, sample_size, ooms = [], 0, 0
+        logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
             sample, is_dummy_batch = self._prepare_sample(sample)
 
@@ -698,19 +691,7 @@ class Trainer(object):
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
-                    if raise_oom:
-                        raise e
-                    logger.warning(
-                        "attempting to recover from OOM in forward/backward pass"
-                    )
-                    ooms += 1
-                    self.zero_grad()
-                    if self.cuda:
-                        torch.cuda.empty_cache()
-                    if self.cfg.distributed_training.distributed_world_size == 1:
-                        return None
-                else:
-                    raise e
+                raise e
 
         if is_dummy_batch:
             if torch.is_tensor(sample_size):
@@ -728,10 +709,9 @@ class Trainer(object):
             train_time = self._local_cumulative_training_time()
             logging_outputs, (
                 sample_size,
-                ooms,
                 total_train_time,
             ) = self._aggregate_logging_outputs(
-                logging_outputs, sample_size, ooms, train_time, ignore=is_dummy_batch
+                logging_outputs, sample_size, train_time, ignore=is_dummy_batch
             )
             self._cumulative_training_time = (
                 total_train_time / self.data_parallel_world_size
@@ -942,47 +922,6 @@ class Trainer(object):
         """Get the (non-wrapped) criterion instance."""
         return self._criterion
 
-    def get_meter(self, name):
-        """[deprecated] Get a specific meter by name."""
-        from metaseq import meters
-
-        if "get_meter" not in self._warn_once:
-            self._warn_once.add("get_meter")
-            utils.deprecation_warning(
-                "Trainer.get_meter is deprecated. Please use metaseq.metrics instead."
-            )
-
-        train_meters = metrics.get_meters("train")
-        if train_meters is None:
-            train_meters = {}
-
-        if name == "train_loss" and "loss" in train_meters:
-            return train_meters["loss"]
-        elif name == "train_nll_loss":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = train_meters.get("nll_loss", None)
-            return m or meters.AverageMeter()
-        elif name == "wall":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = metrics.get_meter("default", "wall")
-            return m or meters.TimeMeter()
-        elif name == "wps":
-            m = metrics.get_meter("train", "wps")
-            return m or meters.TimeMeter()
-        elif name in {"valid_loss", "valid_nll_loss"}:
-            # support for legacy train.py, which assumed these meters
-            # are always initialized
-            k = name[len("valid_") :]
-            m = metrics.get_meter("valid", k)
-            return m or meters.AverageMeter()
-        elif name == "oom":
-            return meters.AverageMeter()
-        elif name in train_meters:
-            return train_meters[name]
-        return None
-
     def get_num_updates(self):
         """Get the number of parameters updates."""
         return self._num_updates
@@ -1186,38 +1125,6 @@ class Trainer(object):
                 )
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
-        # perform a bunch of arch-specific gradient metrics
-        for name, param in self.model.named_parameters():
-            if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
-                break
-            if param.grad is None:
-                continue
-            nice_name = name.replace("module._fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("_fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("._fsdp_wrapped_module.flat_param_0", "")
-            nice_name = nice_name.replace("decoder.layers.", "layer")
-            # threshold for near zeros
-            threshold = torch.finfo(param.grad.dtype).tiny * 2
-            with torch.no_grad():
-                g = param.grad
-                if hasattr(self.optimizer, "_multiply_factor"):
-                    g = self.optimizer._multiply_factor * g
-                norm = g.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = g.max()
-                nz = ((g > -threshold) & (g < threshold)).sum() / g.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"gnorm_{nice_name}", norm, priority=10)
-            metrics.log_scalar(f"gmax_{nice_name}", max_, priority=11)
-            metrics.log_scalar(f"gzero_{nice_name}", nz, priority=12)
-            with torch.no_grad():
-                norm = param.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = param.max()
-                nz = ((param > -threshold) & (param < threshold)).sum() / param.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"pnorm_{nice_name}", norm, priority=13)
-            metrics.log_scalar(f"pmax_{nice_name}", max_, priority=14)
-            metrics.log_scalar(f"pzero_{nice_name}", nz, priority=15)
-
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)

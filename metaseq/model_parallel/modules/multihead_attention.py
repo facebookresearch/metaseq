@@ -390,7 +390,20 @@ class ModelParallelMultiheadAttention(nn.Module):
                     output_size[0] * output_size[1], output_size[2], output_size[3]
                 )
             else:
-                attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
+                try:
+                    attn_probs = ScaledUpperTriangMaskedSoftmax.apply(
+                        matmul_result, 1.0
+                    )
+                except RuntimeError as e:
+                    raise RuntimeError(
+                        "Looks like you may have hit the feared INTERNAL ASSERT "
+                        "ERROR. You can either ensure your sequences are padded "
+                        "to a nice length (usually a power of 2), or you can make "
+                        "sure you call model.make_generation_fast_() at load. See "
+                        "interactive_hosted.py for an example.\n\n"
+                        f"Original Exception: {e}"
+                    )
+
             with get_cuda_rng_tracker().fork():
                 attn_probs = self.dropout_module(attn_probs)
 

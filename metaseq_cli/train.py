@@ -50,6 +50,13 @@ logger = logging.getLogger("metaseq_cli.train")
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
 
+    if distributed_utils.is_master(cfg.distributed_training):
+        # save a (vaguely human readable) copy of the training config
+        OmegaConf.save(
+            config=_flatten_config(cfg),
+            f=os.path.join(cfg.checkpoint.save_dir, "config.yml"),
+        )
+
     if (
         distributed_utils.is_master(cfg.distributed_training)
         and "job_logging_cfg" in cfg
@@ -277,7 +284,6 @@ def train(
     trainer.begin_epoch(epoch_itr.epoch)
     valid_subsets = cfg.dataset.valid_subset.split(",")
     should_stop = False
-    num_updates = trainer.get_num_updates()
     logger.info("Start iterating over samples")
 
     def train(
@@ -344,11 +350,6 @@ def train(
         if should_stop:
             break
 
-    # log end-of-epoch stats
-    logger.info("end of epoch {} (average epoch stats below)".format(epoch_itr.epoch))
-    stats = get_training_stats(metrics.get_smoothed_values("train"))
-    progress.print(stats, tag="train", step=num_updates)
-
     # reset epoch-level meters
     metrics.reset_meters("train")
     return valid_losses, should_stop
@@ -395,8 +396,11 @@ def validate_and_save(
         )
 
     do_save = (
-        (end_of_epoch and epoch_itr.epoch % cfg.checkpoint.save_interval == 0)
-        or should_stop
+        (
+            end_of_epoch
+            and cfg.checkpoint.save_interval_epochs > 0
+            and epoch_itr.epoch % cfg.checkpoint.save_interval_epochs == 0
+        )
         or (
             cfg.checkpoint.save_interval_updates > 0
             and num_updates > 0
@@ -404,12 +408,10 @@ def validate_and_save(
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
         )
+        or should_stop
     )
     do_validate = (
-        (
-            not end_of_epoch and do_save and not cfg.checkpoint.no_best_checkpoints
-        )  # validate during mid-epoch saves
-        or (end_of_epoch and epoch_itr.epoch % cfg.dataset.validate_interval == 0)
+        (not end_of_epoch and do_save)  # validate during mid-epoch saves
         or should_stop
         or (
             cfg.dataset.validate_interval_updates > 0
@@ -425,7 +427,7 @@ def validate_and_save(
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save or should_stop:
+    if do_save:
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
