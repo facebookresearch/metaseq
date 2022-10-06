@@ -67,14 +67,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                 "\n\nPlease install megatron using the setup instructions!"
             )
 
-        # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
-        # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
-        # we have seq_lens not power of 2.
-        self.CHANGES = False if os.environ["EVAL"] else True
-        # (
-            # self.training
-        # )  # not getattr(self, "inference", False) # Don't use megatron for eval because of internal assert errors.
-
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
@@ -341,7 +333,12 @@ class ModelParallelMultiheadAttention(nn.Module):
             k, _ = self.k_proj(key)
             v, _ = self.v_proj(value)
 
-        if self.CHANGES:
+        # Megatron's fused kernel: "ScaledUpperTriangMaskedSoftmax" seems to crash with odd shape across seq_len dimension.
+        # This is okay for training cause training we have all seq_len nice power of 2s but during evaluation and generation,
+        # we have seq_lens not power of 2.
+        CHANGES = not getattr(self, "inference", False)
+
+        if CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
