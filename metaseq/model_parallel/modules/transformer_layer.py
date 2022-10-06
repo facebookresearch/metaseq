@@ -150,6 +150,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
+            flash_attn=getattr(args, "flash_attn", False),
         )
 
     def forward_attention(

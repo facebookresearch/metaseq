@@ -14,6 +14,9 @@ from metaseq import utils
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
 
+
+import xformers.ops as xops
+
 try:
     from megatron.mpu import (
         get_cuda_rng_tracker,
@@ -60,6 +63,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
+        flash_attn=False,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -260,6 +264,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
+        self.flash_attn = flash_attn
 
     def forward(
         self,
@@ -318,7 +323,26 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if CHANGES:
+        if self.flash_attn:                
+            q = (
+                q.view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
+                .transpose(0, 1)
+            )
+            if k is not None:
+                k = (
+                    k.view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            attn = xops.memory_efficient_attention(
+                q, k, v, attn_bias=xops.LowerTriangularMask()
+            )
+        elif CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
@@ -503,8 +527,11 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
-        # logger.info("attn:" + str(attn.float().norm().item()))
+
+        if not self.flash_attn:
+            attn = torch.bmm(attn_probs, v)
+            # logger.info("attn:" + str(attn.float().norm().item()))
+
         assert list(attn.size()) == [
             bsz * self.num_heads_partition,
             tgt_len,

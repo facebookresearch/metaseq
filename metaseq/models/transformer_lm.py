@@ -149,6 +149,9 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
+    flash_attn: Optional[bool] = field(
+        default=False, metadata={"help": "Use memory efficient flash attention"}
+    )
 
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
