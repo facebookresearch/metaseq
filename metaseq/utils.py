@@ -11,7 +11,7 @@ import os
 import random
 import sys
 import warnings
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -472,39 +472,6 @@ def get_perplexity(loss, round=2, base=2):
 def deprecation_warning(message, stacklevel=3):
     # don't use DeprecationWarning, since it's ignored by default
     warnings.warn(message, stacklevel=stacklevel)
-
-
-def relu_squared(x: torch.Tensor):
-    return F.relu(x).pow(2)
-
-
-def get_activation_fn(activation: str) -> Callable:
-    """Returns the activation function corresponding to `activation`"""
-    from metaseq.modules import gelu_accurate
-
-    if activation == "relu":
-        return F.relu
-    elif activation == "relu_squared":
-        return relu_squared
-    elif activation == "gelu":
-        return gelu_accurate
-    elif activation == "tanh":
-        return torch.tanh
-    elif activation == "linear":
-        return lambda x: x
-    else:
-        raise RuntimeError("--activation-fn {} not supported".format(activation))
-
-
-def get_available_activation_fns() -> List:
-    return [
-        "relu",
-        "relu_squared",
-        "gelu",
-        "gelu_accurate",
-        "tanh",
-        "linear",
-    ]
 
 
 def has_parameters(module):

@@ -33,10 +33,13 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         ffn_dim = args.encoder_ffn_embed_dim
-        self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, "activation_fn", "relu") or "relu"
-        )
         self.fc1 = Linear(self.embed_dim, ffn_dim)
+        self.activation_fn = ActivationFn(
+            getattr(args, "activation_fn", "relu") or "relu",
+            type(self.fc1),
+            self.embed_dim,
+            ffn_dim,
+        )
         self.fc2 = Linear(ffn_dim, self.embed_dim)
         self.final_layer_norm = LayerNorm(self.embed_dim)
 
