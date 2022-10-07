@@ -14,6 +14,7 @@ def gelu(x):
     return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
 
 
+@torch.jit.script
 def swiglu(x: torch.Tensor, gate: torch.Tensor):
     return F.silu(x) * gate
 
