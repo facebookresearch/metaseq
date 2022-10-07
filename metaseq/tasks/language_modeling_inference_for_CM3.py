@@ -94,7 +94,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
 
     def _initialize_unigram_tokenizer(self, args):
         # if "1.3" in args.spm_path:
-        if "1.4" not in args.spm_path: # tokenizers for 1.3 and previous
+        if "1.4" not in args.spm_path:  # tokenizers for 1.3 and previous
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
@@ -106,7 +106,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
             )
             return tokenizer
         # elif "1.4" in args.spm_path:
-        else: # 1.4 tokenizers
+        else:  # 1.4 tokenizers
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
@@ -119,7 +119,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
             )
             tokenizer.decoder = decoders.ByteLevel()
             return tokenizer
-        #raise ValueError("What tokenizer are you trying to use?")
+        # raise ValueError("What tokenizer are you trying to use?")
 
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
@@ -228,11 +228,6 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        # if max(args.update_freq) > 1:
-        #     raise NotImplementedError(
-        #         "--update-freq is not compatible with StreamingLanguageModelingTask"
-        #     )
-
         self.sentinel_end = "<eoss>"
         self.sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(args.num_sentinel_tokens)
@@ -252,7 +247,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         self._initialize_boundary_tokens(args)
 
         self._check_tokenizer_dictionary_invariants(args)
-                
+
         logger.info(f"Dictionary Size: {len(self.dictionary)}")
         # confirm that metaseq dictionary and BPE have matching special symbols
 

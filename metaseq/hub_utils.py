@@ -251,7 +251,6 @@ class GeneratorHubInterface(nn.Module):
         batch_size=None,
         **kwargs,
     ) -> List[List[Dict[str, torch.Tensor]]]:
-        import torch
         if torch.is_tensor(tokenized_sentences) and tokenized_sentences.dim() == 1:
             return self.generate(
                 tokenized_sentences.unsqueeze(0),
@@ -296,7 +295,7 @@ class GeneratorHubInterface(nn.Module):
             translations = self.task.inference_step(
                 generator, self.models, batch, **inference_step_args
             )
-            
+
             if is_dummy_batch:  # Don't score it or add it to hypotheses
                 continue
             if isinstance(translations, list):
@@ -813,4 +812,3 @@ class GeneratorInterface:
         if distributions is not None:
             distributions = distributions[mask]
         return list(new_tokens), list(new_scores), distributions
-        

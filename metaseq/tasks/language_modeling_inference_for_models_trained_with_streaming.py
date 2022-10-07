@@ -14,14 +14,12 @@ from omegaconf import II
 
 from metaseq import utils
 from metaseq.data import (
-    AppendTokenDataset,
     Dictionary,
     IdDataset,
     LMContextWindowDataset,
     MonolingualDataset,
     NestedDictionaryDataset,
     NumelDataset,
-    PrependTokenDataset,
     StripTokenDataset,
     TokenBlockDataset,
     PadDataset,
@@ -258,7 +256,6 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             pad_to_bsz=pad_to_bsz,
         )
 
-
     def build_dataset_for_inference(self, src_tokens, src_lengths, **kwargs):
         """
         Generate batches for inference. We prepend an eos token to src_tokens
@@ -296,7 +293,6 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             },
             sizes=[np.array(src_lengths)],
         )
-
 
     def inference_step(
         self, generator, models, sample, prefix_tokens=None, constraints=None

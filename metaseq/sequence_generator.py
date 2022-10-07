@@ -64,7 +64,7 @@ class SequenceGenerator(nn.Module):
         if topp is None:
             topp = 0.0
         self.sampling_topp = max(0, topp)
-        self.temperature = 0.85  #  temperature
+        self.temperature = temperature
         assert temperature > 0, "--temperature must be greater than 0"
 
         self.model.eval()
@@ -103,7 +103,6 @@ class SequenceGenerator(nn.Module):
             bos_token (int, optional): beginning of sentence token
                 (default: self.eos)
         """
-        import torch
         incremental_states = torch.jit.annotate(
             Dict[str, Dict[str, Optional[Tensor]]], {}
         )
@@ -206,7 +205,7 @@ class SequenceGenerator(nn.Module):
         # decisions are only over the most recent token.
         lprobs_cut = []
         for i in range(src_tokens.shape[0]):
-            prompt_len = src_lengths[i] -1 
+            prompt_len = src_lengths[i] - 1
             scores[i * beam_size : (i + 1) * beam_size, prompt_len + 1 :] = 0.0  # reset
             lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
         lprobs = torch.cat(lprobs_cut, dim=0)
@@ -215,14 +214,14 @@ class SequenceGenerator(nn.Module):
 
         for step in tqdm(range(start_step, max_len + 1)):
 
-            # import torch 
-            # if torch.distributed.get_rank() == 0: 
+            # import torch
+            # if torch.distributed.get_rank() == 0:
             #     from metaseq import pdb; pdb.set_trace()
 
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
-                for stop_token in self.stop0:
+                for stop_token in self.stop:
                     lprobs[:, stop_token] = -math.inf
 
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
@@ -306,7 +305,6 @@ class SequenceGenerator(nn.Module):
         """
         if self.temperature == 0.0 or self.sampling_topp == 0.0:
             # greedy search
-            # print('greedy')
             return tuple(lprobs.max(dim=-1))
 
         probs = torch.softmax(lprobs, dim=-1)
