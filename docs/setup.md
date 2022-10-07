@@ -28,7 +28,7 @@ pip3 install -e .
 ```
 git clone https://github.com/facebookresearch/fairscale.git
 cd fairscale
-git checkout prefetch_fsdp_params_simple
+git checkout fixing_memory_issues_with_keeping_overlap_may24
 pip3 install -e .
 ```
 ## Install metaseq
