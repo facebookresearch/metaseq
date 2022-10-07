@@ -12,7 +12,6 @@ from torch import Tensor
 from metaseq import utils
 from metaseq.modules import (
     ActivationFn,
-    gelu,
     MultiheadAttention,
     Dropout,
     FeedForwardNetwork,
