@@ -195,6 +195,17 @@ class EpochBatchIterating(object):
         return "DUMMY"
 
 
+class _CollateWithWorkerID:
+    def __init__(self, collate_fn):
+        self.collate_fn = collate_fn
+
+    def __call__(self, items):
+        r = self.collate_fn(items)
+        worker_info = torch.utils.data.get_worker_info()
+        assert worker_info or self.num_workers == 0
+        return (worker_info.id if worker_info else 0, r)
+
+
 class StreamingEpochBatchIterator(EpochBatchIterating):
     """A steaming-style iterator over a :class:`torch.utils.data.IterableDataset`.
 
@@ -368,17 +379,11 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         if self.num_workers > 0:
             os.environ["PYTHONWARNINGS"] = "ignore:semaphore_tracker:UserWarning"
 
-        def collate_with_worker_id(items):
-            r = self.collate_fn(items)
-            worker_info = torch.utils.data.get_worker_info()
-            assert worker_info or self.num_workers == 0
-            return (worker_info.id if worker_info else 0, r)
-
         itr = torch.utils.data.DataLoader(
             dataset=self.dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=collate_with_worker_id,
+            collate_fn=_CollateWithWorkerID(self.collate_fn),
             pin_memory=True,
             drop_last=self.drop_last,
             worker_init_fn=getattr(self.dataset, "worker_init_fn", None),
