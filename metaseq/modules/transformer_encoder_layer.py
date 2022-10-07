@@ -8,8 +8,8 @@ from typing import Optional
 import torch
 from torch import nn as nn, Tensor
 
-from metaseq import utils
 from metaseq.modules import (
+    ActivationFn,
     LayerNorm,
     Dropout,
     Linear,
@@ -36,7 +36,7 @@ class TransformerEncoderLayer(nn.Module):
         self.fc1 = Linear(self.embed_dim, ffn_dim)
         self.activation_fn = ActivationFn(
             getattr(args, "activation_fn", "relu") or "relu",
-            type(self.fc1),
+            Linear,
             self.embed_dim,
             ffn_dim,
         )

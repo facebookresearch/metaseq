@@ -35,12 +35,12 @@ def get_available_activation_fns() -> List:
 
 
 class ActivationFn(nn.Module):
-    def __init__(self, name, fc1_type, embed_dim, ffn_dim, **fc1_kargs):
+    def __init__(self, name, fc1_builder, embed_dim, ffn_dim, **fc1_kwargs):
         super().__init__()
         self.fn = self.__get_fn(name)
         self.gate = None
         if self.fn in self.__get_gated_fns():
-            self.gate = fc1_type(embed_dim, ffn_dim, **fc1_kargs)
+            self.gate = fc1_builder(embed_dim, ffn_dim, **fc1_kwargs)
 
     def forward(self, fc1_in, fc1_out, model_parallel):
         if self.gate is not None:

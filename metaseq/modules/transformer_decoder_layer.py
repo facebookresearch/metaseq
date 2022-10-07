@@ -70,31 +70,29 @@ class TransformerDecoderLayer(nn.Module):
 
         ffn_dim = args.decoder_ffn_embed_dim
 
+        activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
+        self.skip_bias_add = (activation_fn_name == "gelu") and has_fused_bias_gelu
+
+        fc1_kwargs = {
+            "initialize_params_on_gpu": initialize_params_on_gpu,
+            "full_megatron_init": getattr(args, "full_megatron_init", False),
+            "megatron_init_sigma": getattr(args, "megatron_init_sigma", 0.006),
+            "dtype": utils.get_model_init_dtype(args),
+            "disable_bias": getattr(args, "disable_bias", False),
+        }
         self.fc1 = self.build_fc1(
             self.embed_dim,
             ffn_dim,
-            initialize_params_on_gpu=initialize_params_on_gpu,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
-            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            dtype=utils.get_model_init_dtype(args),
-            disable_bias=getattr(args, "disable_bias", False),
+            **fc1_kwargs,
         )
 
         self.activation_fn = ActivationFn(
-            str(args.activation_fn)
-            if getattr(args, "activation_fn", None) is not None
-            else "relu",
-            type(self.fc1),
+            activation_fn_name,
+            self.build_fc1,
             self.embed_dim,
             ffn_dim,
-            initialize_params_on_gpu=initialize_params_on_gpu,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
-            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            dtype=utils.get_model_init_dtype(args),
-            disable_bias=getattr(args, "disable_bias", False),
+            **fc1_kwargs,
         )
-
-        self.skip_bias_add = (self.activation_fn.fn == gelu) and has_fused_bias_gelu
 
         self.fc2 = self.build_fc2(
             ffn_dim,
