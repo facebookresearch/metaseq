@@ -62,7 +62,6 @@ class FakeTensorData(torch.utils.data.Dataset):
         self.queried = 0
         self.realized = [False for _ in self.items]
 
-
     def _gen_one(self, source_target):
         n = self.rng.randrange(512, 2048)
         toks = torch.randint(256, size=(n,), generator=self.trng)
@@ -292,7 +291,11 @@ class TestStreamingIterators(unittest.TestCase):
         def get_traditional_iterator(dataset, break_mode, drop_last, source_target):
             shuffle_dataset = StreamingShuffleDataset(dataset, seed=42)
             shuffle_dataset.set_epoch(0)
-            Dataset = StreamingTokenBlockDataset if not source_target else StreamingSrcTgtDataset
+            Dataset = (
+                StreamingTokenBlockDataset
+                if not source_target
+                else StreamingSrcTgtDataset
+            )
             token_dataset = Dataset(
                 shuffle_dataset,
                 # We generate blocks with one extra token, so that we have a target
@@ -309,7 +312,9 @@ class TestStreamingIterators(unittest.TestCase):
             token_dataset.set_shuffle_buffer_size(4)
             return token_dataset
 
-        def get_document_to_sequence_iterator(dataset, break_mode, drop_last, source_target):
+        def get_document_to_sequence_iterator(
+            dataset, break_mode, drop_last, source_target
+        ):
             document_to_sequence_dataset = DocumentToSequenceDataset(
                 dataset,
                 # We generate blocks with one extra token, so that we have a target
@@ -329,9 +334,12 @@ class TestStreamingIterators(unittest.TestCase):
             return document_to_sequence_dataset
 
         def compare(break_mode, drop_last, source_target):
-            a = get_traditional_iterator(FakeTensorData(source_target), break_mode, drop_last, source_target)
+            a = get_traditional_iterator(
+                FakeTensorData(source_target), break_mode, drop_last, source_target
+            )
             b = get_document_to_sequence_iterator(
-                FakeTensorData(source_target), break_mode, drop_last, source_target)
+                FakeTensorData(source_target), break_mode, drop_last, source_target
+            )
             a_values = list(a)
             b_values = list(b)
             self.assertEqual(len(a_values), len(b_values))
@@ -352,7 +360,6 @@ class TestStreamingIterators(unittest.TestCase):
         compare("none", True, False)
         compare("eos_pad_8", True, False)
         compare("complete", True, False)
-
 
         # fine tuning
         compare("none", False, True)

@@ -150,6 +150,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             but only before iteration has begun.
         seed (int, optional): seed for shuffling
         permute_documents (bool, optional): randomly permute the order the documents are read (default: True)
+        source_target (bool, optional): the input dataset returns a tuple of tokens lists (source, target) (default: False)
         to_skip (int, optional): skip the first to_skip sequences before iteration begins (Default: 0)
     """
 
@@ -216,7 +217,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             self.block_iterator = yield_passthrough
         else:
             raise ValueError(
-                f'Invalid value for break_mode = {break_mode}. Available options are "none", "eos_pad_8" or "complete". "passthrough".'
+                f"Invalid value for break_mode = {break_mode}."
+                'Available options are "none", "eos_pad_8", "complete", or "passthrough".'
             )
 
         if not drop_last and padding_idx is None:
@@ -382,7 +384,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                             # load it now (and for all other SequenceFragments where it hasn't been loaded yet)
                             doc[0] = self.dataset[doc[0]]
                         if self.source_target:
-                            subsequences.append(tuple(elem[start : start + ln] for elem in doc[0]))
+                            subsequences.append(
+                                tuple(elem[start : start + ln] for elem in doc[0])
+                            )
                         else:
                             subsequences.append(doc[0][start : start + ln])
                 if self.source_target:
