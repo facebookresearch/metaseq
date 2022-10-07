@@ -165,6 +165,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         len_cache=None,
         to_skip=0,
         permute_documents=True,
+        source_target=False,
     ):
         super().__init__()
         self.dataset = dataset
@@ -200,9 +201,13 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         self.shuffle_buffer_size = shuffle_buffer_size
         self.to_skip = to_skip
         self.permute_documents = permute_documents
+        self.source_target = source_target
 
         if break_mode == "none":
-            self.block_iterator = yield_token_blocks
+            if self.source_target:
+                self.block_iterator = yield_doc_blocks
+            else:
+                self.block_iterator = yield_token_blocks
         elif break_mode == "eos_pad_8":
             self.block_iterator = yield_single_sentences_pad_8
         elif break_mode == "complete":
@@ -211,7 +216,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             self.block_iterator = yield_passthrough
         else:
             raise ValueError(
-                f'Invalid value for break_mode = {break_mode}. Available options are "none", "eos_pad_8" or "complete".'
+                f'Invalid value for break_mode = {break_mode}. Available options are "none", "eos_pad_8" or "complete". "passthrough".'
             )
 
         if not drop_last and padding_idx is None:
@@ -281,7 +286,10 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     # Cache miss: we don't know the number of tokens
                     # so we have to load and tokenize the document.
                     r = self.dataset[idx]
-                    ln = r.shape[0]
+                    if self.source_target:
+                        ln = r[0].shape[0]
+                    else:
+                        ln = r.shape[0]
                     self.len_cache.data[idx] = ln
                     yield (ln, [r])
                 else:
@@ -291,7 +299,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     # We create a single-element list here, so that we can replace the single element
                     # with the real Tensor value the first time _any_ SentenceFragment needs the
                     # real data from this document.
-                    yield (ln, [idx])
+                    yield (ln, [int(idx)])
 
         block_itr = self.block_iterator(documents(), self.block_size, self.drop_last)
 
@@ -358,19 +366,31 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
                     # A padding tensor (<padding_value>, 0, length)
                     if doc[0] == "padding":
-                        subsequences.append(
-                            subsequences[-1].new_full((ln,), self.padding_idx)
-                        )
+                        example = subsequences[-1]
+                        if self.source_target:
+                            example = example[0]
+                        padding_tensor = example.new_full((ln,), self.padding_idx)
+                        if self.source_target:
+                            padding_tensor = (padding_tensor, padding_tensor)
+                        subsequences.append(padding_tensor)
                     else:
                         # This single-element list is shared among all SequenceFragments that use
                         # the same document. We update the list to ensure we only
                         # ever tokenize the document once.
-                        if not isinstance(doc[0], torch.Tensor):
+                        if isinstance(doc[0], int):
                             # an index into dataset that hasn't been loaded yet
                             # load it now (and for all other SequenceFragments where it hasn't been loaded yet)
                             doc[0] = self.dataset[doc[0]]
-                        subsequences.append(doc[0][start : start + ln])
-                elem["block"] = torch.cat(subsequences)
+                        if self.source_target:
+                            subsequences.append(tuple(elem[start : start + ln] for elem in doc[0]))
+                        else:
+                            subsequences.append(doc[0][start : start + ln])
+                if self.source_target:
+                    del elem["block"]
+                    elem["src_block"] = torch.cat(tuple(s for s, t in subsequences))
+                    elem["tgt_block"] = torch.cat(tuple(t for s, t in subsequences))
+                else:
+                    elem["block"] = torch.cat(subsequences)
                 elem["skip_time"] = skip_time
                 yield elem
         except StopIteration:

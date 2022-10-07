@@ -12,6 +12,7 @@ from metaseq.data import (
     StreamingShuffleDataset,
     StreamingTokenBlockDataset,
     PartitionedStreamingDataset,
+    StreamingSrcTgtDataset,
 )
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset, LockingArray
 
@@ -53,18 +54,24 @@ def get_simple_dataset():
 
 
 class FakeTensorData(torch.utils.data.Dataset):
-    def __init__(self):
+    def __init__(self, source_target):
         self.rng = random.Random(0)
         self.trng = torch.Generator()
         self.trng.manual_seed(0)
-        self.items = [
-            torch.randint(
-                256, size=(self.rng.randrange(512, 2048),), generator=self.trng
-            )
-            for _ in range(len(self))
-        ]
+        self.items = [self._gen_one(source_target) for _ in range(len(self))]
         self.queried = 0
         self.realized = [False for _ in self.items]
+
+
+    def _gen_one(self, source_target):
+        n = self.rng.randrange(512, 2048)
+        toks = torch.randint(256, size=(n,), generator=self.trng)
+        if not source_target:
+            return toks
+        src_tokens_len = self.rng.randrange(1, n)
+        tgt_tokens = torch.clone(toks)
+        tgt_tokens[:src_tokens_len] = 1
+        return (toks, tgt_tokens)
 
     def __len__(self):
         return 128
@@ -282,10 +289,11 @@ class TestStreamingIterators(unittest.TestCase):
     def test_document_to_sequence(self):
         MAX_SEQ_LEN = 2048
 
-        def get_traditional_iterator(dataset, break_mode, drop_last):
+        def get_traditional_iterator(dataset, break_mode, drop_last, source_target):
             shuffle_dataset = StreamingShuffleDataset(dataset, seed=42)
             shuffle_dataset.set_epoch(0)
-            token_dataset = StreamingTokenBlockDataset(
+            Dataset = StreamingTokenBlockDataset if not source_target else StreamingSrcTgtDataset
+            token_dataset = Dataset(
                 shuffle_dataset,
                 # We generate blocks with one extra token, so that we have a target
                 # for the final input token. This results in slight data loss.
@@ -301,7 +309,7 @@ class TestStreamingIterators(unittest.TestCase):
             token_dataset.set_shuffle_buffer_size(4)
             return token_dataset
 
-        def get_document_to_sequence_iterator(dataset, break_mode, drop_last):
+        def get_document_to_sequence_iterator(dataset, break_mode, drop_last, source_target):
             document_to_sequence_dataset = DocumentToSequenceDataset(
                 dataset,
                 # We generate blocks with one extra token, so that we have a target
@@ -314,31 +322,46 @@ class TestStreamingIterators(unittest.TestCase):
                 # 1284 is a randomly-generated offset to decouple the seed used here
                 # from the seed used above in StreamingShuffleDataset
                 seed=42,
+                source_target=source_target,
             )
             document_to_sequence_dataset.set_epoch(0)
             document_to_sequence_dataset.set_shuffle_buffer_size(4)
             return document_to_sequence_dataset
 
-        def compare(break_mode, drop_last):
-            a = get_traditional_iterator(FakeTensorData(), break_mode, drop_last)
+        def compare(break_mode, drop_last, source_target):
+            a = get_traditional_iterator(FakeTensorData(source_target), break_mode, drop_last, source_target)
             b = get_document_to_sequence_iterator(
-                FakeTensorData(), break_mode, drop_last
-            )
+                FakeTensorData(source_target), break_mode, drop_last, source_target)
             a_values = list(a)
             b_values = list(b)
             self.assertEqual(len(a_values), len(b_values))
 
             for av, bv in zip(a_values, b_values):
                 self.assertTrue(torch.allclose(av["ids"], bv["ids"]))
-                self.assertTrue(torch.allclose(av["block"], bv["block"]))
+                if source_target:
+                    self.assertTrue(torch.allclose(av["src_block"], bv["src_block"]))
+                    self.assertTrue(torch.allclose(av["tgt_block"], bv["tgt_block"]))
+                else:
+                    self.assertTrue(torch.allclose(av["block"], bv["block"]))
 
-        compare("none", False)
-        compare("eos_pad_8", False)
-        compare("complete", False)
+        # normal
+        compare("none", False, False)
+        compare("eos_pad_8", False, False)
+        compare("complete", False, False)
 
-        compare("none", True)
-        compare("eos_pad_8", True)
-        compare("complete", True)
+        compare("none", True, False)
+        compare("eos_pad_8", True, False)
+        compare("complete", True, False)
+
+
+        # fine tuning
+        compare("none", False, True)
+        compare("eos_pad_8", False, True)
+        compare("complete", False, True)
+
+        compare("none", True, True)
+        compare("eos_pad_8", True, True)
+        compare("complete", True, True)
 
     def test_locking_array(self):
         l = LockingArray(20, 8)
