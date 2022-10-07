@@ -24,7 +24,7 @@ from metaseq.data import (
     PrependTokenDataset,
     StripTokenDataset,
     TokenBlockDataset,
-    MultiplePadDataset,
+    PadDataset,
     data_utils,
 )
 from metaseq.data.indexed_dataset import get_available_dataset_impl
@@ -258,12 +258,14 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             pad_to_bsz=pad_to_bsz,
         )
 
+
     def build_dataset_for_inference(self, src_tokens, src_lengths, **kwargs):
         """
         Generate batches for inference. We prepend an eos token to src_tokens
         (or bos if `--add-bos-token` is set) and we append a <pad> to target.
         This is convenient both for generation with a prefix and LM scoring.
         """
+
         dataset = StripTokenDataset(
             TokenBlockDataset(
                 src_tokens,
@@ -276,22 +278,11 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
             # remove eos from (end of) target sequence
             self.source_dictionary.eos(),
         )
-        src_dataset = PrependTokenDataset(
-            dataset,
-            token=(
-                self.source_dictionary.bos()
-                if getattr(self.args, "add_bos_token", False)
-                else self.eod
-                # In some models we accidently replaced this with <endoftext/>
-                # (id:4) but it seems they work with eos as well so we will
-                # keep this way in this experimental task until figure a better
-                # flexible soluton.
-            ),
+        src_dataset = dataset
+        src_dataset = PadDataset(
+            src_dataset, pad_idx=self.source_dictionary.pad(), left_pad=False
         )
-        src_dataset = MultiplePadDataset(
-            src_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
-        )
-        tgt_dataset = AppendTokenDataset(dataset, token=self.source_dictionary.pad())
+        tgt_dataset = dataset
         return NestedDictionaryDataset(
             {
                 "id": IdDataset(),
@@ -299,12 +290,13 @@ class LanguageModelingInferenceForModelsTrainedWithStreamingTask(LegacyTask):
                     "src_tokens": src_dataset,
                     "src_lengths": NumelDataset(src_dataset, reduce=False),
                 },
-                "target": MultiplePadDataset(
-                    tgt_dataset, pad_idx=self.source_dictionary.pad(), multiple=8
+                "target": PadDataset(
+                    tgt_dataset, pad_idx=self.source_dictionary.pad(), left_pad=False
                 ),
             },
             sizes=[np.array(src_lengths)],
         )
+
 
     def inference_step(
         self, generator, models, sample, prefix_tokens=None, constraints=None

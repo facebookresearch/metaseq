@@ -28,6 +28,7 @@ try:
         models,
         normalizers,
         pre_tokenizers,
+        Regex,
     )
     from tokenizers.pre_tokenizers import ByteLevel, Digits
 
@@ -59,6 +60,9 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingConfig(
     spm_path: Optional[str] = field(
         default=None, metadata={"help": "path to data directory with JSONL files"}
     )
+    final_vocab_size: Optional[int] = field(
+        default=None, metadata={"help": "force vocab size to this"}
+    )
 
 
 @register_task(
@@ -89,13 +93,33 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         return tokenizer
 
     def _initialize_unigram_tokenizer(self, args):
-        tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
-        tokenizer.normalizer = normalizers.NFKC()
-        tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
-            [ByteLevel(), Digits(individual_digits=True)]
-        )
-        tokenizer.decoder = decoders.ByteLevel()
-        return tokenizer
+        # if "1.3" in args.spm_path:
+        if "1.4" not in args.spm_path: # tokenizers for 1.3 and previous
+            tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
+            tokenizer.normalizer = normalizers.NFKC()
+            tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+                [ByteLevel(), Digits(individual_digits=True)]
+            )
+            tokenizer.decoder = decoders.ByteLevel()
+            logger.error(
+                "Using V1.3 Tokenizer. Please double check you are using the right tokenizer."
+            )
+            return tokenizer
+        # elif "1.4" in args.spm_path:
+        else: # 1.4 tokenizers
+            tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
+            tokenizer.normalizer = normalizers.NFKC()
+            tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+                [
+                    pre_tokenizers.Split(Regex(r"[\r\n]+"), "isolated"),
+                    pre_tokenizers.Split(Regex(r"(I|S)(\d{1,4}) "), "isolated"),
+                    ByteLevel(use_regex=False),
+                    Digits(individual_digits=True),
+                ]
+            )
+            tokenizer.decoder = decoders.ByteLevel()
+            return tokenizer
+        #raise ValueError("What tokenizer are you trying to use?")
 
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
@@ -103,6 +127,16 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
 
         for id in range(dictionary.nspecial, tok_vocab_size):
             dictionary.add_symbol(self.tokenizer.id_to_token(id))
+        final_vocab_size = args.final_vocab_size
+        # final_vocab_size = 51200 for roberta dictionary
+        if final_vocab_size is not None:
+            if final_vocab_size < tok_vocab_size:
+                raise ValueError(
+                    f"incompatible: {final_vocab_size}, tok_vocab_size: {tok_vocab_size}"
+                )
+            dictionary.pad_to_multiple_(final_vocab_size)
+        else:
+            dictionary.pad_to_multiple_(8)
 
         self.dictionary = dictionary
 
@@ -112,6 +146,17 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
             # This will be executed for old models that do not have the args.end_of_document_symbol explicitly set
             # and do not use <s/> (the default) but <EOS>
             self.eod = self.tokenizer.token_to_id("<EOS>")
+
+    def _initialize_boundary_tokens(self, args):
+        self.image_modality_start_token = self.dictionary.index(f"{IMAGE_PREFIX}0 ")
+        self.image_modality_end_token = self.dictionary.index(
+            f"{IMAGE_PREFIX}{args.image_tokens - 1} "
+        )
+
+        self.speech_modality_start_token = self.dictionary.index(f"{SPEECH_PREFIX}0 ")
+        self.speech_modality_end_token = self.dictionary.index(
+            f"{SPEECH_PREFIX}{args.speech_tokens - 1} "
+        )
 
     def _check_tokenizer_dictionary_invariants(self, args):
         assert (
@@ -157,6 +202,24 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
                 n & (n - 1) == 0
             ), "expect dictionary size for unigram tokenizer to be an exact power of two"
 
+        assert self.image_modality_start_token != self.dictionary.unk_index
+        assert self.image_modality_end_token != self.dictionary.unk_index
+
+        assert self.speech_modality_start_token != self.dictionary.unk_index
+        assert self.speech_modality_end_token != self.dictionary.unk_index
+
+        assert (
+            self.image_modality_start_token < self.image_modality_end_token
+            and self.image_modality_end_token - self.image_modality_start_token
+            == args.image_tokens - 1
+        ), f"IMAGE START: {self.image_modality_start_token}, IMAGE END: {self.image_modality_end_token}"
+
+        assert (
+            self.speech_modality_start_token < self.speech_modality_end_token
+            and self.speech_modality_end_token - self.speech_modality_start_token
+            == args.speech_tokens - 1
+        )
+
     def __init__(self, args):
         self.args = args
         self.datasets = {}
@@ -165,10 +228,10 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        if max(args.update_freq) > 1:
-            raise NotImplementedError(
-                "--update-freq is not compatible with StreamingLanguageModelingTask"
-            )
+        # if max(args.update_freq) > 1:
+        #     raise NotImplementedError(
+        #         "--update-freq is not compatible with StreamingLanguageModelingTask"
+        #     )
 
         self.sentinel_end = "<eoss>"
         self.sentinel_tokens = [
@@ -186,7 +249,10 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
 
         self._initialize_metaseq_dictionary(args)
         self._initialize_eod(args)
+        self._initialize_boundary_tokens(args)
+
         self._check_tokenizer_dictionary_invariants(args)
+                
         logger.info(f"Dictionary Size: {len(self.dictionary)}")
         # confirm that metaseq dictionary and BPE have matching special symbols
 
