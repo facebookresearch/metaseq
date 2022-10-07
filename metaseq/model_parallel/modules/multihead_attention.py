@@ -323,15 +323,13 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if self.flash_attn:                
-            q = (
-                q.view(tgt_len, bsz * self.num_heads_partition, self.head_dim)
-                .transpose(0, 1)
-            )
+        if self.flash_attn:
+            q = q.view(
+                tgt_len, bsz * self.num_heads_partition, self.head_dim
+            ).transpose(0, 1)
             if k is not None:
-                k = (
-                    k.view(-1, bsz * self.num_heads_partition, self.head_dim)
-                    .transpose(0, 1)
+                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim).transpose(
+                    0, 1
                 )
             if v is not None:
                 v = (

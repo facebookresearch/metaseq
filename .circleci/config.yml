@@ -56,7 +56,7 @@ install_dep_fused_ops: &install_dep_fused_ops
 # Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
-      name: Install Fairscale from Source
+      name: Install Fairscale and xFormers from Source
       working_directory: ~/
       command: |
         source activate metaseq
@@ -64,6 +64,13 @@ install_fairscale: &install_fairscale
             git clone https://github.com/facebookresearch/fairscale.git
             cd fairscale
             git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
+            pip install .
+            cd ~/
+            git clone https://github.com/facebookresearch/xformers.git
+            pip install torch==1.12.0+cu116 -f https://download.pytorch.org/whl/torch_stable.html
+            python -c 'import torch; print("Torch version:", torch.__version__)'
+            cd xformers
+            git submodule update --init --recursive
             pip install .
             cd ~/
         fi
