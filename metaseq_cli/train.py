@@ -133,6 +133,18 @@ def main(cfg: DictConfig) -> None:
     # Load valid dataset (we load training data below, based on the latest checkpoint)
     # We load the valid dataset AFTER building the model
     data_utils.raise_if_valid_subsets_unintentionally_ignored(cfg)
+
+    cuda_env = utils.CudaEnvironment()
+    data_parallel_world_size = distributed_utils.get_data_parallel_world_size()
+    if data_parallel_world_size > 1:
+        cuda_env_arr = distributed_utils.all_gather_list(
+            cuda_env, group=distributed_utils.get_global_group()
+        )
+    else:
+        cuda_env_arr = [cuda_env]
+    if distributed_utils.get_data_parallel_rank() == 0:
+        utils.CudaEnvironment.pretty_print_cuda_env_list(cuda_env_arr)
+    
     if cfg.dataset.combine_valid_subsets:
         task.load_dataset("valid", combine=True, epoch=1)
     else:
