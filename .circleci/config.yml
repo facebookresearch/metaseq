@@ -6,9 +6,10 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.1"
+    CUDA_VERSION: "11.3"
+    CUDA_HOME: /usr/local/cuda-11.3
   machine:
-    image: ubuntu-1604-cuda-11.1:202012-01
+    image: ubuntu-2004-cuda-11.4:202110-01
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -21,10 +22,11 @@ install_dep_common: &install_dep_common
   - run:
       name: Install Common Dependencies
       command: |
+        source $BASH_ENV
         source activate metaseq
         # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install setuptools==59.5.0
-        pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
+        $CONDA_PYTHON -m pip install setuptools==59.5.0
+        pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda113 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
         # Need to install ninja build system
@@ -37,6 +39,7 @@ install_dep_fused_ops: &install_dep_fused_ops
       working_directory: ~/
       # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
       command: |
+        source $BASH_ENV
         source activate metaseq
         if ! python -c 'import apex'; then
           git clone https://github.com/NVIDIA/apex
@@ -59,6 +62,7 @@ install_fairscale: &install_fairscale
       name: Install Fairscale and xFormers from Source
       working_directory: ~/
       command: |
+        source $BASH_ENV
         source activate metaseq
         if ! python -c 'import fairscale'; then
             git clone https://github.com/facebookresearch/fairscale.git
@@ -66,22 +70,29 @@ install_fairscale: &install_fairscale
             git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
             pip install .
             cd ~/
+        fi
+        if ! python -c 'import xformers'; then
             git clone https://github.com/facebookresearch/xformers.git
-            pip install torch==1.12.0+cu116 -f https://download.pytorch.org/whl/torch_stable.html
-            python -c 'import torch; print("Torch version:", torch.__version__)'
             cd xformers
             git submodule update --init --recursive
             pip install .
             cd ~/
         fi
 
-install_dep_pt19: &install_dep_pt19
+install_dep_pt112: &install_dep_pt112
   - run:
       name: Install Pytorch Dependencies
       command: |
+
+        source $BASH_ENV
         source activate metaseq
-        pip install --upgrade setuptools
-        pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+        $CONDA_PYTHON -m pip install --upgrade setuptools
+        echo $LD_LIBRARY_PATH
+        export PATH=/usr/local/cuda-11.3/bin:$PATH
+        export CPATH=/usr/local/cuda-11.3/include:$CPATH
+        export LD_LIBRARY_PATH=/usr/local/cuda-11.3/lib64:$LD_LIBRARY_PATH
+        #echo $(strings | grep GLIBCXX)
+        conda install pytorch torchvision cudatoolkit-dev=11.3 -c conda-forge -q
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
@@ -93,8 +104,9 @@ install_pytorch_dep: &install_pytorch_dep
   - run:
       name: Install Pytorch Dependencies
       command: |
+        source $BASH_ENV
         source activate metaseq
-        pip install --upgrade setuptools
+        $CONDA_PYTHON -m pip install --upgrade setuptools
         echo "<<parameters.version_str>>"
         pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
@@ -103,6 +115,7 @@ install_repo: &install_repo
   - run:
       name: Install Repository
       command: |
+        source $BASH_ENV
         source activate metaseq
         pip install -e .[dev,few_shot,gpu]
         python setup.py build_ext --inplace
@@ -125,10 +138,12 @@ create_conda_env: &create_conda_env
         ~/miniconda.sh -b -p $HOME/miniconda
         rm ~/miniconda.sh
         echo 'export PATH=$HOME/miniconda/bin:$PATH' >> $BASH_ENV
+        echo $(which python)
+        echo 'export CONDA_PYTHON=/home/circleci/miniconda/bin/python'  >>  $BASH_ENV
         source $BASH_ENV
         if [ ! -d ~/miniconda/envs/metaseq ]
         then
-          conda create -y -n metaseq python=3.8
+          conda create -y -n metaseq python=3.9 pip
         fi
         source activate metaseq
         python --version
@@ -139,6 +154,7 @@ download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_w
       name: Download and configure a 125m checkpoint with HF dependencies
       working_directory: ~/metaseq/gpu_tests
       command: |
+        source $BASH_ENV
         source activate metaseq
         wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
         tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
@@ -167,11 +183,12 @@ commands:
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
-            - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
+            - ~/miniconda/envs/metaseq/lib/python3.9/site-packages
           key: *cache_key
       - run:
           name: Run Unit Tests
           command: |
+            source $BASH_ENV
             source activate metaseq
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
       - store_test_results:
@@ -184,14 +201,14 @@ commands:
 
 jobs:
 
-  gpu_tests_pt19:
+  gpu_tests_pt112:
     <<: *gpu
 
     working_directory: ~/metaseq
 
     steps:
       - gpu_pre
-      - <<: *install_dep_pt19
+      - <<: *install_dep_pt112
       - gpu_post
 
 
@@ -199,4 +216,4 @@ workflows:
   version: 2
   build:
     jobs:
-      - gpu_tests_pt19
+      - gpu_tests_pt112
