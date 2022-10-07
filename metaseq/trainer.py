@@ -458,6 +458,28 @@ class Trainer(object):
 
             # load model parameters
             try:
+                if hasattr(self.model, 'massage_and_resave_pt_weights') and self.model.massage_and_resave_pt_weights:
+                    def expand_opt(opt):
+                        new_opt = {}
+                        for sub_opt_key, sub_opt in opt.items():
+                            try:
+                                sub_opt.items()
+                            except:
+                                continue
+                            new_opt.update(
+                                {
+                                    k: sub_opt[k] for k in sub_opt if k != '_name'
+                                }
+                            )
+                        return new_opt
+                    pt_cfg = expand_opt(state['cfg'])
+                    new_cfg = expand_opt(self.cfg)                    
+                    dict(sorted(pt_cfg.items()))
+                    dict(sorted(new_cfg.items()))
+                    common_keys = [k for k in pt_cfg if k in new_cfg and pt_cfg[k] == new_cfg[k]]
+                    ignore_keys = ['distributed_init_method', 'data', 'valid_subset', 'validate_interval_updates', 'device_id', 'tensorboard_logdir', 'log_interval', 'aim_repo', 'aim_run_hash', 'distributed_rank', 'distributed_init_method', 'distributed_port', 'distributed_no_spawn', 'distributed_num_procs', 'save_dir', 'finetune_from_model', 'cloud_upload_path', 'cluster_env', 'total_num_update', 'num_workers_valid', 'num_workers', 'vocab_filename', 'merges_filename', 'max_valid_steps', 'max_update', 'no_epoch_checkpoints', 'keep_last_epochs', 'data_subshard_count', 'batch_size_valid', 'tpu', 'warmup_updates', 'no_progress_bar', 'reset_logging', 'validate_interval', 'max_valid_steps', 'max_update', 'stop_time_hours', 'save_interval_updates', 's3_upload_path', 'train_mixing_weights', 'infer_mixing_weights', 'train_gamma', 'infer_gamma', 'freeze_decoder', 'use_one_plus_gamma_variant', 'director_classifier_layers', 'massage_and_resave_pt_weights', 'source_truncate', 'target_truncate', 'num_classes', 'end_learning_rate', 'fp16_adam_stats', 'block_wise', 'min_loss_scale', 'threshold_loss_scale', 'use_tutel_moe', 'suppress_crashes', 'is_moe', 'slowmo_momentum', 'slowmo_algorithm', 'localsgd_frequency', 'multicorpus_sampling_maximum', 'multicorpus_sampling_alpha', 'criterion', 'lm_path', 'lm_weight', 'print_step', 'print_alignment', 'diversity_rate', 'diverse_beam_strength', 'diverse_beam_groups', 'warmup_iterations', 'lr', 'gradient_predivide_factor', 'clip_norm', 'sampling_topk', 'no_repeat_ngram_size', 'iter_decode_max_iter', 'iter_decode_force_max_iter', 'iter_decode_eos_penalty', 'iter_decode_with_beam', 'iter_decode_with_external_reranker', 'retain_iter_history', 'retain_dropout', 'retain_dropout_modules', 'score_reference', 'no_early_stop', 'score_sequences', 'dropout', 'attention_dropout', 'fp16_scale_window', 'decoding_format', 'constraints', 'prefix_size', 'no_emb_dropout', ] 
+                    pt_cfg_uniques = {k: pt_cfg[k] for k in pt_cfg if k not in common_keys + ignore_keys}
+                    new_cfg_uniques = {k: new_cfg[k] for k in new_cfg if k not in common_keys + ignore_keys}
                 self.model.load_state_dict(state["model"], strict=True)
                 # save memory for later steps
                 del state["model"]

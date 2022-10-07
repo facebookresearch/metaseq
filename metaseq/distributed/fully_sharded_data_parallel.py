@@ -71,7 +71,22 @@ class FullyShardedDataParallel(FSDP):
                 super().state_dict()
                 return destination or {}
 
+    def massage_state_dict(self, state_dict):
+        # return state_dict
+        for k in self.state_dict():
+            if k not in state_dict and any(
+                k.startswith(s_) for s_ in self.state_to_massage
+            ):
+                logger.warning(f"Add new key {k} to state_dict")
+                with torch.no_grad():
+                    state_dict[k] = (
+                        self.state_dict()[k].detach().clone().cpu()
+                    )  # note the state_dict is on CPU
+        return state_dict
+    
     def load_state_dict(self, state_dict, strict=True):
+        if hasattr(self, "massage_and_resave_pt_weights") and self.massage_and_resave_pt_weights:
+            state_dict = self.massage_state_dict(state_dict)
         if self.use_sharded_state:
             return super().load_local_state_dict(state_dict, strict=strict)
         else:

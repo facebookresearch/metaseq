@@ -100,6 +100,9 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
         },
     )
+    special_token_lst: Optional[str] = field(
+        default=None, metadata={"help": "Comma separated list of special tokens"}
+    )
 
     # TODO common vars below add to parent
     seed: int = II("common.seed")
@@ -133,6 +136,12 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.tokenizer = ByteLevelBPETokenizer.from_file(
                 args.vocab_filename, args.merges_filename
             )
+
+        # Add special tokens
+        if args.special_token_lst is not None:
+            toks = args.special_token_lst.split(",")
+            logger.info(f"Adding the following special tokens: {toks}")
+            self.tokenizer.add_special_tokens(toks)
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
