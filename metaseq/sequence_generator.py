@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -204,14 +205,19 @@ class SequenceGenerator(nn.Module):
         # decisions are only over the most recent token.
         lprobs_cut = []
         for i in range(src_tokens.shape[0]):
-            prompt_len = src_lengths[i]
+            prompt_len = src_lengths[i] - 1
             scores[i * beam_size : (i + 1) * beam_size, prompt_len + 1 :] = 0.0  # reset
             lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
         lprobs = torch.cat(lprobs_cut, dim=0)
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
-        for step in range(start_step, max_len + 1):
+        for step in tqdm(range(start_step, max_len + 1)):
+
+            # import torch
+            # if torch.distributed.get_rank() == 0:
+            #     from metaseq import pdb; pdb.set_trace()
+
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
