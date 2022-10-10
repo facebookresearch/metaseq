@@ -165,7 +165,7 @@ class TestStreamingIterators(unittest.TestCase):
         def create_dataset(
             break_mode="none", drop_last=True, sequence_size=2049, num_shards=1
         ):
-            dataset = FakeTensorData()
+            dataset = FakeTensorData(False)
             token_dataset = DocumentToSequenceDataset(
                 dataset,
                 # We generate blocks with one extra token, so that we have a target
