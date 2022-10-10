@@ -35,7 +35,10 @@ from .strip_token_dataset import StripTokenDataset
 from .token_block_dataset import TokenBlockDataset
 from .pad_dataset import MultiplePadDataset
 from .shorten_dataset import TruncateDataset
-from .causal_masked_dataset import CausalMaskedDataset
+from .causal_masked_dataset import (
+    CausalMaskedDataset,
+    CausalMaskedDocumentToSequenceDataset,
+)
 from .iterators import (
     CountingIterator,
     EpochBatchIterator,
@@ -47,6 +50,7 @@ __all__ = [
     "AppendTokenDataset",
     "BaseWrapperDataset",
     "CausalMaskedDataset",
+    "CausalMaskedDocumentToSequenceDataset",
     "ConcatDataset",
     "CountingIterator",
     "Dictionary",

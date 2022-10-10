@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 import torch
 from metaseq.data import (
-    CausalMaskedDataset,
+    CausalMaskedDocumentToSequenceDataset,
     Dictionary,
     JsonlDataset,
     PartitionedStreamingDataset,
@@ -216,8 +216,6 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         else:
             return Tokenizer(models.BPE()).from_file(args.spm_path)
 
-        raise ValueError("What tokenizer are you trying to use?")
-
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
         tok_vocab_size = self.tokenizer.get_vocab_size()
@@ -413,7 +411,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
 
         # chunk into blocks of tokens
-        self.datasets[split] = CausalMaskedDataset(
+        self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
             self.args.lambda_sentinel_tokens,
             self.sentinel_tokens_ind,
             "causal" if self.args.causal_only else "poisson",
@@ -492,7 +490,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, CausalMaskedDataset)
+
+        assert isinstance(dataset, CausalMaskedDocumentToSequenceDataset)
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
