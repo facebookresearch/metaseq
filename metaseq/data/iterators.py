@@ -202,7 +202,6 @@ class _CollateWithWorkerID:
     def __call__(self, items):
         r = self.collate_fn(items)
         worker_info = torch.utils.data.get_worker_info()
-        assert worker_info or self.num_workers == 0
         return (worker_info.id if worker_info else 0, r)
 
 
