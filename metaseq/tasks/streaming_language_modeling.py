@@ -51,12 +51,12 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     hf_tokenizer: Optional[str] = field(
         default="", metadata={"help": "path to a HF tokenizer json file."}
     )
-    vocab_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-vocab.json"}
-    )
-    merges_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-merges.txt"}
-    )
+    # vocab_filename: Optional[str] = field(
+    #     default="", metadata={"help": "path to bpe-vocab.json"}
+    # )
+    # merges_filename: Optional[str] = field(
+    #     default="", metadata={"help": "path to bpe-merges.txt"}
+    # )
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
     )
@@ -127,12 +127,12 @@ class StreamingLanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        if args.hf_tokenizer:
-            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
-        else:
-            self.tokenizer = ByteLevelBPETokenizer.from_file(
-                args.vocab_filename, args.merges_filename
-            )
+        # if args.hf_tokenizer:
+        self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        # else:
+        #     self.tokenizer = ByteLevelBPETokenizer.from_file(
+        #         args.vocab_filename, args.merges_filename
+        #     )
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
