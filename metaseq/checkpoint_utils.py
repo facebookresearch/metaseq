@@ -312,8 +312,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
 def _is_checkpoint_sharded(checkpoint_files) -> bool:
     """
-    Infer if state is sharded based on whether largest file is much larger than
-    smallest.
+    Infer if state is sharded based on recorded configuration in the checkpoint file.
     """
     if not checkpoint_files:
         raise FileNotFoundError(
