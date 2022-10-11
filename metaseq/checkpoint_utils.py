@@ -483,13 +483,14 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
 
     # path to checkpoint...-shared.pt
     paths_to_load = get_paths_to_load(local_path, suffix="shard")
+    logger.info(f"Start loading {paths_to_load}")
     try:
         if len(paths_to_load) > 1:
             state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
         else:
             state = torch_load_cpu(local_path)
     except Exception:
-        print(
+        logger.error(
             "got exception while trying to load",
             path,
             "with paths to load",
@@ -543,7 +544,7 @@ def load_model_ensemble_and_task(
         assert num_shards > 0
         for shard_idx in range(num_shards):
             if num_shards == 1:
-                filename = re.sub('.pt$', suffix + ".pt", filename)
+                filename = re.sub(".pt$", suffix + ".pt", filename)
             else:
                 filename = orig_filename[:-3] + f"_part{shard_idx}.pt"
             if state is None:
