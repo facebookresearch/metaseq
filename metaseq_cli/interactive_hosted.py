@@ -371,4 +371,14 @@ def cli_main():
 
 
 if __name__ == "__main__":
+    if os.getenv("SLURM_NODEID") is None:
+        logger.warning(
+            f"Missing slurm configuration, defaulting to 'use entire node' for API"
+        )
+        os.environ["SLURM_NODEID"] = "0"
+        os.environ["SLURM_NNODES"] = "1"
+        os.environ["SLURM_NTASKS"] = "1"
+        import socket
+
+        os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()
     cli_main()

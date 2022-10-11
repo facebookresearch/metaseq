@@ -13,7 +13,7 @@ pip3 install torch==1.10.1+cu113 torchvision==0.11.2+cu113 torchaudio==0.10.1+cu
 ```
 git clone https://github.com/NVIDIA/apex.git
 cd apex
-git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
+git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
 pip3 install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
 ```
 Depending on the hardware you're running on, you may need to comment out lines 101-107 in setup.py here.
@@ -28,7 +28,7 @@ pip3 install -e .
 ```
 git clone https://github.com/facebookresearch/fairscale.git
 cd fairscale
-git checkout prefetch_fsdp_params_simple
+git checkout fixing_memory_issues_with_keeping_overlap_may24
 pip3 install -e .
 ```
 ## Install metaseq
