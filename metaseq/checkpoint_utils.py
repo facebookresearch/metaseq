@@ -489,7 +489,7 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
         else:
             state = torch_load_cpu(local_path)
     except Exception:
-        print(
+        logger.error(
             "got exception while trying to load",
             path,
             "with paths to load",
@@ -543,7 +543,7 @@ def load_model_ensemble_and_task(
         assert num_shards > 0
         for shard_idx in range(num_shards):
             if num_shards == 1:
-                filename = re.sub('.pt$', suffix + ".pt", filename)
+                filename = re.sub(".pt$", suffix + ".pt", filename)
             else:
                 filename = orig_filename[:-3] + f"_part{shard_idx}.pt"
             if state is None:
