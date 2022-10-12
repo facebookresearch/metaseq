@@ -121,7 +121,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
-
+        print(args.hf_tokenizer)
         # if args.hf_tokenizer:
         self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
         # else:
