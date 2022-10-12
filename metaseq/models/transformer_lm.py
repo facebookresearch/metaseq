@@ -25,6 +25,7 @@ from metaseq.models.transformer_decoder import (
     TransformerDecoder,
 )
 from metaseq.modules.embedding import Embedding
+from metaseq.modules.activation_functions import get_available_activation_fns
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
-    activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
+    activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
         default="relu", metadata={"help": "activation function to use"}
     )
     dropout: float = field(default=0.1, metadata={"help": "dropout probability"})

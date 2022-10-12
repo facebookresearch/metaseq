@@ -22,7 +22,7 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
     model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
     if (
         model_parallel
-        and activation_fn == gelu
+        and activation_fn.fn == gelu
         and has_fused_bias_gelu
         and fc1.bias is not None
     ):
@@ -34,16 +34,14 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
         x = x + bias_fc2
     elif model_parallel:
         # here, we do the bias computation inside fc1 and fc2 AND gather_output
-        x, _ = fc1(x)
-        x = activation_fn(x)
+        x = activation_fn(x, fc1(x)[0], model_parallel=True)
         x, _ = fc2(x)
-    elif has_fused_bias_gelu and activation_fn == gelu:
+    elif has_fused_bias_gelu and activation_fn.fn == gelu:
         x = F.linear(x, fc1.weight, None)
         x = fused_bias_gelu(x, fc1.bias)
         x = F.linear(x, fc2.weight, fc2.bias)
     else:
-        x = fc1(x)
-        x = activation_fn(x)
+        x = activation_fn(x, fc1(x), model_parallel=False)
         x = fc2(x)
     x = x.view(x_shape)
     x = dropout_module(x)
