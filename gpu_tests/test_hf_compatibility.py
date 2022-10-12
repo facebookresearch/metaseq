@@ -15,7 +15,12 @@ from metaseq.scripts.convert_to_singleton import create_generation_config_with_d
 from metaseq.distributed import utils as distributed_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.dataclass.configs import MetaseqConfig
-from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
+from metaseq.hub_utils import (
+    tensorize_input,
+    get_next_token,
+    setup_vocab_and_merges,
+    setup_unified_tokenizer,
+)
 from megatron.mpu import destroy_model_parallel
 
 
@@ -101,13 +106,15 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 class TestHFCompatibility(unittest.TestCase):
     def test_singleton_metaseq_hf_compatibility(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
-        vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
+        # vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
+        unified_file, tokenizer = setup_unified_tokenizer(model_path)
 
         checkpoint = checkpoint_utils.load_model_ensemble_and_task(
             [os.path.join(model_path, "restored.pt")],
             arg_overrides={
-                "vocab_filename": vocab_file,
-                "merges_filename": merges_file,
+                # "vocab_filename": vocab_file,
+                # "merges_filename": merges_file,
+                "hf_tokenizer": unified_file,
             },
         )
 
@@ -142,12 +149,14 @@ class TestHFCompatibility(unittest.TestCase):
 
         # Verify that the generated logits match the consolidated model logits
 
-        vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
+        # vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
+        unified_file, tokenizer = setup_unified_tokenizer(model_path)
         checkpoint = checkpoint_utils.load_model_ensemble_and_task(
             [os.path.join(model_path, "restored.pt")],
             arg_overrides={
-                "vocab_filename": vocab_file,
-                "merges_filename": merges_file,
+                # "vocab_filename": vocab_file,
+                # "merges_filename": merges_file,
+                "hf_tokenizer": unified_file,
             },
         )
         model = checkpoint[0][0].eval()

@@ -51,6 +51,20 @@ def write_dummy_bpe(data_dir):
     return vocab, merges
 
 
+def write_dummy_bpe_unified(tokenizer_file):
+    from tokenizers import ByteLevelBPETokenizer
+
+    tokenizer = ByteLevelBPETokenizer(add_prefix_space=True)
+    tokenizer.train(
+        [],
+        vocab_size=500,
+        special_tokens=["<s>", "<pad>", "</s>", "<unk>"],
+        show_progress=False,
+    )
+    tokenizer.save(tokenizer_file)
+    return tokenizer_file
+
+
 class TestUtils(unittest.TestCase):
     def test_make_positions(self):
         pad = 1

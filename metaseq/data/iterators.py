@@ -280,7 +280,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             # small optimization: we advance the epoch before saving, so that
             # when loading later we don't end up fast-forwarding the iterator
             epoch = self.epoch + 1
-            sequences_consumed = [0 for _ in range(self.num_workers)]
+            sequences_consumed = [0 for _ in range(max(1, self.num_workers))]
             n = 0
             next_worker = 0
         else:

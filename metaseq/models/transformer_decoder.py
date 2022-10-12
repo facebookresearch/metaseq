@@ -119,7 +119,8 @@ class TransformerDecoder(IncrementalDecoder):
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
-        self.embed_positions.to(device).to(dtype)
+        if self.embed_positions is not None:
+            self.embed_positions.to(device).to(dtype)
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 

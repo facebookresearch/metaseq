@@ -40,6 +40,7 @@ DDP_BACKEND_CHOICES = ChoiceEnum(
         "c10d",  # alias for pytorch_ddp
         "fully_sharded",  # FullyShardedDataParallel from fairscale
         "pytorch_ddp",
+        "no_c10d",  # Deflake tests
     ]
 )
 DATASET_IMPL_CHOICES = ChoiceEnum(["raw", "lazy", "cached", "mmap", "fasta"])

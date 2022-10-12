@@ -31,7 +31,7 @@ from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 try:
-    from tokenizers import ByteLevelBPETokenizer, Tokenizer
+    from tokenizers import Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -51,12 +51,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     hf_tokenizer: Optional[str] = field(
         default="", metadata={"help": "path to a HF tokenizer json file."}
     )
-    # vocab_filename: Optional[str] = field(
-    #     default="", metadata={"help": "path to bpe-vocab.json"}
-    # )
-    # merges_filename: Optional[str] = field(
-    #     default="", metadata={"help": "path to bpe-merges.txt"}
-    # )
+
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
     )
