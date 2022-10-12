@@ -323,7 +323,7 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
             "you failed to fsdp_wrap or you have an unnecessary fsdp_wrap."
         )
     sd = torch_load_cpu(checkpoint_files[0])
-    return sd['cfg']['distributed_training']['use_sharded_state']
+    return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
 def get_paths_to_load(local_path, suffix="rank-"):
