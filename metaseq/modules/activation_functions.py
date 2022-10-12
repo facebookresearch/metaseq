@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from typing import Callable, List
 
 
+@torch.jit.script
 def relu_squared(x: torch.Tensor):
     return F.relu(x).pow(2)
 
@@ -19,6 +20,7 @@ def swiglu(x: torch.Tensor, gate: torch.Tensor):
     return F.silu(x) * gate
 
 
+@torch.jit.script
 def geglu(x: torch.Tensor, gate: torch.Tensor):
     return gelu(x) * gate
 
