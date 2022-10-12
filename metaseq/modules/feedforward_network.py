@@ -20,19 +20,7 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
     # apex fused bias gelu is not yet supported with megatron model parallel
     # TODO [namangoyal]: Find better way to do this
     model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
-    if (
-        model_parallel
-        and activation_fn.fn == gelu
-        and has_fused_bias_gelu
-        and fc1.bias is not None
-    ):
-        # here, we do the bias computation outside fc1 and fc2 to take advantage of fused_bias_gelu
-        assert fc1.skip_bias_add
-        x, bias_fc1 = fc1(x)
-        x = fused_bias_gelu(x, bias_fc1)
-        x, bias_fc2 = fc2(x)
-        x = x + bias_fc2
-    elif model_parallel:
+    if model_parallel:
         # here, we do the bias computation inside fc1 and fc2 AND gather_output
         x = activation_fn(x, fc1(x)[0], model_parallel=True)
         x, _ = fc2(x)
