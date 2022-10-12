@@ -43,7 +43,7 @@ class ActivationFn(nn.Module):
         if self.fn in self.__get_gated_fns():
             self.gate = fc1_builder(embed_dim, ffn_dim, **fc1_kwargs)
 
-    def forward(self, fc1_in, fc1_out, model_parallel):
+    def forward(self, fc1_in, fc1_out, model_parallel: bool):
         if self.gate is not None:
             if model_parallel:
                 g, _ = self.gate(fc1_in)
