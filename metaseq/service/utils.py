@@ -7,6 +7,7 @@ import socket
 import logging
 import sys
 import os
+from typing import List
 
 
 def normalize_newlines(s: str):
@@ -30,6 +31,14 @@ def encode_fn(generator, x):
     """
     assert generator.bpe is not None
     return generator.bpe.bpe.encode(normalize_newlines(x)).ids
+
+
+def decode_fn(generator, x: List[int]) -> str:
+    """
+    Decode a list of tokens x to a string
+    """
+    assert generator.bpe is not None
+    return generator.bpe.bpe.decode(x)
 
 
 def build_logger():
