@@ -28,6 +28,10 @@ def load_megatron_fused_kernel():
     from megatron import fused_kernels
     from argparse import Namespace
 
+    if not hasattr(fused_kernels, "load"):
+        # verion of megatron that has them precompiled, we cans skip this...
+        return
+
     if not torch.distributed.is_initialized():
         args = Namespace(rank=0, masked_softmax_fusion=True)
         fused_kernels.load(args)
