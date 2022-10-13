@@ -37,7 +37,7 @@ from metaseq.service.constants import (
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
 )
-from metaseq.service.utils import get_my_ip, encode_fn, build_logger
+from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
 
@@ -261,12 +261,12 @@ def completions(engine=None):
 
     if isinstance(prompts, str):
         # single string. tokenize and turn it to the single pre-tokenized case
-        prompts = [encode_fn(generator, prompts)]
+        prompts = [generator.encode_fn(prompts)]
     assert isinstance(prompts, list)
     assert len(prompts) > 0
     if isinstance(prompts[0], str):
         # multi string
-        prompts = [encode_fn(generator, p) for p in prompts]
+        prompts = [generator.encode_fn(p) for p in prompts]
     elif isinstance(prompts[0], int):
         # single pre-tokenized
         prompts = [prompts]
@@ -283,9 +283,9 @@ def completions(engine=None):
         if stop is None:
             pass
         elif isinstance(stop, str):
-            stop = [encode_fn(generator, stop)[0]]
+            stop = [generator.encode_fn(stop)[0]]
         else:
-            stop = [encode_fn(generator, s)[0] for s in stop]
+            stop = [generator.encode_fn(s)[0] for s in stop]
         generation_args["stop"] = stop
     if "temperature" in generation_args:
         generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
