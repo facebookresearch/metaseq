@@ -81,6 +81,11 @@ def get_grid(args):
         if args.circleci:
             data_loc_by_env = "./gpu_tests/circleci"
             valid_subsets = ["BookCorpusFair"]
+            import metaseq.scripts.unify_tokenizer as unify_tokenizer
+
+            # import metaseq.pdb; metaseq.pdb.set_trace_rank0()
+            # print("data loc:", data_loc_by_env)
+            unify_tokenizer.main(os.path.join(data_loc_by_env, "tokenizers"))
         args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
         if os.path.exists(args.data):
             DATA_ROOT = data_loc_by_env
@@ -124,13 +129,18 @@ def get_grid(args):
             "none",
             save_dir_key=lambda val: f"bm_{val}" if not no_save_params else "",
         ),
+        # hyperparam(
+        #     "--vocab-filename",
+        #     os.path.join(DATA_ROOT, "tokenizers/gpt2-vocab.json"),
+        #     save_dir_key=lambda _: "gpt2" if not no_save_params else "",
+        # ),
+        # hyperparam(
+        #     "--merges-filename", os.path.join(DATA_ROOT, "tokenizers/gpt2-merges.txt")
+        # ),
         hyperparam(
-            "--vocab-filename",
-            os.path.join(DATA_ROOT, "tokenizers/gpt2-vocab.json"),
+            "--hf-tokenizer",
+            os.path.join(DATA_ROOT, "tokenizers/gpt2-unified.json"),
             save_dir_key=lambda _: "gpt2" if not no_save_params else "",
-        ),
-        hyperparam(
-            "--merges-filename", os.path.join(DATA_ROOT, "tokenizers/gpt2-merges.txt")
         ),
     ]
 
