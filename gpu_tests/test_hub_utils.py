@@ -88,6 +88,7 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
         "merges_filename": os.path.join(kwargs["model_path"], "gpt2-merges.txt"),
         "bpe_vocab": os.path.join(kwargs["model_path"], "gpt2-vocab.json"),
         "vocab_filename": os.path.join(kwargs["model_path"], "gpt2-vocab.json"),
+        "hf_tokenizer": os.path.join(kwargs["model_path"], "gpt2-unified.json"),
         "bpe_add_prefix_space": False,
         "specify_arch": True,
         "tensor_parallel_init_model_on_gpu": True,
