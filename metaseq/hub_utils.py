@@ -816,7 +816,7 @@ class GeneratorInterface:
         if distributions is not None:
             # If we broke early in the loop above, ensure that we
             # fill mask with False upto distributions.shape[0]
-            mask.extend([False]*(distributions.shape[0] - len(mask)))
+            mask.extend([False] * (distributions.shape[0] - len(mask)))
             distributions = distributions[mask]
 
         return list(new_tokens), list(new_scores), distributions
