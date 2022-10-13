@@ -816,6 +816,9 @@ class GeneratorInterface:
         if distributions is not None:
             # If we broke early in the loop above, ensure that we
             # fill mask with False upto distributions.shape[0]
+            assert (
+                len(mask) <= distributions.shape[0]
+            ), "Mask cannot be larger than the number of tokens in disribution (distributions.shape[0])"
             mask.extend([False] * (distributions.shape[0] - len(mask)))
             distributions = distributions[mask]
 
