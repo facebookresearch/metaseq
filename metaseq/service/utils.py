@@ -7,7 +7,6 @@ import socket
 import logging
 import sys
 import os
-from typing import List
 
 
 def normalize_newlines(s: str):
