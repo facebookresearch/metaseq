@@ -28,6 +28,8 @@ from metaseq.distributed.utils import (
     get_data_parallel_rank,
     get_data_parallel_world_size,
 )
+from metaseq.service.utils import normalize_newlines
+
 
 logger = logging.getLogger(__name__)
 
@@ -519,6 +521,20 @@ class GeneratorInterface:
         self.cfg = cfg
         if isinstance(self.cfg, Namespace):
             self.cfg = convert_namespace_to_omegaconf(self.cfg)
+
+    def encode_fn(self, x: str):
+        """
+        encode a given value to list of bpe tokens
+        """
+        assert self.bpe is not None
+        return self.bpe.bpe.encode(normalize_newlines(x)).ids
+
+    def decode_fn(self, x: List[int]) -> str:
+        """
+        Decode a list of tokens x to a string
+        """
+        assert self.bpe is not None
+        return self.bpe.bpe.decode(x)
 
     def load_model(self):
         utils.import_user_module(self.cfg.common)

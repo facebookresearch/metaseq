@@ -25,22 +25,6 @@ def get_my_ip():
     return socket.gethostbyname(socket.gethostname())
 
 
-def encode_fn(generator, x):
-    """
-    encode a given value to list of bpe tokens
-    """
-    assert generator.bpe is not None
-    return generator.bpe.bpe.encode(normalize_newlines(x)).ids
-
-
-def decode_fn(generator, x: List[int]) -> str:
-    """
-    Decode a list of tokens x to a string
-    """
-    assert generator.bpe is not None
-    return generator.bpe.bpe.decode(x)
-
-
 def build_logger():
     logging.basicConfig(
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",

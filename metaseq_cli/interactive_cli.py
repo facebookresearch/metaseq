@@ -27,7 +27,7 @@ from metaseq.service.constants import (
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
 )
-from metaseq.service.utils import encode_fn, build_logger
+from metaseq.service.utils import build_logger
 
 logger = build_logger()
 
@@ -75,7 +75,7 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
     if torch.distributed.get_rank() == 0:
         while True:
             prompt = input_loop()
-            tokens = encode_fn(generator, prompt)
+            tokens = generator.encode_fn(prompt)
             request_object = {
                 "inputs": [tokens],
                 "max_tokens": [128],
