@@ -427,8 +427,8 @@ def validate_and_save(
     assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
     valid_losses = [None]
-    # if do_validate:
-    #     valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+    if do_validate:
+        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
