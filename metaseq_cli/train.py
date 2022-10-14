@@ -420,15 +420,15 @@ def validate_and_save(
             and was_successful_step
         )
     ) and not cfg.dataset.disable_validation
-    do_evaluate = (
-        (should_stop and cfg.common.evaluate_last_update)
-        or (cfg.common.evaluate_interval_updates > 0 and num_updates % cfg.common.evaluate_interval_updates == 0)
+    do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
+        cfg.checkpoint.evaluate_interval_updates > 0
+        and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
     )
-    assert do_save or not do_evaluate, "checkpoint saves must match eval schedule"
+    assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
     valid_losses = [None]
-    if do_validate:
-        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+    # if do_validate:
+    #     valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
@@ -440,7 +440,9 @@ def validate_and_save(
             epoch_itr,
             valid_losses[0],
             training_finished=should_stop,
-            async_callback_fn=functools.partial(post_checkpoint_callback, cfg, do_evaluate, trainer.checkpoint_suffix)
+            async_callback_fn=functools.partial(
+                post_checkpoint_callback, cfg, do_evaluate
+            )
             if cfg.checkpoint.cloud_upload_path
             else None,
         )
@@ -449,7 +451,7 @@ def validate_and_save(
     return valid_losses, should_stop
 
 
-def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
+def post_checkpoint_callback(cfg, do_evaluate, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -491,28 +493,23 @@ def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
-        
+
         if do_evaluate:
             # Make sure everyone finished uploading the checkpoints to the cloud
             distributed_utils.global_barrier()
-            _run_evaluations(cfg.common.eval_command, cfg.checkpoint.cloud_upload_path, filename, checkpoint_suffix)
+            _run_evaluations(cfg.checkpoint.eval_command)
 
 
-def _run_evaluations(eval_cmd, cloud_storage_path, filepath, checkpoint_suffix):
+def _run_evaluations(eval_cmd):
     if distributed_utils.get_global_rank() != 0:
         return
-    filename = filepath.split('/')[-1].replace(checkpoint_suffix, '')
     cmd = eval_cmd.split()
-    cmd.append("--model-path")
-    cmd.append(cloud_storage_path + filename)
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
         print("Error: {}, evaluation failed".format(res.returncode))
         print("Evaluation stdout = {}".format(res.stdout))
         sys.exit(1)
-    logger.info(
-        f"Successfully ran evaluation"
-    )
+    logger.info(f"Successfully ran evaluation")
 
 
 def get_training_stats(stats: Dict[str, Any]) -> Dict[str, Any]:

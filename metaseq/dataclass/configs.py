@@ -84,19 +84,6 @@ class CommonConfig(MetaseqDataclass):
     # different jobs. Please append your params to other dataclasses if they
     # were used for a particular purpose or task, such as those dedicated for
     # `distributed training`, `optimization`, etc.
-    evaluate_interval_updates: int = field(
-        default=0, metadata={"help": "run few-shot evals every N updates"}
-    )
-    evaluate_last_update: bool = field(
-        default=False,
-        metadata={"help": "run few-shot evaluations at the end of the training run"},
-    )
-    eval_command: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "command to kick off few-shot evals.",
-        },
-    )
     log_interval: int = field(
         default=100,
         metadata={
@@ -511,6 +498,19 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
+    evaluate_interval_updates: int = field(
+        default=0, metadata={"help": "run few-shot evals every N updates"}
+    )
+    evaluate_last_checkpoint: bool = field(
+        default=False,
+        metadata={"help": "run few-shot evaluations at the end of the training run"},
+    )
+    eval_command: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "command to kick off few-shot evals.",
+        },
+    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
@@ -661,6 +661,7 @@ class CommonEvalConfig(MetaseqDataclass):
             "argparse_alias": "--sp",
         },
     )
+
 
 @dataclass
 class ReshardConfig(MetaseqDataclass):
