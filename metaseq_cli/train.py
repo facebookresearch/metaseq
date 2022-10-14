@@ -36,6 +36,7 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
+from metaseq_internal.eval.gpt3_eval import run_evaluations
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -185,6 +186,20 @@ def main(cfg: DictConfig) -> None:
         )
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
+
+    logger.info("evals starting")
+
+    eval_kwargs = {
+        'model_name': 'hook_test',
+        'repro_info': {'schedule_git_commit': 'commit 13c5e3c70eb09cb07c37a8332f3030a60979e6a8', 'schedule_timestamp': '2022-10-14-00-11-50-782413', 'schedule_user': 'ruanrms'},
+        'scoring': 'mean',
+        'batch_size': 1, 'uniform_sampling': False, 'predictor_name': 'clmprompting', 'max_positions': None, 'user_dir': None, 'train_sep': ' ', 
+        'replace_newline_with_eos': False, 'distributed_world_size': cfg.distributed_training.distributed_world_size, 'fsdp': True,
+        'max_tokens': 2048, # 'model_path': '/data/gpt-z/models/zucchini_ablations/swiglu_fat/checkpoint_last.pt', 'distributed_port': cfg.distributed_port
+        'model_template': 'bf16_sharded_config', 'arceasy_train_set': 'train', 'arceasy_eval_set': ['test'], 'executed_by_job_name': 'arceasy_swiglu_fat_fs.0_t1_smpl.All_current',
+        'predictions_dump_dir': './zucchini_evals/hook_test/arceasy_swiglu_fat_fs.0_t1_smpl.All_current', 'results_dir': './zucchini_evals/hook_test/arceasy_swiglu_fat_fs.0_t1_smpl.All_current'
+    }
+    run_evaluations(model, ['arceasy'], [0], 1, None, True, True, True, **eval_kwargs)
 
     # ioPath implementation to wait for all asynchronous file writes to complete.
     if cfg.checkpoint.write_checkpoints_asynchronously:
@@ -421,23 +436,23 @@ def validate_and_save(
         )
     ) and not cfg.dataset.disable_validation
     valid_losses = [None]
-    if do_validate:
-        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+    # if do_validate:
+    #     valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
     # Save checkpoint
-    if do_save:
-        checkpoint_utils.save_checkpoint(
-            cfg.checkpoint,
-            trainer,
-            epoch_itr,
-            valid_losses[0],
-            training_finished=should_stop,
-            async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
-            if cfg.checkpoint.cloud_upload_path
-            else None,
-        )
+    # do_save:
+    #     checkpoint_utils.save_checkpoint(
+    #         cfg.checkpoint,
+    #         trainer,
+    #         epoch_itr,
+    #         valid_losses[0],
+    #         training_finished=should_stop,
+    #         async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
+    #         if cfg.checkpoint.cloud_upload_path
+    #         else None,
+    #     )
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
