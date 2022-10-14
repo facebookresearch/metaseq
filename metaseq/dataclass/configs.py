@@ -506,7 +506,7 @@ class CheckpointConfig(MetaseqDataclass):
                 "1/ Wait until all checkpoints are uploaded"
                 "2/ Merge args --model-cloud-path and --model-cloud-filename to "
                 "fetch the checkpoint files"
-            ),
+            )
         },
     )
     evaluate_interval_updates: int = field(

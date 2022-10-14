@@ -509,6 +509,7 @@ def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix)
     # wait for rank 0.
     if distributed_utils.get_global_rank() != 0:
         return
+    assert eval_cmd is not None, "--eval_command needs to be set."
     cmd = eval_cmd.split()
     checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
     # The evals command must accept these two args and properly merge the cloud path
