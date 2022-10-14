@@ -63,7 +63,6 @@ class SequenceGenerator(nn.Module):
             topp = 0.0
         self.sampling_topp = max(0, topp)
         self.temperature = temperature
-        assert temperature > 0, "--temperature must be greater than 0"
 
         self.model.eval()
         self.profile = profile
