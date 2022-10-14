@@ -495,12 +495,13 @@ def post_checkpoint_callback(cfg, do_evaluate, filename):
                 logger.info(f"could not upload {filename}: {e}")
 
         if do_evaluate:
-            # Make sure everyone finished uploading the checkpoints to the cloud
-            distributed_utils.global_barrier()
             _run_evaluations(cfg.checkpoint.eval_command)
 
 
 def _run_evaluations(eval_cmd):
+    # WARNING: evals command needs to properly wait for
+    # all ranks to have finished uploading. Here we just
+    # wait for rank 0.
     if distributed_utils.get_global_rank() != 0:
         return
     cmd = eval_cmd.split()
