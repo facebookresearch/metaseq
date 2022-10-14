@@ -441,7 +441,7 @@ def validate_and_save(
             valid_losses[0],
             training_finished=should_stop,
             async_callback_fn=functools.partial(
-                post_checkpoint_callback, cfg, do_evaluate
+                post_checkpoint_callback, cfg, do_evaluate, trainer.checkpoint_suffix
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
@@ -451,7 +451,7 @@ def validate_and_save(
     return valid_losses, should_stop
 
 
-def post_checkpoint_callback(cfg, do_evaluate, filename):
+def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -495,16 +495,27 @@ def post_checkpoint_callback(cfg, do_evaluate, filename):
                 logger.info(f"could not upload {filename}: {e}")
 
         if do_evaluate:
-            _run_evaluations(cfg.checkpoint.eval_command)
+            _run_evaluations(
+                cfg.checkpoint.eval_command,
+                cfg.checkpoint.cloud_upload_path,
+                filename,
+                checkpoint_suffix,
+            )
 
 
-def _run_evaluations(eval_cmd):
+def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix):
     # WARNING: evals command needs to properly wait for
     # all ranks to have finished uploading. Here we just
     # wait for rank 0.
     if distributed_utils.get_global_rank() != 0:
         return
     cmd = eval_cmd.split()
+    checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
+    # The evals command must accept these two args and properly merge the cloud path
+    # with the checkpoint name.
+    cmd.extend(
+        ["--model-cloud-path", cloud_upload_path, "--model-cloud-filename", checkpoint_name]
+    )
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
         print("Error: {}, evaluation failed".format(res.returncode))

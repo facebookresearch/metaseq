@@ -498,18 +498,23 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
-    evaluate_interval_updates: int = field(
-        default=0, metadata={"help": "run few-shot evals every N updates"}
-    )
-    evaluate_last_checkpoint: bool = field(
-        default=False,
-        metadata={"help": "run few-shot evaluations at the end of the training run"},
-    )
     eval_command: Optional[str] = field(
         default=None,
         metadata={
-            "help": "command to kick off few-shot evals.",
+            "help": (
+                "generic command to kick off evaluations. Command requirements: "
+                "1/ Wait until all checkpoints are uploaded"
+                "2/ Merge args --model-cloud-path and --model-cloud-filename to "
+                "fetch the checkpoint files"
+            ),
         },
+    )
+    evaluate_interval_updates: int = field(
+        default=0, metadata={"help": "run eval_command every N updates"}
+    )
+    evaluate_last_checkpoint: bool = field(
+        default=False,
+        metadata={"help": "run the eval_command at the end of the training run"},
     )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
