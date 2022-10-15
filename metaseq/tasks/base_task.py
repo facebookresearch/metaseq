@@ -115,9 +115,7 @@ class BaseTask(object):
         """
         d = Dictionary()
         for filename in filenames:
-            Dictionary.add_file_to_dictionary(
-                filename, d, tokenize_line, workers
-            )
+            Dictionary.add_file_to_dictionary(filename, d, tokenize_line, workers)
         d.finalize(threshold=threshold, nwords=nwords, padding_factor=padding_factor)
         return d
 
