@@ -23,7 +23,7 @@ logging.basicConfig(
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
 )
-logger = logging.getLogger("cli.validate")
+logger = logging.getLogger("metaseq.cli.validate")
 
 
 def main(cfg: DictConfig, override_args=None):
