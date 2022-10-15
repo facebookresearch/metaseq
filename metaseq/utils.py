@@ -3,7 +3,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
 import copy
 import importlib
 import logging
@@ -12,16 +11,13 @@ import random
 import re
 import sys
 import warnings
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from torch import Tensor
 
 from metaseq.distributed import utils as distributed_utils
-from metaseq.incremental_decoding_utils import HasIncrementalState
 
 try:
     from amp_C import multi_tensor_l2norm
@@ -102,9 +98,6 @@ def load_align_dict(replace_unk):
     return align_dict
 
 
-norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
-
-
 def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
@@ -154,6 +147,9 @@ def multi_tensor_l2_total_norm(grads, chunk_size=2048 * 32) -> torch.Tensor:
             norms += [torch.norm(g, p=2, dtype=torch.float32) for g in cur_device_grads]
     total_norm = torch.norm(torch.stack(norms))
     return total_norm
+
+
+norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
 
 
 @torch.no_grad()
