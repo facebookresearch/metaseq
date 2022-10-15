@@ -140,21 +140,6 @@ class BaseModel(nn.Module):
         self.eval()
         self.train = train
 
-    def prepare_for_onnx_export_(self, **kwargs):
-        """Make model exportable via ONNX trace."""
-        seen = set()
-
-        def apply_prepare_for_onnx_export_(module):
-            if (
-                module != self
-                and hasattr(module, "prepare_for_onnx_export_")
-                and module not in seen
-            ):
-                seen.add(module)
-                module.prepare_for_onnx_export_(**kwargs)
-
-        self.apply(apply_prepare_for_onnx_export_)
-
     @classmethod
     def from_pretrained(
         cls,

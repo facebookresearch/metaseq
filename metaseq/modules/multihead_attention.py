@@ -98,13 +98,7 @@ class MultiheadAttention(nn.Module):
             self.bias_k = self.bias_v = None
 
         self.add_zero_attn = add_zero_attn
-
         self.reset_parameters()
-
-        self.onnx_trace = False
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
 
     def reset_parameters(self):
         def _init_method_bias(weight, bias):
@@ -179,8 +173,7 @@ class MultiheadAttention(nn.Module):
                 assert src_len, bsz == value.shape[:2]
 
         if (
-            not self.onnx_trace
-            and incremental_state is None
+            incremental_state is None
             and not static_kv
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
@@ -346,10 +339,7 @@ class MultiheadAttention(nn.Module):
             # Replace any non-finite values with finite equivalents, since otherwise
             # we may get NaN when adding attn_mask or computing softmax.
             attn_weights = torch.nan_to_num(attn_weights)
-
             attn_mask = attn_mask.unsqueeze(0)
-            if self.onnx_trace:
-                attn_mask = attn_mask.repeat(attn_weights.size(0), 1, 1)
             attn_weights += attn_mask
 
         if key_padding_mask is not None:
@@ -364,21 +354,14 @@ class MultiheadAttention(nn.Module):
         if before_softmax:
             return attn_weights, v
 
-        attn_weights_float = utils.softmax(
-            attn_weights, dim=-1, onnx_trace=self.onnx_trace
-        )
+        attn_weights_float = utils.softmax(attn_weights, dim=-1)
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
-        if self.onnx_trace and attn.size(1) == 1:
-            # when ONNX tracing a single decoder step (sequence length == 1)
-            # the transpose is a no-op copy before view, thus unnecessary
-            attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
-        else:
-            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+        attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
