@@ -546,22 +546,14 @@ def eval_str_list(x, type=float):
         return [type(x)]
 
 
-def round_safe(x):
-    if torch.is_tensor(x):
-        return float(np.round(x.cpu().numpy(), 4))
-    else:
-        try:
-            return round(x, 4)
-        except Exception:
-            return x
-
-
+# TODO[susan]: Move this to metaseq-internal where it is currently used
 def remove_prefix(text: str, prefix: str):
     if text.startswith(prefix):
         return text[len(prefix) :]
     return text
 
 
+# TODO[susan]: Move this to metaseq-internal where it is currently used
 def print_r0(*x, file=None):
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         print(*x, file=file, flush=True)
