@@ -37,23 +37,6 @@ logger = logging.getLogger(__name__)
 MANIFOLD_PATH_SEP = "|"
 
 
-class FileContentsAction(argparse.Action):
-    def __init__(self, option_strings, dest, nargs=None, **kwargs):
-        if nargs is not None:
-            raise ValueError("nargs not allowed")
-        super(FileContentsAction, self).__init__(option_strings, dest, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        from metaseq.file_io import PathManager
-
-        if PathManager.isfile(values):
-            with PathManager.open(values) as f:
-                argument = f.read().strip()
-        else:
-            argument = values
-        setattr(namespace, self.dest, argument)
-
-
 def split_paths(paths: str) -> List[str]:
     return (
         paths.split(os.pathsep)
