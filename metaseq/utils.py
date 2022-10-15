@@ -34,14 +34,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-MANIFOLD_PATH_SEP = "|"
-
-
 def split_paths(paths: str) -> List[str]:
     return (
         paths.split(os.pathsep)
         if "://" not in paths
-        else paths.split(MANIFOLD_PATH_SEP)
+        else paths.split("|")
     )
 
 
