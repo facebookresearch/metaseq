@@ -22,7 +22,6 @@ class LearnedPositionalEmbedding(nn.Embedding):
 
     def __init__(self, num_embeddings: int, embedding_dim: int, padding_idx: int):
         super().__init__(num_embeddings, embedding_dim, padding_idx)
-        self.onnx_trace = False
         if self.padding_idx is not None:
             self.max_positions = self.num_embeddings - self.padding_idx - 1
         else:
@@ -41,11 +40,9 @@ class LearnedPositionalEmbedding(nn.Embedding):
 
         # we cannot use incremental state here because we must be aware of
         # padding.
+        if positions is None and self.padding_idx is not None:
+            positions = utils.make_positions(input, self.padding_idx)
 
-        if positions is None:
-            positions = utils.make_positions(
-                input, self.padding_idx, onnx_trace=self.onnx_trace
-            )
         return F.embedding(
             positions,
             self.weight,

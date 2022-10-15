@@ -106,8 +106,6 @@ class TransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
-
-        self.onnx_trace = False
         self.args = args
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
@@ -231,18 +229,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         l_aux = None
         x = self.residual_connection(x, residual)
-        if self.onnx_trace and incremental_state is not None:
-            saved_state = self.self_attn._get_input_buffer(incremental_state)
-            assert saved_state is not None
-            if self_attn_padding_mask is not None:
-                self_attn_state = [
-                    saved_state["prev_key"],
-                    saved_state["prev_value"],
-                    saved_state["prev_key_padding_mask"],
-                ]
-            else:
-                self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
         return x, attn, None, l_aux
 
     def make_generation_fast_(self, **kwargs):

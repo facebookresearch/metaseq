@@ -194,7 +194,7 @@ def post_process_prediction(
     return hypo_tokens, hypo_str, alignment
 
 
-def make_positions(tensor, padding_idx: int, onnx_trace: bool = False):
+def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
     Position numbers begin at padding_idx+1. Padding symbols are ignored.
@@ -444,18 +444,12 @@ def import_user_module(args):
                 )
 
 
-def softmax(x, dim: int, onnx_trace: bool = False):
-    if onnx_trace:
-        return F.softmax(x.float(), dim=dim)
-    else:
-        return F.softmax(x, dim=dim, dtype=torch.float32)
+def softmax(x, dim: int):
+    return F.softmax(x, dim=dim, dtype=torch.float32)
 
 
-def log_softmax(x, dim: int, onnx_trace: bool = False):
-    if onnx_trace:
-        return F.log_softmax(x.float(), dim=dim)
-    else:
-        return F.log_softmax(x, dim=dim, dtype=torch.float32)
+def log_softmax(x, dim: int):
+    return F.log_softmax(x, dim=dim, dtype=torch.float32)
 
 
 def get_perplexity(loss, round=2, base=2):

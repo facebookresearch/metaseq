@@ -15,7 +15,6 @@ class BaseDecoder(nn.Module):
     def __init__(self, dictionary):
         super().__init__()
         self.dictionary = dictionary
-        self.onnx_trace = False
 
     def forward(self, prev_output_tokens, **kwargs):
         """
@@ -61,9 +60,9 @@ class BaseDecoder(nn.Module):
     def get_normalized_probs_scriptable(self, logits: Tensor, log_probs: bool):
         """Get normalized probabilities (or log probs) from a net's output."""
         if log_probs:
-            return utils.log_softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.log_softmax(logits, dim=-1)
         else:
-            return utils.softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.softmax(logits, dim=-1)
 
     def max_positions(self):
         """Maximum input length supported by the decoder."""
