@@ -130,7 +130,6 @@ class MultiheadAttention(nn.Module):
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
@@ -159,7 +158,6 @@ class MultiheadAttention(nn.Module):
 
         if (
             incremental_state is None
-            and not static_kv
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
@@ -246,21 +244,15 @@ class MultiheadAttention(nn.Module):
                 _prev_key = saved_state["prev_key"]
                 assert _prev_key is not None
                 prev_key = _prev_key.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
-                    k = prev_key
-                else:
-                    assert k is not None
-                    k = torch.cat([prev_key, k], dim=1)
+                assert k is not None
+                k = torch.cat([prev_key, k], dim=1)
                 src_len = k.size(1)
             if "prev_value" in saved_state:
                 _prev_value = saved_state["prev_value"]
                 assert _prev_value is not None
                 prev_value = _prev_value.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
-                    v = prev_value
-                else:
-                    assert v is not None
-                    v = torch.cat([prev_value, v], dim=1)
+                assert v is not None
+                v = torch.cat([prev_value, v], dim=1)
             saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_key_padding_mask"] = key_padding_mask

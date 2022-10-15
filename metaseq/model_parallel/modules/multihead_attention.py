@@ -265,7 +265,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
         **unused_kwargs,
     ) -> Tuple[Tensor, Optional[Tensor]]:
@@ -417,11 +416,8 @@ class ModelParallelMultiheadAttention(nn.Module):
                     prev_key = _prev_key.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
                     )
-                    if static_kv:
-                        k = prev_key
-                    else:
-                        assert k is not None
-                        k = torch.cat([prev_key, k], dim=1)
+                    assert k is not None
+                    k = torch.cat([prev_key, k], dim=1)
                     src_len = k.size(1)
                 if "prev_value" in saved_state:
                     _prev_value = saved_state["prev_value"]
@@ -429,11 +425,8 @@ class ModelParallelMultiheadAttention(nn.Module):
                     prev_value = _prev_value.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
                     )
-                    if static_kv:
-                        v = prev_value
-                    else:
-                        assert v is not None
-                        v = torch.cat([prev_value, v], dim=1)
+                    assert v is not None
+                    v = torch.cat([prev_value, v], dim=1)
                 saved_state["prev_key"] = k.view(
                     bsz, self.num_heads_partition, -1, self.head_dim
                 )
