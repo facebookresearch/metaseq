@@ -307,9 +307,3 @@ def get_from_cache(url, cache_dir=None):
             logger.info("removing temp file %s", temp_file.name)
 
     return cache_path
-
-
-def get_file_extension(path, dot=True, lower=True):
-    ext = os.path.splitext(path)[1]
-    ext = ext if dot else ext[1:]
-    return ext.lower() if lower else ext
