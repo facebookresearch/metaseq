@@ -220,11 +220,6 @@ def torch_load_cpu(path):
     return state
 
 
-def save_json(content, path, indent=4):
-    with open(path, "w") as f:
-        json.dump(content, f, indent=indent)
-
-
 def load_json(p):
     return json.load(open(p))
 
