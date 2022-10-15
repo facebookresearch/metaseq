@@ -57,7 +57,7 @@ class ComputeEnvs(Enum):
 
 
 DATA_LOCATIONS = {
-    ComputeEnvs.AZURE: "/data/opt",
+    ComputeEnvs.AZURE: "/data/gpt-z/opt",
 }
 
 VALID_SUBSETS = [
