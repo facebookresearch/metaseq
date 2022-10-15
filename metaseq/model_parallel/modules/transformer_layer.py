@@ -157,7 +157,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         residual,
         key_padding_mask=None,
         incremental_state=None,
-        need_weights=False,
         attn_mask=None,
     ):
         (attn_output, attn_bias), attn_weights = self.self_attn(
@@ -166,7 +165,6 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             value=value,
             key_padding_mask=key_padding_mask,
             incremental_state=incremental_state,
-            need_weights=need_weights,
             attn_mask=attn_mask,
         )
         # Note [naman]: got rid off fused bias, dropout and residual cause

@@ -174,7 +174,6 @@ class TransformerDecoderLayer(nn.Module):
         residual,
         key_padding_mask=None,
         incremental_state=None,
-        need_weights=False,
         attn_mask=None,
     ):
         x, attn = self.self_attn(
@@ -183,7 +182,6 @@ class TransformerDecoderLayer(nn.Module):
             value=value,
             key_padding_mask=key_padding_mask,
             incremental_state=incremental_state,
-            need_weights=need_weights,
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
@@ -213,7 +211,6 @@ class TransformerDecoderLayer(nn.Module):
             residual=residual,
             key_padding_mask=self_attn_padding_mask,
             incremental_state=incremental_state,
-            need_weights=False,
             attn_mask=self_attn_mask,
         )
         residual = x

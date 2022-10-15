@@ -130,7 +130,6 @@ class MultiheadAttention(nn.Module):
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        need_weights: bool = True,
         static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
@@ -141,8 +140,6 @@ class MultiheadAttention(nn.Module):
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
                 padding elements are indicated by 1s.
-            need_weights (bool, optional): return the attention weights,
-                averaged over heads (default: False).
             attn_mask (ByteTensor, optional): typically used to
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
@@ -184,7 +181,7 @@ class MultiheadAttention(nn.Module):
                 self.out_proj.bias,
                 self.training or self.dropout_module.apply_during_inference,
                 key_padding_mask,
-                need_weights,
+                False,
                 attn_mask,
                 use_separate_proj_weight=True,
                 q_proj_weight=self.q_proj.weight,
@@ -334,13 +331,6 @@ class MultiheadAttention(nn.Module):
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
-        if need_weights:
-            attn_weights = attn_weights_float.view(
-                bsz, self.num_heads, tgt_len, src_len
-            ).transpose(1, 0)
-            # average attention weights over heads
-            attn_weights = attn_weights.mean(dim=0)
-
         return attn, attn_weights
 
     @torch.jit.export
