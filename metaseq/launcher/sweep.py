@@ -10,7 +10,11 @@ import subprocess
 from typing import Optional, List, Callable, MutableMapping
 from urllib.parse import urlparse
 
-from metaseq.launcher.opt_job_constants import ComputeEnvs
+try:
+    # internal logic denoting where data locations are
+    from metaseq_internal.constants import ComputeEnvs
+except ImportError:
+    from metaseq.launcher.opt_job_constants import ComputeEnvs
 
 
 class hyperparam(object):
