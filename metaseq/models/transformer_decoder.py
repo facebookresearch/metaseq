@@ -38,12 +38,11 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
         self.layers = nn.ModuleList(layers)
 
     def forward(self, x, **kwargs):
-        l_aux = []
         inner_states = []
         for layer in self.layers:
-            x, layer_attn, _, l_aux_i = layer(x, **kwargs)
+            x, _, _, _ = layer(x, **kwargs)
             inner_states.append(x)
-        return x, layer_attn, inner_states, l_aux
+        return x, None, inner_states, []
 
 
 def _log_weight_stats(tensor, name):
