@@ -178,23 +178,6 @@ def load_embedding(embed_dict, vocab, embedding):
     return embedding
 
 
-def post_process_prediction(
-    hypo_tokens,
-    alignment,
-    tgt_dict,
-    remove_bpe=None,
-    extra_symbols_to_ignore=None,
-):
-    hypo_str = tgt_dict.string(
-        hypo_tokens, remove_bpe, extra_symbols_to_ignore=extra_symbols_to_ignore
-    )
-    if remove_bpe is not None:
-        # Convert back to tokens for evaluating without BPE
-        # Note that the dictionary can be modified inside the method.
-        hypo_tokens = tgt_dict.encode_line(hypo_str, add_if_not_exist=True)
-    return hypo_tokens, hypo_str, alignment
-
-
 def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
