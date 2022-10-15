@@ -44,14 +44,12 @@ class TransformerDecoderLayer(nn.Module):
         self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
         )
-
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -153,7 +151,7 @@ class TransformerDecoderLayer(nn.Module):
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
