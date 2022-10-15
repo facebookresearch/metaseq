@@ -103,9 +103,6 @@ class MultiheadAttention(nn.Module):
 
         self.onnx_trace = False
 
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
-
     def reset_parameters(self):
         def _init_method_bias(weight, bias):
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)

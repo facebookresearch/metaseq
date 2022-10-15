@@ -30,9 +30,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
         self.max_positions = int(1e5)
 
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
-
     @staticmethod
     def get_embedding(
         num_embeddings: int, embedding_dim: int, padding_idx: Optional[int] = None

@@ -167,9 +167,6 @@ class TransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
         )
 
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
-
     def residual_connection(self, x, residual):
         return residual + x
 

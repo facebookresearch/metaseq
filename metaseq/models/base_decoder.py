@@ -68,6 +68,3 @@ class BaseDecoder(nn.Module):
     def max_positions(self):
         """Maximum input length supported by the decoder."""
         return 1e6  # an arbitrary large number
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
