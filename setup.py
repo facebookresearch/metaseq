@@ -195,10 +195,10 @@ def do_setup(package_data):
         test_suite="tests",
         entry_points={
             "console_scripts": [
-                "metaseq-train = cli.train:cli_main",
-                "metaseq-validate = cli.validate:cli_main",
+                "metaseq-train = metaseq.cli.train:cli_main",
+                "metaseq-validate = metaseq.cli.validate:cli_main",
                 "opt-baselines = metaseq.launcher.opt_baselines:cli_main",
-                "metaseq-api-local = cli.interactive_hosted:cli_main",
+                "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
         cmdclass=cmdclass,

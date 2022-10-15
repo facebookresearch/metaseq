@@ -173,7 +173,7 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
     )
     parser.add_argument(
         "--snapshot-recurse-dirs-oss",
-        default="metaseq,cli",
+        default="metaseq",
         help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
     )
     parser.add_argument(
