@@ -104,6 +104,5 @@ class TransformerEncoderLayer(nn.Module):
             self.fc2,
             self.dropout_module,
         )
-        l_aux = None
         x = self.residual_connection(x, residual)
-        return x, l_aux
+        return x, None

@@ -176,7 +176,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state=None,
         attn_mask=None,
     ):
-        x, attn = self.self_attn(
+        x, _ = self.self_attn(
             query=query,
             key=key,
             value=value,
@@ -185,7 +185,7 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
-        return self.residual_connection(x, residual), attn
+        return self.residual_connection(x, residual), None
 
     def forward(
         self,
@@ -204,7 +204,7 @@ class TransformerDecoderLayer(nn.Module):
 
         residual = x
         x = self.self_attn_layer_norm(x)
-        x, attn = self.forward_attention(
+        x, _ = self.forward_attention(
             query=x,
             key=x,
             value=x,
@@ -222,9 +222,8 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        l_aux = None
         x = self.residual_connection(x, residual)
-        return x, attn, None, l_aux
+        return x, None, None, None
 
     def make_generation_fast_(self, **kwargs):
         pass

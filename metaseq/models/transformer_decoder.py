@@ -412,8 +412,6 @@ class TransformerDecoder(IncrementalDecoder):
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
-        last_layer_idx = self.num_layers - 1
-
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
         if (
@@ -438,28 +436,20 @@ class TransformerDecoder(IncrementalDecoder):
         x = x.transpose(0, 1)
 
         # decoder layers
-        attn: Optional[Tensor] = None
         # store other representations for instrumentation in VocabParallelCrossEntCrit
         # Note: we are only storing the embeddings output and output of final transformer block
         # instead of all inner representations, as thats the only thing being logged and storing
         # all intermediate representation causes OOM for large models during validation.
         inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
-        l_aux = []
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _, l_aux_i = layer(
+            x, _, _, _ = layer(
                 x,
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
             )
-            l_aux.append(l_aux_i)
-            if layer_attn is not None and idx == last_layer_idx:
-                attn = layer_attn.float().to(x)
 
         inner_states.append(x)
-        if attn is not None:
-            # average probabilities over heads
-            attn = attn.mean(dim=0)
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -470,7 +460,7 @@ class TransformerDecoder(IncrementalDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states, "l_aux": l_aux}
+        return x, {"attn": [None], "inner_states": inner_states, "l_aux": []}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
