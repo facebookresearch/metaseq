@@ -54,7 +54,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         dropout=0.0,
         bias=True,
         self_attention=False,
-        encoder_decoder_attention=False,
         use_cpu_initialization=True,
         full_megatron_init=False,
         megatron_init_sigma=None,
@@ -70,9 +69,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-
         self.model_parallel_size = get_tensor_model_parallel_world_size()
-
         self.num_heads_partition = num_heads // self.model_parallel_size
         assert (
             self.num_heads_partition * self.model_parallel_size == num_heads
@@ -84,9 +81,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
         self.scaling = self.head_dim**-0.5
-
         self.self_attention = self_attention
-        self.encoder_decoder_attention = encoder_decoder_attention
 
         assert (
             not self.self_attention or self.qkv_same_dim
@@ -296,12 +291,6 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_kv:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    key = value = None
         else:
             saved_state = None
 
@@ -316,16 +305,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                 q, _ = self.q_proj(query)
                 k, _ = self.k_proj(query)
                 v, _ = self.v_proj(query)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            q, _ = self.q_proj(query)
-            if key is None:
-                assert value is None
-                k = v = None
-            else:
-                k = self.k_proj(key)
-                v = self.v_proj(key)
-
         else:
             assert key is not None and value is not None
             q, _ = self.q_proj(query)

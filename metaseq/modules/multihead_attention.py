@@ -35,7 +35,6 @@ class MultiheadAttention(nn.Module):
         add_bias_kv=False,
         add_zero_attn=False,
         self_attention=False,
-        encoder_decoder_attention=False,
         initialize_params_on_gpu=False,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -44,18 +43,14 @@ class MultiheadAttention(nn.Module):
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-
         self.num_heads = num_heads
         self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
-
         self.head_dim = embed_dim // num_heads
         assert (
             self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
         self.scaling = self.head_dim**-0.5
-
         self.self_attention = self_attention
-        self.encoder_decoder_attention = encoder_decoder_attention
 
         assert not self.self_attention or self.qkv_same_dim, (
             "Self-attention requires query, key and " "value to be of the same size"
@@ -213,12 +208,6 @@ class MultiheadAttention(nn.Module):
 
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_kv:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    key = value = None
         else:
             saved_state = None
 
@@ -226,16 +215,6 @@ class MultiheadAttention(nn.Module):
             q = self.q_proj(query)
             k = self.k_proj(query)
             v = self.v_proj(query)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            q = self.q_proj(query)
-            if key is None:
-                assert value is None
-                k = v = None
-            else:
-                k = self.k_proj(key)
-                v = self.v_proj(key)
-
         else:
             assert key is not None and value is not None
             q = self.q_proj(query)
@@ -403,10 +382,6 @@ class MultiheadAttention(nn.Module):
             for k in input_buffer.keys():
                 input_buffer_k = input_buffer[k]
                 if input_buffer_k is not None:
-                    if self.encoder_decoder_attention and input_buffer_k.size(
-                        0
-                    ) == new_order.size(0):
-                        break
                     input_buffer[k] = input_buffer_k.index_select(0, new_order)
             incremental_state = self._set_input_buffer(incremental_state, input_buffer)
         return incremental_state
