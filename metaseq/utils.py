@@ -464,11 +464,6 @@ def get_perplexity(loss, round=2, base=2):
         return float("inf")
 
 
-def deprecation_warning(message, stacklevel=3):
-    # don't use DeprecationWarning, since it's ignored by default
-    warnings.warn(message, stacklevel=stacklevel)
-
-
 def has_parameters(module):
     try:
         next(module.parameters())
