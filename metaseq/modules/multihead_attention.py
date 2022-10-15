@@ -134,7 +134,6 @@ class MultiheadAttention(nn.Module):
         static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
-        need_head_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -149,13 +148,7 @@ class MultiheadAttention(nn.Module):
                 attention from looking forward in time (default: None).
             before_softmax (bool, optional): return the raw attention
                 weights and values before the attention softmax.
-            need_head_weights (bool, optional): return the attention
-                weights for each head. Implies *need_weights*. Default:
-                return the average attention weights over all heads.
         """
-        if need_head_weights:
-            need_weights = True
-
         tgt_len, bsz, embed_dim = query.size()
         src_len = tgt_len
         assert embed_dim == self.embed_dim, f"query dim {embed_dim} != {self.embed_dim}"
@@ -345,9 +338,8 @@ class MultiheadAttention(nn.Module):
             attn_weights = attn_weights_float.view(
                 bsz, self.num_heads, tgt_len, src_len
             ).transpose(1, 0)
-            if not need_head_weights:
-                # average attention weights over heads
-                attn_weights = attn_weights.mean(dim=0)
+            # average attention weights over heads
+            attn_weights = attn_weights.mean(dim=0)
 
         return attn, attn_weights
 
