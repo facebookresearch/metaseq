@@ -85,29 +85,6 @@ def move_to_cpu(sample, cast_to_fp32=True):
     return apply_to_sample(_move_to_cpu, sample)
 
 
-def get_incremental_state(
-    module: HasIncrementalState,
-    incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
-    key: str,
-) -> Optional[Dict[str, Optional[Tensor]]]:
-    """Helper for getting incremental state for an nn.Module."""
-    return module.get_incremental_state(incremental_state, key)
-
-
-def set_incremental_state(
-    module: HasIncrementalState,
-    incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
-    key: str,
-    value: Dict[str, Optional[Tensor]],
-) -> Optional[Dict[str, Dict[str, Optional[Tensor]]]]:
-    """Helper for setting incremental state for an nn.Module."""
-    if incremental_state is not None:
-        result = module.set_incremental_state(incremental_state, key, value)
-        if result is not None:
-            incremental_state = result
-    return incremental_state
-
-
 def load_align_dict(replace_unk):
     if replace_unk is None:
         align_dict = None
