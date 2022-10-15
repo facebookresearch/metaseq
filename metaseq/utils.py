@@ -9,6 +9,7 @@ import importlib
 import logging
 import os
 import random
+import re
 import sys
 import warnings
 from typing import Dict, List, Optional
@@ -611,3 +612,9 @@ def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> f
         if epoch is not None and iterator_size > 0
         else None
     )
+
+
+def tokenize_line(line):
+    line = re.compile(r"\s+").sub(" ", line)
+    line = line.strip()
+    return line.split()
