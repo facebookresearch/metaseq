@@ -170,14 +170,6 @@ def parse_embedding(embed_path):
 norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
 
 
-def load_embedding(embed_dict, vocab, embedding):
-    for idx in range(len(vocab)):
-        token = vocab[idx]
-        if token in embed_dict:
-            embedding.weight.data[idx] = embed_dict[token]
-    return embedding
-
-
 def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
