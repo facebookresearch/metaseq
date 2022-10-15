@@ -44,7 +44,7 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
-logger = logging.getLogger("metaseq_cli.train")
+logger = logging.getLogger("cli.train")
 
 
 def main(cfg: DictConfig) -> None:

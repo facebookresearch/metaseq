@@ -135,7 +135,7 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
     parser.add_argument("--local", action="store_true", help="run job locally")
     parser.add_argument("--debug", action="store_true", help="debug")
     parser.add_argument(
-        "--script", default="metaseq_cli/train.py", help="script to launch"
+        "--script", default="cli/train.py", help="script to launch"
     )
     parser.add_argument(
         "--python", default="python", help="path to nonstandard python binary"
@@ -175,7 +175,7 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
     )
     parser.add_argument(
         "--snapshot-recurse-dirs-oss",
-        default="metaseq,metaseq_cli",
+        default="metaseq,cli",
         help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
     )
     parser.add_argument(

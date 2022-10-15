@@ -20,7 +20,7 @@ from metaseq.models import (
     IncrementalDecoder,
 )
 from metaseq.tasks import LegacyTask
-from metaseq.metaseq_cli import validate, train
+from metaseq.cli import validate, train
 
 
 def collate(

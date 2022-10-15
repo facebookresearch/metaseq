@@ -31,5 +31,5 @@ def build_logger():
         level=os.environ.get("LOGLEVEL", "INFO").upper(),
         stream=sys.stdout,
     )
-    logger = logging.getLogger("metaseq_cli.interactive")
+    logger = logging.getLogger("cli.interactive")
     return logger
