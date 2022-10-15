@@ -535,17 +535,6 @@ class CudaEnvironment(object):
         logger.info(first_line)
 
 
-def eval_str_list(x, type=float):
-    if x is None:
-        return None
-    if isinstance(x, str):
-        x = eval(x)
-    try:
-        return list(map(type, x))
-    except TypeError:
-        return [type(x)]
-
-
 # TODO[susan]: Move this to metaseq-internal where it is currently used
 def remove_prefix(text: str, prefix: str):
     if text.startswith(prefix):
