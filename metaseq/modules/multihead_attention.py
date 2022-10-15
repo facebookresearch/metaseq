@@ -131,7 +131,6 @@ class MultiheadAttention(nn.Module):
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         attn_mask: Optional[Tensor] = None,
-        before_softmax: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -142,8 +141,6 @@ class MultiheadAttention(nn.Module):
             attn_mask (ByteTensor, optional): typically used to
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
-            before_softmax (bool, optional): return the raw attention
-                weights and values before the attention softmax.
         """
         tgt_len, bsz, embed_dim = query.size()
         src_len = tgt_len
@@ -309,9 +306,6 @@ class MultiheadAttention(nn.Module):
                 float("-inf"),
             )
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
-        if before_softmax:
-            return attn_weights, v
 
         attn_weights_float = utils.softmax(attn_weights, dim=-1)
         attn_weights = attn_weights_float.type_as(attn_weights)
