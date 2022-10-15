@@ -220,12 +220,6 @@ def torch_load_cpu(path):
     return state
 
 
-def load_jsonl(path):
-    with open(path).read() as jsonl_content:
-        result = [json.loads(jline) for jline in jsonl_content.splitlines()]
-    return result
-
-
 def load_and_pop_last_optimizer_state(pth):
     st = torch_load_cpu(pth)
     st.pop("last_optimizer_state", None)
