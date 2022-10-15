@@ -435,7 +435,10 @@ class TransformerDecoder(IncrementalDecoder):
 
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
-        if self_attn_padding_mask is None and prev_output_tokens.eq(self.padding_idx).any():
+        if (
+            self_attn_padding_mask is None
+            and prev_output_tokens.eq(self.padding_idx).any()
+        ):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
