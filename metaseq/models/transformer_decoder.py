@@ -414,25 +414,6 @@ class TransformerDecoder(IncrementalDecoder):
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
-        return self.extract_features_scriptable(
-            prev_output_tokens,
-            incremental_state=incremental_state,
-            token_embeddings=token_embeddings,
-            self_attn_padding_mask=self_attn_padding_mask,
-        )
-
-    def extract_features_scriptable(
-        self,
-        prev_output_tokens,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        token_embeddings: Optional[Tensor] = None,
-        self_attn_padding_mask: Optional[Tensor] = None,
-    ):
-        """
-        A scriptable subclass of this class has an extract_features method and calls
-        super().extract_features, but super() is not supported in torchscript. A copy
-        of this function is made to be used in the subclass instead.
-        """
         last_layer_idx = self.num_layers - 1
 
         # compute self-attention padding mask (involves device-to-host transfer,
