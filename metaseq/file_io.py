@@ -220,10 +220,6 @@ def torch_load_cpu(path):
     return state
 
 
-def load_json(p):
-    return json.load(open(p))
-
-
 def load_jsonl(path):
     with open(path).read() as jsonl_content:
         result = [json.loads(jline) for jline in jsonl_content.splitlines()]
