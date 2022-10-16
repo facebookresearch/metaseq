@@ -37,6 +37,8 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList(layers)
 
+    # TODO[susanz]: Return signature seems off. Cleanup?
+    #  fsdp_checkpoint_wrap_layer_frequency always 1 so this path is not called.
     def forward(self, x, **kwargs):
         inner_states = []
         for layer in self.layers:

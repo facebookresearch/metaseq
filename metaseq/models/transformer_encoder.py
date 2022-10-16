@@ -141,7 +141,7 @@ class TransformerEncoder(BaseEncoder):
 
         # encoder layers
         for layer in self.layers:
-            x, _ = layer(
+            x = layer(
                 x, encoder_padding_mask=encoder_padding_mask if has_pads else None
             )
 
@@ -158,7 +158,6 @@ class TransformerEncoder(BaseEncoder):
             "encoder_embedding": [encoder_embedding],  # B x T x C
             "src_tokens": [],
             "src_lengths": [],
-            "l_aux": [],
         }
 
     def max_positions(self):
