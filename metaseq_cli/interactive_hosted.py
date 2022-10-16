@@ -18,8 +18,13 @@ import random
 import threading
 import traceback
 
+from pydantic import BaseModel
+from typing import Union, List
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 import torch
-from flask import Flask, request, jsonify
+import uvicorn
+from fastapi import FastAPI, Header
 from werkzeug.exceptions import HTTPException
 
 from metaseq import options
@@ -41,7 +46,7 @@ from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
 
-app = Flask(__name__)
+app = FastAPI()
 
 # global state (mutable!)
 cfg = None
@@ -185,7 +190,7 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
         logger.info(f"Worker engaged! {get_my_ip()}:{port}")
         thread = threading.Thread(target=batching_loop, daemon=True)
         thread.start()
-        app.run(host="0.0.0.0", port=port, threaded=True)
+        uvicorn.run("metaseq_cli.interactive_hosted:app", host="0.0.0.0", port=port, reload=True)
     else:
         # useful in FSDP setting
         logger.info(f"Looping engaged! {get_my_ip()}:{port}")
@@ -200,8 +205,18 @@ def worker_main(cfg1: MetaseqConfig, namespace_args=None):
                 pass
 
 
-@app.errorhandler(Exception)
-def handle_exception(e):
+class Request(BaseModel):
+    prompt: Union[str, List]
+    min_tokens: Union[int, None] = None
+    max_tokens: Union[int, None] = None
+    stop: Union[str, List, None] = None
+    temperature: Union[float, None] = None
+    top_p: Union[float, None] = None
+    n: Union[int, None] = None
+
+
+@app.exception_handler(Exception)
+def handle_exception(_req: Request, e: Exception):
     # pass through HTTP errors
     if isinstance(e, HTTPException):
         return e
@@ -233,18 +248,20 @@ def _create_error_response(msg, http_code, **others):
         "code": None,
         **others,
     }
-    response = jsonify({"error": error_dict})
-    response.status = http_code
-    return response
+    response = jsonable_encoder({"error": error_dict})
+    return JSONResponse(
+        status_code=http_code,
+        content=response,
+    )
 
 
-@app.route("/completions", methods=["POST"])
-@app.route("/v1/engines/<engine>/completions", methods=["POST"])
-@app.route("/v2/engines/<engine>/completions", methods=["POST"])
-@app.route("/engines/<engine>/completions", methods=["POST"])
-def completions(engine=None):
+@app.post("/completions")
+@app.post("/v1/engines/{engine}/completions")
+@app.post("/v2/engines/{engine}/completions")
+@app.post("/engines/{engine}/completions")
+def completions(req: Request, engine: Union[str, None] =None, authorization: Union[str, None] = Header(default="")):
     # before anything else, check that we've got a valid API key
-    if not _validate_key(request.headers.get("authorization", "")):
+    if not _validate_key(authorization):
         return _create_error_response("Invalid API key or API key missing.", 401)
 
     # prompt can be 4 types:
@@ -255,14 +272,12 @@ def completions(engine=None):
 
     # our approach is to turn everything into the last case
 
-    prompts = request.json["prompt"]
-    del request.json["prompt"]
-    generation_args = request.json
+    prompts = req.prompt
+    del req.prompt
 
     if isinstance(prompts, str):
         # single string. tokenize and turn it to the single pre-tokenized case
         prompts = [generator.encode_fn(prompts)]
-    assert isinstance(prompts, list)
     assert len(prompts) > 0
     if isinstance(prompts[0], str):
         # multi string
@@ -274,34 +289,30 @@ def completions(engine=None):
     # final case: multi pre-tokenized
     assert len(prompts[0]) > 0
 
-    if "min_tokens" in generation_args:
-        generation_args["min_tokens"] = int(generation_args["min_tokens"])
-    if "max_tokens" in generation_args:
-        generation_args["max_tokens"] = int(generation_args["max_tokens"])
-    if "stop" in generation_args:
-        stop = generation_args["stop"]
-        if stop is None:
-            pass
-        elif isinstance(stop, str):
-            stop = [generator.encode_fn(stop)[0]]
-        else:
-            stop = [generator.encode_fn(s)[0] for s in stop]
-        generation_args["stop"] = stop
-    if "temperature" in generation_args:
-        generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
+    generation_args = {}
+    if req.min_tokens is not None:
+        generation_args["min_tokens"] = req.min_tokens
+    if req.max_tokens is not None:
+        generation_args["max_tokens"] = req.max_tokens
+    if isinstance(req.stop, str):
+        generation_args["stop"] = [generator.encode_fn(req.stop)[0]]
+    elif isinstance(req.stop, List):
+        generation_args["stop"] = [generator.encode_fn(s)[0] for s in req.stop]
+    if req.temperature is not None:
+        generation_args["temperature"] = round(req.temperature, 1)
     else:
         generation_args["temperature"] = 1.0
-    if "top_p" in generation_args:
-        generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
+    if req.top_p is not None:
+        generation_args["top_p"] = round(req.top_p, 1)
     else:
         generation_args["top_p"] = 1.0
     # beam search top n
-    if "n" in generation_args:
-        if int(generation_args["n"]) > MAX_BEAM:
+    if req.n is not None:
+        if req.n > MAX_BEAM:
             logger.warning(
-                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
+                f'beam size/sampling size of {req.n} too large, using {MAX_BEAM} to avoid OOM'
             )
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
+        generation_args["n"] = min(MAX_BEAM, max(1, req.n))
     else:
         generation_args["n"] = 1
 
@@ -341,7 +352,7 @@ def completions(engine=None):
     return OAIResponse(results).__dict__()
 
 
-@app.route("/")
+@app.get("/")
 def index():
     # TODO(roller): decouple demopage.html
     fn = pkg_resources.resource_filename("metaseq", "service/index.html")
