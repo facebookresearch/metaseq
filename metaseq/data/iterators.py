@@ -131,12 +131,14 @@ class StreamingCountingIterator(object):
         self.n = 0
         self.next_worker = 0
         self.sequences_consumed = [0 for _ in range(self.num_workers)]
+        self.worker_offset = 0
 
     def __iter__(self):
         return self
 
     def __next__(self):
         worker_id, r = next(self._peekable_itr)
+        worker_id += self.worker_offset
         self.sequences_consumed[worker_id] += self.batch_size * self.num_shards
         self.next_worker = (worker_id + 1) % self.num_workers
         self.n += 1
@@ -242,6 +244,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         assert isinstance(dataset, torch.utils.data.IterableDataset)
 
         self._itr: Optional[StreamingCountingIterator] = None
+        self.worker_offset = 0
 
     @property
     def next_epoch_idx(self):
@@ -356,6 +359,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             self._itr.n = n
             self._itr.sequences_consumed = sequences_consumed
             self._itr.next_worker = next_worker
+            self._itr.worker_offset = next_worker
         else:
             self._itr = self._get_iterator_for_epoch(self.epoch)
             # checkpoint from before sequences_consumed was added, slow fast forward...
