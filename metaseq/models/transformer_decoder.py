@@ -40,9 +40,9 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
     def forward(self, x, **kwargs):
         inner_states = []
         for layer in self.layers:
-            x, _, _, _ = layer(x, **kwargs)
+            x = layer(x, **kwargs)
             inner_states.append(x)
-        return x, None, inner_states, []
+        return x, inner_states
 
 
 def _log_weight_stats(tensor, name):
@@ -441,13 +441,12 @@ class TransformerDecoder(IncrementalDecoder):
         # all intermediate representation causes OOM for large models during validation.
         inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
         for idx, layer in enumerate(self.layers):
-            x, _, _, _ = layer(
+            x = layer(
                 x,
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
             )
-
         inner_states.append(x)
 
         if self.layer_norm is not None:
@@ -459,7 +458,7 @@ class TransformerDecoder(IncrementalDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [None], "inner_states": inner_states, "l_aux": []}
+        return x, {"inner_states": inner_states}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""

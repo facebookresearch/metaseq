@@ -511,7 +511,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
         attn, attn_bias = self.out_proj(attn)
         # logger.info("output:" + str(attn.float().norm().item()))
-        return (attn, attn_bias), None
+        return attn, attn_bias
 
     def _get_input_buffer(
         self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
