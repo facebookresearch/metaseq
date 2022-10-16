@@ -316,7 +316,7 @@ class MultiheadAttention(nn.Module):
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
-        return attn
+        return attn, None  # To match return type of F.multi_head_attention_forward
 
     @torch.jit.export
     def reorder_incremental_state(

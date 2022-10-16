@@ -510,7 +510,8 @@ class ModelParallelMultiheadAttention(nn.Module):
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
         attn, attn_bias = self.out_proj(attn)
-        # logger.info("output:" + str(attn.float().norm().item()))
+        # Note that this no longer matches the signature of non-model-parallel version, which returns
+        # Tuple[Tensor, Optional[Tensor]]
         return attn, attn_bias
 
     def _get_input_buffer(

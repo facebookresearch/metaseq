@@ -84,7 +84,7 @@ class TransformerEncoderLayer(nn.Module):
 
         residual = x
         x = self.self_attn_layer_norm(x)
-        x = self.self_attn(
+        x, _ = self.self_attn(
             query=x,
             key=x,
             value=x,

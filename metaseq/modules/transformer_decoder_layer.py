@@ -176,7 +176,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state=None,
         attn_mask=None,
     ):
-        x = self.self_attn(
+        x, _ = self.self_attn(
             query=query,
             key=key,
             value=value,

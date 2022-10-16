@@ -159,6 +159,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         incremental_state=None,
         attn_mask=None,
     ):
+        # This is calling into ModelParallelMultiheadAttention.forward
         attn_output, attn_bias = self.self_attn(
             query=query,
             key=key,
