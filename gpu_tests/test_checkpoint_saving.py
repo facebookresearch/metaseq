@@ -5,21 +5,18 @@
 
 import sys
 import os
-import time
 import subprocess
-import logging
 import json
 import multiprocessing
-from functools import partial, wraps
+from functools import partial
 import unittest
 from unittest.mock import patch, Mock, MagicMock
 import torch
-import metaseq
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq_cli.train import cli_main as train_cli_main
-from metaseq.trainer import Trainer
 from metaseq.distributed.utils import distributed_main
+
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
 @unittest.skipIf(
