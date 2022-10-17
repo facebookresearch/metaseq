@@ -13,7 +13,6 @@ import torch
 from tests.utils import train_language_model
 from cpu_tests.test_utils import (
     write_dummy_jsonl_data_dir,
-    write_dummy_bpe,
     write_dummy_bpe_unified,
 )
 
