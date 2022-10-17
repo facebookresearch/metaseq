@@ -13,7 +13,6 @@ from metaseq import options
 from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
 from cpu_tests.test_utils import (
     write_one_jsonl,
-    write_dummy_bpe,
     write_dummy_bpe_unified,
 )
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
@@ -35,7 +34,6 @@ class TestDatasetLoading(unittest.TestCase):
             shard_00 = os.path.join(train_dir, "00")
             shard_01 = os.path.join(train_dir, "01")
 
-            # vocab_file, merges_file = write_dummy_bpe(data_dir)
             tokenizer_path = write_dummy_bpe_unified(
                 os.path.join(data_dir, "unified.json")
             )
