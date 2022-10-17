@@ -14,6 +14,7 @@ from metaseq.distributed import fsdp_wrap, fsdp_enable_wrap
 from metaseq import hub_utils
 import torch.distributed as dist
 import torch
+from numpy.random import RandomState
 
 
 PROMPT = [133, 313, 1224, 15, 5, 856, 17527, 594, 98, 5, 11471, 3820, 19, 514, 4]
@@ -107,7 +108,6 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
         x["args"],
         x["task"],
         x["models"],
-        moe_disable_padding=False,
         skip_prepare_for_inference=True,
     )
 
@@ -179,6 +179,32 @@ def test_generator_hub_interface(data_regression, ndarrays_regression):
         if key in ["tokens", "score", "positional_scores"]
     }
     ndarrays_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+
+
+def test_filter_special(data_regression):
+    tokens = [123, 453, 653, 2, 345, 453]
+    # Assuming a vocab size of 10
+    vocab_size = 10
+
+    prng = RandomState(1234567890)
+
+    scores = prng.randn(len(tokens)).tolist()
+
+    distributions = prng.randn(len(tokens), vocab_size)
+    new_tokens, new_scores, distributions = GeneratorInterface._filter_special(
+        pad_token_ind=1,
+        special_token_inds=[0, 1, 2, 3],
+        tokens=tokens,
+        scores=scores,
+        distributions=distributions,
+    )
+
+    # Since we got a special token at index 3, only the first three tokens should be returned.
+    assert len(new_tokens) == 3
+    assert len(new_scores) == 3
+    data_regression.check(new_tokens, "test_filter_special_new_tokens")
+    data_regression.check(new_scores, "test_filter_special_new_scores")
+    data_regression.check(distributions.tolist(), "test_filter_special_distributions")
 
 
 def teardown_function():

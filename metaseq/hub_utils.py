@@ -28,6 +28,8 @@ from metaseq.distributed.utils import (
     get_data_parallel_rank,
     get_data_parallel_world_size,
 )
+from metaseq.service.utils import normalize_newlines
+
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +178,6 @@ class GeneratorHubInterface(nn.Module):
         cfg,
         task,
         models,
-        moe_disable_padding=True,
         skip_prepare_for_inference=False,
     ):
         super().__init__()
@@ -520,6 +521,20 @@ class GeneratorInterface:
         if isinstance(self.cfg, Namespace):
             self.cfg = convert_namespace_to_omegaconf(self.cfg)
 
+    def encode_fn(self, x: str):
+        """
+        encode a given value to list of bpe tokens
+        """
+        assert self.bpe is not None
+        return self.bpe.bpe.encode(normalize_newlines(x)).ids
+
+    def decode_fn(self, x: List[int]) -> str:
+        """
+        Decode a list of tokens x to a string
+        """
+        assert self.bpe is not None
+        return self.bpe.bpe.decode(x)
+
     def load_model(self):
         utils.import_user_module(self.cfg.common)
 
@@ -814,5 +829,12 @@ class GeneratorInterface:
 
         # cut off at stop and drop pads
         if distributions is not None:
+            # If we broke early in the loop above, ensure that we
+            # fill mask with False upto distributions.shape[0]
+            assert (
+                len(mask) <= distributions.shape[0]
+            ), "Mask cannot be larger than the number of tokens in disribution (distributions.shape[0])"
+            mask.extend([False] * (distributions.shape[0] - len(mask)))
             distributions = distributions[mask]
+
         return list(new_tokens), list(new_scores), distributions

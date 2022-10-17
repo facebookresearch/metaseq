@@ -37,7 +37,7 @@ from metaseq.service.constants import (
     TOTAL_WORLD_SIZE,
     LAUNCH_ARGS,
 )
-from metaseq.service.utils import get_my_ip, encode_fn, build_logger
+from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
 
@@ -96,7 +96,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
             # fit the max sequence length
             max_prompt_len = max(x.prompt_len for x in [item] + batch)
             max_gen_len = max(x.gen_len for x in [item] + batch)
-            overflow = max_prompt_len + max_gen_len < MAX_SEQ_LEN
+            overflow = (max_prompt_len + max_gen_len) > MAX_SEQ_LEN
             if batch and (batch_cost > max_tokens or overflow):
                 # we're over budget, put it back in the queue
                 target_queue.put(item)
@@ -261,12 +261,12 @@ def completions(engine=None):
 
     if isinstance(prompts, str):
         # single string. tokenize and turn it to the single pre-tokenized case
-        prompts = [encode_fn(generator, prompts)]
+        prompts = [generator.encode_fn(prompts)]
     assert isinstance(prompts, list)
     assert len(prompts) > 0
     if isinstance(prompts[0], str):
         # multi string
-        prompts = [encode_fn(generator, p) for p in prompts]
+        prompts = [generator.encode_fn(p) for p in prompts]
     elif isinstance(prompts[0], int):
         # single pre-tokenized
         prompts = [prompts]
@@ -283,9 +283,9 @@ def completions(engine=None):
         if stop is None:
             pass
         elif isinstance(stop, str):
-            stop = [encode_fn(generator, stop)[0]]
+            stop = [generator.encode_fn(stop)[0]]
         else:
-            stop = [encode_fn(generator, s)[0] for s in stop]
+            stop = [generator.encode_fn(s)[0] for s in stop]
         generation_args["stop"] = stop
     if "temperature" in generation_args:
         generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
@@ -371,4 +371,14 @@ def cli_main():
 
 
 if __name__ == "__main__":
+    if os.getenv("SLURM_NODEID") is None:
+        logger.warning(
+            f"Missing slurm configuration, defaulting to 'use entire node' for API"
+        )
+        os.environ["SLURM_NODEID"] = "0"
+        os.environ["SLURM_NNODES"] = "1"
+        os.environ["SLURM_NTASKS"] = "1"
+        import socket
+
+        os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()
     cli_main()
