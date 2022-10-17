@@ -121,8 +121,6 @@ class TransformerDecoder(IncrementalDecoder):
         )
         self.embed_positions.to(device).to(dtype)
 
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
-
         self.layers = nn.ModuleList([])
         layers = []
         for i in range(args.decoder_layers):
@@ -414,31 +412,13 @@ class TransformerDecoder(IncrementalDecoder):
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
-        return self.extract_features_scriptable(
-            prev_output_tokens,
-            incremental_state=incremental_state,
-            token_embeddings=token_embeddings,
-            self_attn_padding_mask=self_attn_padding_mask,
-        )
-
-    def extract_features_scriptable(
-        self,
-        prev_output_tokens,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        token_embeddings: Optional[Tensor] = None,
-        self_attn_padding_mask: Optional[Tensor] = None,
-    ):
-        """
-        A scriptable subclass of this class has an extract_features method and calls
-        super().extract_features, but super() is not supported in torchscript. A copy
-        of this function is made to be used in the subclass instead.
-        """
         last_layer_idx = self.num_layers - 1
 
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
-        if self_attn_padding_mask is None and (
-            self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any()
+        if (
+            self_attn_padding_mask is None
+            and prev_output_tokens.eq(self.padding_idx).any()
         ):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 

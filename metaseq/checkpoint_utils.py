@@ -311,13 +311,19 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
 
 def _is_checkpoint_sharded(checkpoint_files) -> bool:
-    """Infer if state is sharded based on whether largest file is more than 10% larger than smallest."""
-    sizes = [os.path.getsize(p) for p in checkpoint_files]
-    size_ratio = max(sizes) / min(sizes)
-    if size_ratio >= 1.1:
-        return False
-    else:
-        return True
+    """
+    Infer if state is sharded based on recorded configuration in the checkpoint file.
+    """
+    if not checkpoint_files:
+        raise FileNotFoundError(
+            "We weren't able to find any checkpoints corresponding to the parameters "
+            "you set. This could mean you have a typo, or it could mean you have a "
+            "mismatch in distributed training parameters, especially --fsdp or"
+            "--model-parallel. If you are working on a new script, it may also mean "
+            "you failed to fsdp_wrap or you have an unnecessary fsdp_wrap."
+        )
+    sd = torch_load_cpu(checkpoint_files[0])
+    return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
 def get_paths_to_load(local_path, suffix="rank-"):

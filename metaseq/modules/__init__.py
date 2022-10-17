@@ -5,7 +5,7 @@
 """isort:skip_file"""
 
 from .dropout import Dropout
-from .gelu import gelu, gelu_accurate
+from .activation_functions import ActivationFn, gelu
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .multihead_attention import MultiheadAttention
@@ -17,10 +17,10 @@ from .transformer_decoder_layer import TransformerDecoderLayer
 from .transformer_encoder_layer import TransformerEncoderLayer
 
 __all__ = [
+    "ActivationFn",
     "Dropout",
     "Fp32LayerNorm",
     "gelu",
-    "gelu_accurate",
     "LayerNorm",
     "LearnedPositionalEmbedding",
     "MultiheadAttention",
