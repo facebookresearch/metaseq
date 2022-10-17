@@ -89,7 +89,6 @@ class TransformerEncoderLayer(nn.Module):
             key=x,
             value=x,
             key_padding_mask=encoder_padding_mask,
-            need_weights=False,
             attn_mask=attn_mask,
         )
 
@@ -105,6 +104,5 @@ class TransformerEncoderLayer(nn.Module):
             self.fc2,
             self.dropout_module,
         )
-        l_aux = None
         x = self.residual_connection(x, residual)
-        return x, l_aux
+        return x
