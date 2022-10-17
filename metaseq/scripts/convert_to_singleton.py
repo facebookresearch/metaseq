@@ -137,9 +137,7 @@ def worker_main(cfg: MetaseqConfig):
                     p, gathered, group=distributed_utils.get_global_group()
                 )
             else:
-                torch.distributed.gather(
-                    p, group=distributed_utils.get_global_group()
-                )
+                torch.distributed.gather(p, group=distributed_utils.get_global_group())
 
             if distributed_utils.get_model_parallel_rank() == 0:
                 for r, t in enumerate(gathered):
@@ -164,12 +162,12 @@ def worker_main(cfg: MetaseqConfig):
         output_sd["cfg"]["model"].arch = "transformer_lm"
         output_sd["cfg"]["model"]._name = "transformer_lm"
 
-        print(f'Rank {distributed_utils.get_model_parallel_rank()} Saving restored.pt')
+        print(f"Rank {distributed_utils.get_model_parallel_rank()} Saving restored.pt")
 
         with open(cfg.task.data + "/restored.pt", "wb") as f:
             torch.save(output_sd, f)
-        
-        print(f'Rank {distributed_utils.get_model_parallel_rank()} Saved restored.pt')
+
+        print(f"Rank {distributed_utils.get_model_parallel_rank()} Saved restored.pt")
 
 
 def main():
