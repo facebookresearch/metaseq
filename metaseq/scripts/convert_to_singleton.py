@@ -130,30 +130,46 @@ def worker_main(cfg: MetaseqConfig):
     with model.summon_full_params():
         for name, p in model.named_parameters():
             gathered = [torch.zeros_like(p) for _ in range(mp_size)]
-            torch.distributed.all_gather(
-                gathered, p, group=distributed_utils.get_global_group()
-            )
-            for r, t in enumerate(gathered):
-                model_parts[r][name] = t.cpu()
 
-    glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
-    # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
+            # Only gather parameters on rank 0
+            if distributed_utils.get_model_parallel_rank() == 0:
+                torch.distributed.gather(
+                    p, gathered, group=distributed_utils.get_global_group()
+                )
+            else:
+                torch.distributed.gather(
+                    p, group=distributed_utils.get_global_group()
+                )
 
-    glued["decoder.version"] = model.state_dict()["decoder.version"].cpu()
+            if distributed_utils.get_model_parallel_rank() == 0:
+                for r, t in enumerate(gathered):
+                    model_parts[r][name] = t.cpu()
 
-    if "decoder.output_projection.weight" in glued:
-        del glued["decoder.output_projection.weight"]
+                del gathered
+                torch.cuda.empty_cache()
 
-    output_sd = checkpoint_utils.load_checkpoint_to_cpu(
-        cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt")
-    )
-    output_sd["model"] = utils.move_to_cpu(glued)
-    output_sd["cfg"]["model"].arch = "transformer_lm"
-    output_sd["cfg"]["model"]._name = "transformer_lm"
+    if distributed_utils.get_model_parallel_rank() == 0:
+        glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
+        # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
 
-    if distributed_utils.get_global_rank() == 0:
+        glued["decoder.version"] = model.state_dict()["decoder.version"].cpu()
+
+        if "decoder.output_projection.weight" in glued:
+            del glued["decoder.output_projection.weight"]
+
+        output_sd = checkpoint_utils.load_checkpoint_to_cpu(
+            cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt")
+        )
+        output_sd["model"] = utils.move_to_cpu(glued)
+        output_sd["cfg"]["model"].arch = "transformer_lm"
+        output_sd["cfg"]["model"]._name = "transformer_lm"
+
+        print(f'Rank {distributed_utils.get_model_parallel_rank()} Saving restored.pt')
+
         with open(cfg.task.data + "/restored.pt", "wb") as f:
             torch.save(output_sd, f)
+        
+        print(f'Rank {distributed_utils.get_model_parallel_rank()} Saved restored.pt')
 
 
 def main():
