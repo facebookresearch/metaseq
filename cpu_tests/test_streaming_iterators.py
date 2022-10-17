@@ -380,6 +380,42 @@ class TestStreamingIterators(unittest.TestCase):
         for i in range(20):
             assert l2.data[i] == i
 
+    def test_stream_epoch_batch_iterator_restart_twice(self):
+        def get(state_dict=None):
+            num_workers = 2
+            dataset = DocumentToSequenceDataset(
+                FakeTensorData(False),
+                block_size=2049,
+                drop_last=True,
+                padding_idx=1,
+                seed=42,
+            )
+            dataset.set_shuffle_buffer_size(4)
+            dataset.set_epoch(0)
+            dataset.set_num_workers(num_workers)
+            r = iterators.StreamingEpochBatchIterator(
+                dataset, 1, list, True, num_workers=num_workers
+            )
+            if state_dict is not None:
+                r.load_state_dict(pickle.loads(state_dict))
+            return r
+
+        def nextv(it):
+            return next(it)[0]["block"]
+
+        first = get()
+        it = first.next_epoch_itr()
+        for i in range(11):
+            nextv(it)
+        second = get(pickle.dumps(first.state_dict()))
+        it2 = second.next_epoch_itr()
+        for i in range(5):
+            assert torch.allclose(nextv(it), nextv(it2))
+        third = get(pickle.dumps(second.state_dict()))
+        it3 = third.next_epoch_itr()
+        for i in range(5):
+            assert torch.allclose(nextv(it), nextv(it3))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -138,7 +138,7 @@ class StreamingCountingIterator(object):
 
     def __next__(self):
         worker_id, r = next(self._peekable_itr)
-        worker_id += self.worker_offset
+        worker_id = (worker_id + self.worker_offset) % self.num_workers
         self.sequences_consumed[worker_id] += self.batch_size * self.num_shards
         self.next_worker = (worker_id + 1) % self.num_workers
         self.n += 1
