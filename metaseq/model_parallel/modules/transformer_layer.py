@@ -138,7 +138,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             embed_dim=embed_dim,
             num_heads=args.decoder_attention_heads,
             dropout=args.attention_dropout,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             use_cpu_initialization=not getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),

@@ -44,14 +44,12 @@ class TransformerDecoderLayer(nn.Module):
         self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
         )
-
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -106,8 +104,6 @@ class TransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
-
-        self.onnx_trace = False
         self.args = args
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
@@ -155,7 +151,7 @@ class TransformerDecoderLayer(nn.Module):
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
@@ -166,9 +162,6 @@ class TransformerDecoderLayer(nn.Module):
             ),
             dtype=utils.get_model_init_dtype(args),
         )
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
 
     def residual_connection(self, x, residual):
         return residual + x
@@ -234,18 +227,6 @@ class TransformerDecoderLayer(nn.Module):
         )
         l_aux = None
         x = self.residual_connection(x, residual)
-        if self.onnx_trace and incremental_state is not None:
-            saved_state = self.self_attn._get_input_buffer(incremental_state)
-            assert saved_state is not None
-            if self_attn_padding_mask is not None:
-                self_attn_state = [
-                    saved_state["prev_key"],
-                    saved_state["prev_value"],
-                    saved_state["prev_key_padding_mask"],
-                ]
-            else:
-                self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
         return x, attn, None, l_aux
 
     def make_generation_fast_(self, **kwargs):

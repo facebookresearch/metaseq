@@ -5,11 +5,10 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from argparse import Namespace  # noqa: F401
-import json
 import logging
 import os
 import shutil
+from argparse import Namespace  # noqa: F401
 from typing import List, Optional
 
 import torch
@@ -218,21 +217,6 @@ def torch_load_cpu(path):
         state["cfg"] = recursively_cast_dictconfigs(state["cfg"])
 
     return state
-
-
-def save_json(content, path, indent=4):
-    with open(path, "w") as f:
-        json.dump(content, f, indent=indent)
-
-
-def load_json(p):
-    return json.load(open(p))
-
-
-def load_jsonl(path):
-    with open(path).read() as jsonl_content:
-        result = [json.loads(jline) for jline in jsonl_content.splitlines()]
-    return result
 
 
 def load_and_pop_last_optimizer_state(pth):

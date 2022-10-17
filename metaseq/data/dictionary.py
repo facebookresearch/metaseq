@@ -13,7 +13,7 @@ from metaseq import utils
 from metaseq.data import data_utils
 from metaseq.file_chunker_utils import Chunker, find_offsets
 from metaseq.file_io import PathManager
-from metaseq.tokenizer import tokenize_line
+from metaseq.utils import tokenize_line
 
 
 class Dictionary:

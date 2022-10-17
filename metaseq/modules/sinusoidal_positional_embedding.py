@@ -26,12 +26,8 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.weights = SinusoidalPositionalEmbedding.get_embedding(
             init_size, embedding_dim, padding_idx
         )
-        self.onnx_trace = False
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
         self.max_positions = int(1e5)
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
 
     @staticmethod
     def get_embedding(
@@ -79,26 +75,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
         if incremental_state is not None:
             # positions is the same for every token when decoding a single step
             pos = timestep.view(-1)[0] + 1 if timestep is not None else seq_len
-            if self.onnx_trace:
-                return (
-                    self.weights.index_select(index=self.padding_idx + pos, dim=0)
-                    .unsqueeze(1)
-                    .repeat(bsz, 1, 1)
-                )
             return self.weights[self.padding_idx + pos, :].expand(bsz, 1, -1)
 
-        positions = utils.make_positions(
-            input, self.padding_idx, onnx_trace=self.onnx_trace
-        )
-        if self.onnx_trace:
-            flat_embeddings = self.weights.detach().index_select(0, positions.view(-1))
-            embedding_shape = torch.cat(
-                (bsz.view(1), seq_len.view(1), torch.tensor([-1], dtype=torch.long))
-            )
-            embeddings = torch.onnx.operators.reshape_from_tensor_shape(
-                flat_embeddings, embedding_shape
-            )
-            return embeddings
+        positions = utils.make_positions(input, self.padding_idx)
         return (
             self.weights.index_select(0, positions.view(-1))
             .view(bsz, seq_len, -1)
