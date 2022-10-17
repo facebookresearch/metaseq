@@ -228,6 +228,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         )
 
     # TODO(susanz): fix all of this spagetti, split out logic by env
+    # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
     if (
         cfg.cloud_upload_path
         and cfg.cluster_env == ComputeEnvs.AZURE.value
