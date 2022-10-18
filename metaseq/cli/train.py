@@ -50,6 +50,8 @@ logger = logging.getLogger("metaseq.cli.train")
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
 
+    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
+
     if distributed_utils.is_master(cfg.distributed_training):
         # save a (vaguely human readable) copy of the training config
         OmegaConf.save(
@@ -75,8 +77,6 @@ def main(cfg: DictConfig) -> None:
 
     np.random.seed(cfg.common.seed)
     utils.set_torch_seed(cfg.common.seed)
-
-    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
     # Print nvidia smi stats
     logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
