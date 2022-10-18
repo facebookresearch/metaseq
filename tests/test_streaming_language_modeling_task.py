@@ -87,10 +87,6 @@ class TestReproducibility(unittest.TestCase):
                     data_dir=data_dir,
                     arch="transformer_lm_gpt2_tiny",
                     extra_flags=[
-                        # "--vocab-filename",
-                        # vocab,
-                        # "--merges-filename",
-                        # merges,
                         "--hf-tokenizer",
                         tokenizer_path,
                         "--dropout",
