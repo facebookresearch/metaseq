@@ -6,8 +6,8 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.3"
-    CUDA_HOME: /usr/local/cuda-11.3
+    CUDA_VERSION: "11.4"
+    CUDA_HOME: /usr/local/cuda-11.4
   machine:
     image: ubuntu-2004-cuda-11.4:202110-01
     resource_class: gpu.nvidia.medium.multi
@@ -37,15 +37,18 @@ install_dep_fused_ops: &install_dep_fused_ops
   - run:
       name: Install Megatron/Apex Dependencies
       working_directory: ~/
+      no_output_timeout: 5h
       # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
       command: |
         source $BASH_ENV
         source activate metaseq
+        pip install --upgrade setuptools
         if ! python -c 'import apex'; then
           git clone https://github.com/NVIDIA/apex
           cd apex
-          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
-          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
+          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
+          sed -i '32 i \ \ \ \ return' setup.py
+          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./ &
           cd ~/
         fi
         if ! python -c 'import megatron_lm'; then
@@ -87,12 +90,9 @@ install_dep_pt112: &install_dep_pt112
         source $BASH_ENV
         source activate metaseq
         $CONDA_PYTHON -m pip install --upgrade setuptools
-        echo $LD_LIBRARY_PATH
-        export PATH=/usr/local/cuda-11.3/bin:$PATH
-        export CPATH=/usr/local/cuda-11.3/include:$CPATH
-        export LD_LIBRARY_PATH=/usr/local/cuda-11.3/lib64:$LD_LIBRARY_PATH
-        #echo $(strings | grep GLIBCXX)
-        conda install pytorch torchvision cudatoolkit-dev=11.3 -c conda-forge -q
+        conda install pytorch torchvision cudatoolkit=11.3 -c pytorch -q
+        conda install -c nvidia cuda-nvcc -c nvidia -q -y
+        echo "nvcc version = $(nvcc --version)"
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
