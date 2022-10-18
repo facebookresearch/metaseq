@@ -6,7 +6,7 @@
 """
 Host the demo.
 
-Launch with `python -m metaseq_cli.interactive_hosted` to run locally.
+Launch with `python -m metaseq.cli.interactive_hosted` to run locally.
 
 See docs/api.md for more information.
 """

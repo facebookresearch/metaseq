@@ -14,7 +14,6 @@ from metaseq.launcher.opt_job_constants import (
     TOTAL_TRAIN_TOKENS,
     TOTAL_WARMUP_TOKENS,
     MODEL_SIZES,
-    DATA_LOCATIONS,
     VALID_SUBSETS,
 )
 from metaseq.launcher.sweep import (
@@ -22,6 +21,12 @@ from metaseq.launcher.sweep import (
     get_env_from_args,
     main as sweep_main,
 )
+
+try:
+    # internal logic denoting where data locations are
+    from metaseq_internal.constants import DATA_LOCATIONS
+except ImportError:
+    from metaseq.launcher.opt_job_constants import DATA_LOCATIONS
 
 # have to do this at the module level, unfortunately; unable to use args.<env>
 for _cluster, _folder in DATA_LOCATIONS.items():

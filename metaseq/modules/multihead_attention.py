@@ -130,11 +130,7 @@ class MultiheadAttention(nn.Module):
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        need_weights: bool = True,
-        static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
-        before_softmax: bool = False,
-        need_head_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -142,20 +138,10 @@ class MultiheadAttention(nn.Module):
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
                 padding elements are indicated by 1s.
-            need_weights (bool, optional): return the attention weights,
-                averaged over heads (default: False).
             attn_mask (ByteTensor, optional): typically used to
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
-            before_softmax (bool, optional): return the raw attention
-                weights and values before the attention softmax.
-            need_head_weights (bool, optional): return the attention
-                weights for each head. Implies *need_weights*. Default:
-                return the average attention weights over all heads.
         """
-        if need_head_weights:
-            need_weights = True
-
         tgt_len, bsz, embed_dim = query.size()
         src_len = tgt_len
         assert embed_dim == self.embed_dim, f"query dim {embed_dim} != {self.embed_dim}"
@@ -169,7 +155,6 @@ class MultiheadAttention(nn.Module):
 
         if (
             incremental_state is None
-            and not static_kv
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
@@ -191,7 +176,7 @@ class MultiheadAttention(nn.Module):
                 self.out_proj.bias,
                 self.training or self.dropout_module.apply_during_inference,
                 key_padding_mask,
-                need_weights,
+                False,
                 attn_mask,
                 use_separate_proj_weight=True,
                 q_proj_weight=self.q_proj.weight,
@@ -256,21 +241,15 @@ class MultiheadAttention(nn.Module):
                 _prev_key = saved_state["prev_key"]
                 assert _prev_key is not None
                 prev_key = _prev_key.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
-                    k = prev_key
-                else:
-                    assert k is not None
-                    k = torch.cat([prev_key, k], dim=1)
+                assert k is not None
+                k = torch.cat([prev_key, k], dim=1)
                 src_len = k.size(1)
             if "prev_value" in saved_state:
                 _prev_value = saved_state["prev_value"]
                 assert _prev_value is not None
                 prev_value = _prev_value.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
-                    v = prev_value
-                else:
-                    assert v is not None
-                    v = torch.cat([prev_value, v], dim=1)
+                assert v is not None
+                v = torch.cat([prev_value, v], dim=1)
             saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_key_padding_mask"] = key_padding_mask
@@ -328,9 +307,6 @@ class MultiheadAttention(nn.Module):
             )
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
-        if before_softmax:
-            return attn_weights, v
-
         attn_weights_float = utils.softmax(attn_weights, dim=-1)
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
@@ -340,16 +316,7 @@ class MultiheadAttention(nn.Module):
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
-        attn_weights: Optional[Tensor] = None
-        if need_weights:
-            attn_weights = attn_weights_float.view(
-                bsz, self.num_heads, tgt_len, src_len
-            ).transpose(1, 0)
-            if not need_head_weights:
-                # average attention weights over heads
-                attn_weights = attn_weights.mean(dim=0)
-
-        return attn, attn_weights
+        return attn, None  # To match return type of F.multi_head_attention_forward
 
     @torch.jit.export
     def reorder_incremental_state(

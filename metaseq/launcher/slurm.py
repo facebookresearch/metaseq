@@ -45,7 +45,7 @@ def copy_all_python_files(
     source,
     snapshot_main_dir,
     code_snapshot_hash,
-    recurse_dirs="metaseq,metaseq_cli,scripts",
+    recurse_dirs="metaseq,scripts",
 ):
     """
     Copies following files from source to destination:
