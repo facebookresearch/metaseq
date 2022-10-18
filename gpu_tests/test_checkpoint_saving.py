@@ -14,7 +14,7 @@ from unittest.mock import patch, Mock, MagicMock
 import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
-from metaseq_cli.train import cli_main as train_cli_main
+from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 
 
@@ -192,10 +192,10 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
     with patch("logging.Logger._log", partial(log_to_events, events=events)):
         with patch(
-            "metaseq_cli.train.subprocess.run",
+            "metaseq.cli.train.subprocess.run",
             partial(subprocess_run_mock, events=events),
         ):
-            with patch("metaseq_cli.train.os.remove"):
+            with patch("metaseq.cli.train.os.remove"):
                 mock_metaseq_internal = MagicMock()
                 mock_metaseq_internal.azure_utils.download_recent_ckpt = partial(
                     download_checkpoint_mock, events=events
