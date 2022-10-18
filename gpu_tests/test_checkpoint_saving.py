@@ -206,7 +206,6 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
 
 def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
     # mocks the download of the checkpoint from azure
-    print("download_checkpoint_mock")
     _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = checkpoint_path.split(
         "/"
     )
@@ -226,7 +225,6 @@ def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
 
 def subprocess_run_mock(cmd, stdout, stderr, events):
     # replaces subprocess.run azcopy command that uploads to azure
-    print("subprocess_run_mock")
     _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = cmd[4].split("/")
     events.append(
         {
