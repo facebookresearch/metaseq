@@ -50,7 +50,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.573, 3)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 2)
 
         # check that the correct checkpoints were created and uploaded
         upload_events = [
