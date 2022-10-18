@@ -18,10 +18,10 @@ from metaseq_cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 
 
-@unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
+@unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
 @unittest.skipIf(
-    DistributedTrainingConfig.distributed_world_size != 8,
-    "test requires at least 8 GPU's",
+    DistributedTrainingConfig.distributed_world_size != 4,
+    "test requires 4 GPUs",
 )
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
@@ -50,13 +50,13 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.162, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.573, 3)
 
         # check that the correct checkpoints were created and uploaded
         upload_events = [
             event for event in events_first_run if event["type"] == "upload"
         ]
-        self.assertEqual(len(upload_events), 16)
+        self.assertEqual(len(upload_events), 8)
         checkpoint_dir = "test-checkpoint"
         common_checkpoint_model_dir = upload_events[0]["checkpoint_model_dir"]
         file_names_saved_azure = sorted(
@@ -66,20 +66,12 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             [
                 "checkpoint_18-model_part-0-shard0.pt",
                 "checkpoint_18-model_part-0-shard1.pt",
-                "checkpoint_18-model_part-0-shard2.pt",
-                "checkpoint_18-model_part-0-shard3.pt",
                 "checkpoint_18-model_part-1-shard0.pt",
                 "checkpoint_18-model_part-1-shard1.pt",
-                "checkpoint_18-model_part-1-shard2.pt",
-                "checkpoint_18-model_part-1-shard3.pt",
                 "checkpoint_last-model_part-0-shard0.pt",
                 "checkpoint_last-model_part-0-shard1.pt",
-                "checkpoint_last-model_part-0-shard2.pt",
-                "checkpoint_last-model_part-0-shard3.pt",
                 "checkpoint_last-model_part-1-shard0.pt",
                 "checkpoint_last-model_part-1-shard1.pt",
-                "checkpoint_last-model_part-1-shard2.pt",
-                "checkpoint_last-model_part-1-shard3.pt",
             ]
         )
         self.assertEqual(file_names_saved_azure, expected_file_names)
@@ -126,12 +118,8 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             [
                 "checkpoint_last-model_part-0-shard0.pt",
                 "checkpoint_last-model_part-0-shard1.pt",
-                "checkpoint_last-model_part-0-shard2.pt",
-                "checkpoint_last-model_part-0-shard3.pt",
                 "checkpoint_last-model_part-1-shard0.pt",
                 "checkpoint_last-model_part-1-shard1.pt",
-                "checkpoint_last-model_part-1-shard2.pt",
-                "checkpoint_last-model_part-1-shard3.pt",
             ]
         )
         self.assertEqual(file_names_downloaded, last_checkpoints)
@@ -157,7 +145,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_second_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 13.699, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 2)
 
         # cleanup
         cleanup_checkpoints = subprocess.Popen(
@@ -174,7 +162,7 @@ def run_training(events, max_update):
         "python3 metaseq/launcher/opt_baselines.py   "
         "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
         "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-        "--num-gpus 8 --num-nodes 1   --seed 1   "
+        "--num-gpus 4 --num-nodes 1   --seed 1   "
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
         "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
