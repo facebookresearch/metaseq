@@ -29,17 +29,23 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.queue import PriorityQueueRingShard
 from metaseq.service.workers import WorkItem
-from metaseq.service.constants import (
-    MAX_SEQ_LEN,
-    MAX_BATCH_TOKENS,
-    MAX_BEAM,
-    DEFAULT_PORT,
-    TOTAL_WORLD_SIZE,
-    LAUNCH_ARGS,
-)
 from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
+import importlib
+
+if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
+    constants_module = importlib.import_module("metaseq.service.constants")
+else:
+    constants_module = importlib.import_module(
+        os.environ["METASEQ_SERVICE_CONSTANTS_MODULE"]
+    )
+MAX_SEQ_LEN = constants_module.MAX_SEQ_LEN
+MAX_BATCH_TOKENS = constants_module.MAX_BATCH_TOKENS
+MAX_BEAM = constants_module.MAX_BEAM
+DEFAULT_PORT = constants_module.DEFAULT_PORT
+TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
+LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 
 app = Flask(__name__)
 
