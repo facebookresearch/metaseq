@@ -109,9 +109,15 @@ class BaseOptimizer(object):
                 p.grad.data.mul_(c)
 
     def clip_grad_norm(
-        self, max_norm, norm_type="l2", aggregate_norm_fn=None, **kwargs
+        self,
+        max_norm,
+        norm_type="l2",
+        aggregate_norm_fn=None,
+        skip_gradient_update_on_clip_norm=False,
     ):
-        """Clips gradient norm."""
+        """Clips gradient norm.
+        `skip_gradient_update_on_clip_norm` arg included to preserve API
+        """
         return utils.clip_grad_norm_(
             self.params, max_norm, norm_type, aggregate_norm_fn
         )

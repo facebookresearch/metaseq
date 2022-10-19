@@ -60,7 +60,7 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False, metadata={"help": "share decoder input and output embeddings"}
     )
     decoder_learned_pos: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "use learned positional embeddings in the decoder"},
     )
     decoder_learned_sinusoidal: bool = field(
@@ -209,7 +209,7 @@ def base_lm_architecture(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
-    args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
+    args.decoder_learned_pos = getattr(args, "decoder_learned_pos", True)
     args.decoder_learned_sinusoidal = getattr(args, "decoder_learned_sinusoidal", False)
     args.activation_fn = getattr(args, "activation_fn", "relu")
 
