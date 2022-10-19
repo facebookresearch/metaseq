@@ -23,11 +23,18 @@ from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
-from metaseq.service.constants import (
-    TOTAL_WORLD_SIZE,
-    LAUNCH_ARGS,
-)
 from metaseq.service.utils import build_logger
+
+import importlib
+
+if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
+    constants_module = importlib.import_module("metaseq.service.constants")
+else:
+    constants_module = importlib.import_module(
+        os.environ["METASEQ_SERVICE_CONSTANTS_MODULE"]
+    )
+TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
+LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 
 logger = build_logger()
 
