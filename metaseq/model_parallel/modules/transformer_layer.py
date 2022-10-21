@@ -110,7 +110,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+                megatron_init_sigma, num_layers * 1000
             )
         else:
             init_method_weights = _weight_init

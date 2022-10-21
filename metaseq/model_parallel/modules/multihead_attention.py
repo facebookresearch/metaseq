@@ -245,7 +245,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             assert megatron_init_sigma is not None
             assert num_layers is not None
             init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+                megatron_init_sigma, num_layers * 1000
             )
         self.out_proj = RowParallelLinear(
             embed_dim,
