@@ -104,7 +104,7 @@ class TestNativeIO(unittest.TestCase):
         # This is a non-existing path, so it should fail
         fake_path = os.path.join(self._tmpdir, uuid.uuid4().hex)
         self.assertFalse(self._pathmgr.isdir(fake_path))
-    
+
     def test_islink(self) -> None:
         symlink = self._tmpfile + ".lnk"
         self._pathmgr.symlink(self._tmpfile, symlink)
