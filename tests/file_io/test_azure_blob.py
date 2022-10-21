@@ -33,6 +33,7 @@ ENV_BASE_PATH = "AZURE_TEST_BASE_PATH"
 
 
 if azure_blob:
+
     class TestContext(NamedTuple):
         handler: AzureBlobPathHandler
         container_path: str
@@ -51,6 +52,7 @@ if azure_blob:
             for relpath in self.handler._ls(self.base_path):
                 file = os.path.join(self.container_path, relpath)
                 self.handler._rm(file)
+
 else:
     EnvironmentTokenProvider = None
     TestContext = None

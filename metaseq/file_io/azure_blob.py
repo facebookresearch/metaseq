@@ -242,6 +242,7 @@ class AzureBlobWriter(io.RawIOBase):
 
 ENV_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 
+
 class EnvironmentTokenProvider(AzureBlobTokenProvider):
     def get_sas_token(self, _: str) -> str:
         assert (

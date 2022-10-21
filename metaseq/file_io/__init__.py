@@ -27,6 +27,7 @@ logger = logging.getLogger(__file__)
 
 try:
     from .s3 import S3PathHandler  # noqa: E402
+
     PathManager.register_handler(S3PathHandler())
 except KeyError:
     pass
@@ -36,9 +37,12 @@ except Exception:
 
 try:
     from .azure_blob import AzureBlobPathHandler  # noqa: E402
+
     PathManager.register_handler(AzureBlobPathHandler())
 except ImportError:
-    logger.exception("Failed to register AzureBlobPathHandler. Try pip install azure-storage-blob")
+    logger.exception(
+        "Failed to register AzureBlobPathHandler. Try pip install azure-storage-blob"
+    )
 except Exception as e:
     logger.exception(e)
 
