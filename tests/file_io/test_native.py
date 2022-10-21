@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
 #
 # This source code is licensed under the MIT license found in the
@@ -9,7 +11,7 @@ import tempfile
 import unittest
 import uuid
 
-from metaseq.file_io.common import g_pathmgr, PathManager
+from metaseq.file_io.common import PathManager
 
 from typing import Optional
 

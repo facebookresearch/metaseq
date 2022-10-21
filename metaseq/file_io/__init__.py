@@ -1,15 +1,9 @@
-#!/usr/bin/env python3
-
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
 import logging
-import os
-import shutil
-from argparse import Namespace  # noqa: F401
-from typing import List, Optional
 
 import torch
 
