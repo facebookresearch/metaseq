@@ -732,6 +732,15 @@ class PathManager:
         `PathManager.join`.
         """
 
+    def path_requires_pathmanager(self, path: str) -> bool:
+        """
+        Checks if there is a non-native PathHandler registered for the given path.
+        """
+        for p in self._path_handlers.keys():
+            if path.startswith(p):
+                return True
+        return False
+
     # pyre-fixme[24]: Generic type `os.PathLike` expects 1 type parameter.
     def __get_path_handler(self, path: Union[str, os.PathLike]) -> PathHandler:
         """
@@ -1026,6 +1035,11 @@ class PathManager:
         bret = handler._isdir(path, **kwargs)  # type: ignore
         return bret
 
+    def islink(self, path: str) -> Optional[bool]:
+        if not self.path_requires_pathmanager(path):
+            return os.path.islink(path)
+        return None
+
     def ls(self, path: str, **kwargs: Any) -> List[str]:
         """
         List the contents of the directory at the provided URI.
@@ -1061,6 +1075,10 @@ class PathManager:
         handler = self.__get_path_handler(path)
         bret = handler._rm(path, **kwargs)  # type: ignore
         return bret
+
+    def chmod(self, path: str, mode: int) -> None:
+        if not self.path_requires_pathmanager(path):
+            os.chmod(path, mode)
 
     def symlink(self, src_path: str, dst_path: str, **kwargs: Any) -> bool:
         """Symlink the src_path to the dst_path
