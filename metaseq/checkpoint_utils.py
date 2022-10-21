@@ -105,7 +105,7 @@ def save_checkpoint(
 
         def _copy_if_not_async(src, dest):
             if cfg.write_checkpoints_asynchronously:
-                pass  # TODO[ioPath]: Need to implement a delayed asynchronous file copying/moving feature.
+                pass  # TODO[file_io]: Need to implement a delayed asynchronous file copying/moving feature.
             else:
                 assert PathManager.copy(
                     src, dest, overwrite=True

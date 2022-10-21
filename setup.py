@@ -147,7 +147,6 @@ def do_setup(package_data):
             "fire",
             "flask==2.1.1",  # for api
             "hydra-core>=1.1.0,<1.2",
-            "iopath",
             "ipdb",
             "ipython",
             "Jinja2==3.1.1",  # for evals
@@ -157,6 +156,7 @@ def do_setup(package_data):
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf<=2.1.1",
+            "portalocker>=2.5",
             "pre-commit",
             "pytest",
             "pytest-regressions",
