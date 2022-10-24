@@ -5,18 +5,15 @@
 
 import argparse
 import ast
-import copy
 import logging
 import os
 import time
 from argparse import Namespace
-from typing import Any, Dict, Iterator, List, Optional
+from typing import List, Optional
 from tokenizers import ByteLevelBPETokenizer
 
 import numpy as np
 import torch
-from omegaconf import open_dict
-from torch import nn
 
 from metaseq import checkpoint_utils, tasks
 from metaseq import utils
@@ -24,10 +21,6 @@ from metaseq.data import encoders
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
-from metaseq.distributed.utils import (
-    get_data_parallel_rank,
-    get_data_parallel_world_size,
-)
 from metaseq.service.utils import normalize_newlines
 
 
