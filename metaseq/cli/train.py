@@ -324,7 +324,7 @@ def train(
     for i, samples in enumerate(progress):
         if (
             distributed_utils.get_global_rank() == 0
-            and cfg.common.new_profiler
+            and cfg.common.profile
             and i == 5
         ):
             logger.info("STARTING PROFILER")
@@ -613,12 +613,7 @@ def cli_main(
             f"Started plasma server pid {server.server.pid} {cfg.common.plasma_path}"
         )
 
-    if args.profile:
-        with torch.cuda.profiler.profile():
-            with torch.autograd.profiler.emit_nvtx():
-                distributed_utils.call_main(cfg, main)
-    else:
-        distributed_utils.call_main(cfg, main)
+    distributed_utils.call_main(cfg, main)
 
 
 if __name__ == "__main__":

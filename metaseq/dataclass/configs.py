@@ -182,7 +182,7 @@ class CommonConfig(MetaseqDataclass):
         default=1, metadata={"help": "total number of GPUs to parallelize model over"}
     )
     profile: bool = field(
-        default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
+        default=False, metadata={"help": "use pytorch profiler (v2)"}
     )
     use_plasma_view: bool = field(
         default=False, metadata={"help": "Store indices and sizes in shared memory"}
@@ -195,9 +195,6 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
-    )
-    new_profiler: bool = field(
-        default=False, metadata={"help": "use pytorch profiler (v2)"}
     )
 
 
