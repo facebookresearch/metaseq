@@ -652,7 +652,7 @@ class Trainer(object):
                 and i == 0
                 and distributed_utils.get_global_rank() == 0
             ):
-                logger.info(f"First batch on first rank: \n" + str(sample))
+                logger.info(f"First batch on first rank: " + str(sample))
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             def maybe_no_sync():
