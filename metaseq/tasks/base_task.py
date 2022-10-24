@@ -407,11 +407,11 @@ class BaseTask(object):
         if ignore_grad:
             loss *= 0
         if update_num == 0:
-            logger.info("Starting backwards pass")
+            logger.info("Starting backward pass")
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
         if update_num == 0:
-            logger.info("Finished first backwards pass")
+            logger.info("Finished first backward pass")
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
