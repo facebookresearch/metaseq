@@ -334,7 +334,8 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"),
+                "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
