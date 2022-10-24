@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 import math
 import logging
 from typing import Optional
@@ -361,7 +362,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             t1 = time.time()
             skip_time = t1 - t0
             if worker_id == 0 and distributed_utils.get_global_rank() == 0:
-                logger.info(f"Begin filling streaming dataset buffer for each worker")
+                logger.info(
+                    f"Begin filling streaming dataset buffer for each worker on rank {os.environ['LOCAL_RANK']}"
+                )
             while True:
                 with self.len_cache.worker_locks[worker_id]:
                     elem = next(seq_it)
