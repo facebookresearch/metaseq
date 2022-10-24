@@ -90,7 +90,13 @@ def get_grid(args):
         if os.path.exists(args.data):
             DATA_ROOT = data_loc_by_env
         else:
-            raise RuntimeError("Where are you running this?! Check DATA_LOCATIONS.")
+            raise RuntimeError(
+                "Where are you running this?! Check DATA_LOCATIONS or pass --data "
+                "pointing to a directory with 'data' and 'tokenizers' folders."
+            )
+    elif not args.benchmark:
+        DATA_ROOT = args.data
+        args.data = os.path.join(args.data, "data")
 
     SEQ_LEN = 2048
     size = MODEL_SIZES[args.model_size]
