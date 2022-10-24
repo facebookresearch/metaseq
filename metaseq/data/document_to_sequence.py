@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+import logging
 from typing import Optional
 
 import numpy as np
@@ -17,6 +18,8 @@ from typing import Union, List, Iterable, Tuple, TypedDict, Literal
 from multiprocessing import Array, Lock
 from contextlib import contextmanager
 from ctypes import c_int, sizeof, memmove, addressof
+
+logger = logging.getLogger(__name__)
 
 
 class LockingArray:
@@ -349,11 +352,15 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         seq_it = iter(sequences())
 
         try:
+            if to_skip > 0 and worker_id == 0:
+                logger.info(f"Skipping {to_skip} sequences")
             with self.len_cache.worker_locks[worker_id]:
                 for i in range(to_skip):
                     next(seq_it)
             t1 = time.time()
             skip_time = t1 - t0
+            if worker_id == 0:
+                logger.info(f"Begin filling streaming dataset buffer for each worker up to {self.shuffle_buffer_size}")
             while True:
                 with self.len_cache.worker_locks[worker_id]:
                     elem = next(seq_it)

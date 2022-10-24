@@ -108,6 +108,10 @@ class JsonlDataset(torch.utils.data.Dataset):
                     f"{position}. Contents of line:\n{item}"
                 ),
             )
+        if subshard_idx % 200 == 0:
+            logger.info(
+                f"Beginning of subshard_idx: {subshard_idx} and idx: {idx} after loading: {str(item)[:100]}"
+            )
         if self.tokenizer is not None:
             item = self.tokenizer(item)
         return item
