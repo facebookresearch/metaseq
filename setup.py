@@ -188,6 +188,7 @@ def do_setup(package_data):
                 "transformers",
                 "pyarrow",
                 "boto3",
+                "pandas",
             ]
         },
         package_data=package_data,
