@@ -165,22 +165,7 @@ class BaseModel(nn.Module):
                 at the given path/URL. Can start with '.' or './' to reuse the
                 model archive path.
         """
-        from metaseq import hub_utils
-
-        x = hub_utils.from_pretrained(
-            model_name_or_path,
-            checkpoint_file,
-            data_name_or_path,
-            archive_map=cls.hub_models(),
-            **kwargs,
-        )
-        logger.info(x["args"])
-        return hub_utils.GeneratorHubInterface(
-            x["args"],
-            x["task"],
-            x["models"],
-            skip_prepare_for_inference=skip_prepare_for_inference,
-        )
+        raise NotImplementedError
 
     @classmethod
     def hub_models(cls):
