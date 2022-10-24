@@ -129,7 +129,7 @@ def generate_using_generator_hub_interface(cfg: MetaseqConfig, **kwargs):
 
 
 # TEST FUNCTIONS #
-def test_generator_interface(data_regression, ndarrays_regression):
+def test_generator_interface(data_regression, num_regression):
     model_path = os.path.join(os.path.dirname(__file__), "125m")
     cfg = create_generation_config_with_defaults(
         model_path, ddp_backend="fully_sharded"
@@ -154,11 +154,11 @@ def test_generator_interface(data_regression, ndarrays_regression):
     }
     generated_beam.pop("token_scores")
 
-    ndarrays_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+    num_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
     data_regression.check(generated_beam)
 
 
-def test_generator_hub_interface(data_regression, ndarrays_regression):
+def test_generator_hub_interface(data_regression, num_regression):
     model_path = os.path.join(os.path.dirname(__file__), "125m")
     cfg = create_generation_config_with_defaults(
         model_path, ddp_backend="fully_sharded"
@@ -176,9 +176,11 @@ def test_generator_hub_interface(data_regression, ndarrays_regression):
     ndarray_data = {
         key: value.cpu()
         for key, value in generated_beam.items()
-        if key in ["tokens", "score", "positional_scores"]
+        if key in ["score", "positional_scores"]
     }
-    ndarrays_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+
+    data_regression.check(generated_beam["tokens"].tolist())
+    num_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
 
 
 def test_filter_special(data_regression):
