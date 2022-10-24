@@ -338,15 +338,6 @@ class BaseTask(object):
     def build_generator(
         self, models, args, seq_gen_cls=None, extra_gen_cls_kwargs=None
     ):
-
-        if getattr(args, "score_reference", False):
-            from metaseq.sequence_scorer import SequenceScorer
-
-            return SequenceScorer(
-                self.target_dictionary,
-                compute_vocab_dist=getattr(args, "compute_vocab_dist", False),
-            )
-
         from metaseq.sequence_generator import SequenceGenerator
 
         # Choose search strategy.
