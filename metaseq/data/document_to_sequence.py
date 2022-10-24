@@ -11,6 +11,7 @@ import numpy as np
 import torch
 
 from metaseq.data import data_utils
+from metaseq.distributed import utils as distributed_utils
 import time
 
 from typing import Union, List, Iterable, Tuple, TypedDict, Literal
@@ -359,8 +360,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     next(seq_it)
             t1 = time.time()
             skip_time = t1 - t0
-            if worker_id == 0:
-                logger.info(f"Begin filling streaming dataset buffer for each worker up to {self.shuffle_buffer_size}")
+            if worker_id == 0 and distributed_utils.get_global_rank() == 0:
+                logger.info(f"Begin filling streaming dataset buffer for each worker")
             while True:
                 with self.len_cache.worker_locks[worker_id]:
                     elem = next(seq_it)

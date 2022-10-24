@@ -647,8 +647,8 @@ class Trainer(object):
         # forward and backward pass
         logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
-            logger.info("First batch on first rank: " + str(sample))
-            print(sample.shape)
+            if self.get_num_updates() == 0 and i == 0 and distributed_utils.get_global_rank() == 0:
+                logger.info(f"First batch on first rank: \n" + str(sample))
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             def maybe_no_sync():
