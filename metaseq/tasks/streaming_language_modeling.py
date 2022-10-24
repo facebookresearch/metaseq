@@ -31,7 +31,7 @@ from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
 try:
-    from tokenizers import ByteLevelBPETokenizer, Tokenizer
+    from tokenizers import Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -51,12 +51,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     hf_tokenizer: Optional[str] = field(
         default="", metadata={"help": "path to a HF tokenizer json file."}
     )
-    vocab_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-vocab.json"}
-    )
-    merges_filename: Optional[str] = field(
-        default="", metadata={"help": "path to bpe-merges.txt"}
-    )
+
     end_of_document_symbol: Optional[str] = field(
         default="</s>", metadata={"help": "symbol indicating an end-of-document"}
     )
@@ -122,17 +117,19 @@ class StreamingLanguageModelingTask(LegacyTask):
     """
 
     def __init__(self, args):
+        if not hasattr(args, "hf_tokenizer"):
+            msg = f"""`StreamingLanguageModelingTask` expects a unified tokenizer format, and not
+            the merges/vocab dual format from days of yore. You can convert the old format to the new by running
+            `python -m metaseq.scripts.unify_tokenizer <PATH_TO_TOKENIZERS>`
+            """
+            raise ValueError(msg)
         super().__init__(args)
 
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
+        logger.info(f"loading tokenizer: {args.hf_tokenizer}")
 
-        if args.hf_tokenizer:
-            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
-        else:
-            self.tokenizer = ByteLevelBPETokenizer.from_file(
-                args.vocab_filename, args.merges_filename
-            )
+        self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(

@@ -120,6 +120,7 @@ class TransformerDecoder(IncrementalDecoder):
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
+
         self.embed_positions.to(device).to(dtype)
 
         self.layers = nn.ModuleList([])

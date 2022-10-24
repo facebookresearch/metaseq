@@ -11,7 +11,7 @@ import os
 import time
 from argparse import Namespace
 from typing import Any, Dict, Iterator, List, Optional
-from tokenizers import ByteLevelBPETokenizer
+from tokenizers import ByteLevelBPETokenizer, Tokenizer
 
 import numpy as np
 import torch
@@ -125,6 +125,15 @@ def setup_vocab_and_merges(model_path):
     merges_file = os.path.join(model_path, "gpt2-merges.txt")
     tokenizer = ByteLevelBPETokenizer.from_file(vocab_file, merges_file)
     return vocab_file, merges_file, tokenizer
+
+
+def setup_unified_tokenizer(model_path):
+    unified_file = os.path.join(model_path, "gpt2-unified.json")
+    if not os.path.exists(unified_file):
+        _, _, tokenizer = setup_vocab_and_merges(model_path)
+        tokenizer.save(unified_file)
+    tokenizer = Tokenizer.from_file(unified_file)
+    return unified_file, tokenizer
 
 
 class GeneratorHubInterface(nn.Module):

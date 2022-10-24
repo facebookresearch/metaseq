@@ -11,7 +11,10 @@ import unittest
 import torch
 
 from tests.utils import train_language_model
-from cpu_tests.test_utils import write_dummy_jsonl_data_dir, write_dummy_bpe
+from cpu_tests.test_utils import (
+    write_dummy_jsonl_data_dir,
+    write_dummy_bpe_unified,
+)
 
 try:
     import tokenizers  # noqa
@@ -41,7 +44,8 @@ class TestReproducibility(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(name) as data_dir:
             write_dummy_jsonl_data_dir(data_dir)
-            vocab, merges = write_dummy_bpe(data_dir)
+            # vocab, merges = write_dummy_bpe(data_dir)
+            tokenizer_path = write_dummy_bpe_unified(f"{data_dir}/tokenizer.json")
 
             # train epochs 1 and 2 together
             with self.assertLogs() as logs:
@@ -49,10 +53,12 @@ class TestReproducibility(unittest.TestCase):
                     data_dir=data_dir,
                     arch="transformer_lm_gpt2_tiny",
                     extra_flags=[
-                        "--vocab-filename",
-                        vocab,
-                        "--merges-filename",
-                        merges,
+                        # "--vocab-filename",
+                        # vocab,
+                        # "--merges-filename",
+                        # merges,
+                        "--hf-tokenizer",
+                        tokenizer_path,
                         "--dropout",
                         "0.0",
                         "--log-format",
@@ -68,7 +74,7 @@ class TestReproducibility(unittest.TestCase):
                     task="streaming_language_modeling",
                     max_tokens=None,
                 )
-            train_log = get_last_log_stats_containing_string(logs.records, "train_loss")
+            train_log = get_last_log_stats_containing_string(logs.records, '"loss"')
             valid_log = get_last_log_stats_containing_string(logs.records, "valid_loss")
 
             # train epoch 2, resuming from previous checkpoint 1
@@ -81,10 +87,8 @@ class TestReproducibility(unittest.TestCase):
                     data_dir=data_dir,
                     arch="transformer_lm_gpt2_tiny",
                     extra_flags=[
-                        "--vocab-filename",
-                        vocab,
-                        "--merges-filename",
-                        merges,
+                        "--hf-tokenizer",
+                        tokenizer_path,
                         "--dropout",
                         "0.0",
                         "--log-format",
@@ -100,14 +104,12 @@ class TestReproducibility(unittest.TestCase):
                     task="streaming_language_modeling",
                     max_tokens=None,
                 )
-            train_res_log = get_last_log_stats_containing_string(
-                logs.records, "train_loss"
-            )
+            train_res_log = get_last_log_stats_containing_string(logs.records, "loss")
             valid_res_log = get_last_log_stats_containing_string(
                 logs.records, "valid_loss"
             )
 
-            for k in ["train_loss", "train_ppl", "train_num_updates", "train_gnorm"]:
+            for k in ["loss", "ppl", "num_updates", "gnorm"]:
                 self.assertAlmostEqual(
                     float(train_log[k]), float(train_res_log[k]), delta=delta
                 )
@@ -122,7 +124,10 @@ class TestReproducibility(unittest.TestCase):
                 )
 
     def test_reproducibility(self):
-        self._test_reproducibility("test_reproducibility")
+        self._test_reproducibility(
+            "test_reproducibility",
+            ["--save-interval-updates", "3"],
+        )
 
     @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
     def test_reproducibility_fp16(self):
@@ -151,7 +156,7 @@ class TestReproducibility(unittest.TestCase):
         self._test_reproducibility(
             "test_mid_epoch_reproducibility",
             ["--save-interval-updates", "3"],
-            resume_checkpoint="checkpoint_1_3.pt",
+            resume_checkpoint="checkpoint_3.pt",
             max_epoch=1,
         )
 
