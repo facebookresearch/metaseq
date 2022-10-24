@@ -5,7 +5,7 @@
 
 import os
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from metaseq.hub_utils import GeneratorInterface, GeneratorHubInterface
+from metaseq.hub_utils import GeneratorInterface
 from metaseq.distributed import utils as distributed_utils
 from metaseq.dataclass.configs import MetaseqConfig
 import numpy as np
