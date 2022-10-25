@@ -80,23 +80,24 @@ def get_grid(args):
     # Infer data path if not given
     DATA_ROOT = ""
     valid_subsets = VALID_SUBSETS
-    if args.data is None and not args.benchmark:
-        cluster_env = get_env_from_args(args)
-        data_loc_by_env = DATA_LOCATIONS[cluster_env]
-        if args.circleci:
-            data_loc_by_env = "./gpu_tests/circleci"
-            valid_subsets = ["BookCorpusFair"]
-        args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
-        if os.path.exists(args.data):
-            DATA_ROOT = data_loc_by_env
+    if not args.benchmark:
+        if args.data is None:
+            cluster_env = get_env_from_args(args)
+            data_loc_by_env = DATA_LOCATIONS[cluster_env]
+            if args.circleci:
+                data_loc_by_env = "./gpu_tests/circleci"
+                valid_subsets = ["BookCorpusFair"]
+            args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
+            if os.path.exists(args.data):
+                DATA_ROOT = data_loc_by_env
+            else:
+                raise RuntimeError(
+                    "Where are you running this?! Check DATA_LOCATIONS or pass --data "
+                    "pointing to a directory with 'data' and 'tokenizers' folders."
+                )
         else:
-            raise RuntimeError(
-                "Where are you running this?! Check DATA_LOCATIONS or pass --data "
-                "pointing to a directory with 'data' and 'tokenizers' folders."
-            )
-    elif not args.benchmark:
-        DATA_ROOT = args.data
-        args.data = os.path.join(args.data, "data")
+            DATA_ROOT = args.data
+            args.data = os.path.join(args.data, "data")
 
     SEQ_LEN = 2048
     size = MODEL_SIZES[args.model_size]
