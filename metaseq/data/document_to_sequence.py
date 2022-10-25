@@ -362,8 +362,11 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             t1 = time.time()
             skip_time = t1 - t0
             if worker_id == 0 and distributed_utils.get_global_rank() == 0:
+                local_rank = (
+                    os.environ["LOCAL_RANK"] if "LOCAL_RANK" in os.environ else 0
+                )
                 logger.info(
-                    f"Begin filling streaming dataset buffer for each worker on rank {os.environ['LOCAL_RANK']}"
+                    f"Begin filling streaming dataset buffer for each worker on rank {local_rank}"
                 )
             while True:
                 with self.len_cache.worker_locks[worker_id]:
