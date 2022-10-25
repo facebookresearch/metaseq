@@ -82,8 +82,12 @@ class TestDriver:
             try:
                 # Create a remote directory with N files
                 for i in range(num_files):
-                    remote_path = os.path.join(remote_path_base, "testdir", f"file{i}.bin")
-                    create_remote_test_file(handler, remote_path, length=file_size_bytes)
+                    remote_path = os.path.join(
+                        remote_path_base, "testdir", f"file{i}.bin"
+                    )
+                    create_remote_test_file(
+                        handler, remote_path, length=file_size_bytes
+                    )
                     remote_paths.append(remote_path)
 
                 # Concurrently download all of them to the same cache_dir
@@ -91,7 +95,10 @@ class TestDriver:
                 ctx = multiprocessing.get_context("spawn")
                 for i in range(max_workers):
                     # process = ctx.Process(target=download_files_v2, args=(handler, remote_paths, i))
-                    process = ctx.Process(target=download_files, args=(handler, os.path.dirname(remote_paths[0]), i))
+                    process = ctx.Process(
+                        target=download_files,
+                        args=(handler, os.path.dirname(remote_paths[0]), i),
+                    )
                     process.start()
                     processes.append(process)
 
@@ -102,14 +109,18 @@ class TestDriver:
                 # Find the expected local path
                 m = re.match("(az|blob)://[^/]+/[^/]+/(.+)", remote_paths[0])
                 assert m is not None, f"Invalid remote path: {remote_paths[0]}"
-                cache_path = os.path.dirname(os.path.join(cache_dir, "blob_cache", m.groups(1)[1]))
+                cache_path = os.path.dirname(
+                    os.path.join(cache_dir, "blob_cache", m.groups(1)[1])
+                )
 
                 # Make sure all files were successfully downloaded
                 actual = {f for f in os.listdir(cache_path)}
                 expected = {f"file{i}.bin" for i in range(num_files)}
                 assert actual == set(expected), f"{expected}\n{actual}"
             except FileNotFoundError:
-                from pdb import set_trace; set_trace()
+                from pdb import set_trace
+
+                set_trace()
             finally:
                 if remote_paths:
                     logging.info(f"Cleaning up {len(remote_paths)} files...")
@@ -119,7 +130,6 @@ class TestDriver:
 
 if __name__ == "__main__":
     assert (
-        ENV_SAS_TOKEN in os.environ and
-        ENV_BASE_PATH in os.environ
+        ENV_SAS_TOKEN in os.environ and ENV_BASE_PATH in os.environ
     ), "Missing required env vars"
     TestDriver().test()
