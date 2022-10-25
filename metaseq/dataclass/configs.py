@@ -181,9 +181,7 @@ class CommonConfig(MetaseqDataclass):
     model_parallel_size: int = field(
         default=1, metadata={"help": "total number of GPUs to parallelize model over"}
     )
-    profile: bool = field(
-        default=False, metadata={"help": "use pytorch profiler (v2)"}
-    )
+    profile: bool = field(default=False, metadata={"help": "use pytorch profiler (v2)"})
     use_plasma_view: bool = field(
         default=False, metadata={"help": "Store indices and sizes in shared memory"}
     )

@@ -320,11 +320,7 @@ def train(
         return valid_losses, should_stop
 
     for i, samples in enumerate(progress):
-        if (
-            distributed_utils.get_global_rank() == 0
-            and cfg.common.profile
-            and i == 5
-        ):
+        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
             logger.info("STARTING PROFILER")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
@@ -332,8 +328,7 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"),
-                "a"
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
