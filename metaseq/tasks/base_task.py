@@ -391,12 +391,20 @@ class BaseTask(object):
         """
         model.train()
         model.set_num_updates(update_num)
+        if update_num == 0:
+            logger.info(
+                "Starting first forward pass and waiting for dataloader in other ranks"
+            )
         with torch.autograd.profiler.record_function("forward"):
             loss, sample_size, logging_output = criterion(model, sample)
         if ignore_grad:
             loss *= 0
+        if update_num == 0:
+            logger.info("Starting backward pass")
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
+        if update_num == 0:
+            logger.info("Finished first backward pass")
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
