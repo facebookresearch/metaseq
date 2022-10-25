@@ -371,22 +371,12 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     There's currently no support for > 1 but < all processes loading the
     checkpoint on each node.
     """
-    local_path = PathManager.get_local_path(path)
-    # The locally cached file returned by get_local_path() may be stale for
+    # The locally cached file may be stale for
     # remote files that are periodically updated/overwritten (ex:
-    # checkpoint_last.pt) - so we remove the local copy, sync across processes
-    # (if needed), and then download a fresh copy.
-    if local_path != path and PathManager.path_requires_pathmanager(path):
-        try:
-            os.remove(local_path)
-        except FileNotFoundError:
-            # With potentially multiple processes removing the same file, the
-            # file being missing is benign (missing_ok isn't available until
-            # Python 3.8).
-            pass
-        if load_on_all_ranks:
-            torch.distributed.barrier()
-        local_path = PathManager.get_local_path(path)
+    # checkpoint_last.pt) - so we pass force=True to override
+    # all caching rules. PathManager will synchronize
+    # access across all workers on the same node
+    local_path = PathManager.get_local_path(path, force=True)
 
     # path to checkpoint...-shared.pt
     paths_to_load = get_paths_to_load(local_path, suffix="shard")
