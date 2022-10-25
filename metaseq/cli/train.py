@@ -290,9 +290,7 @@ def train(
         i,
         samples,
     ):
-        with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
-            "train_step-%d" % i
-        ):
+        with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
             log_output = trainer.train_step(samples)
