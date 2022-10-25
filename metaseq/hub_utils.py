@@ -795,11 +795,11 @@ class GeneratorInterface:
         output = []
         mask = []
         for i, (t, s) in enumerate(zip(tokens, scores)):
-            if t == pad_token_ind:
+            if t.item() == pad_token_ind:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t in special_token_inds and i > 0:
+            if t.item() in special_token_inds and i > 0:
                 # and other special tokens should end things
                 mask.append(False)
                 break
