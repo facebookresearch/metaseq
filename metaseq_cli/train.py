@@ -15,8 +15,10 @@ import os
 import subprocess
 import sys
 import time
+from datetime import timedelta
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
+import torch.distributed as dist
 import numpy as np
 import torch
 import torch.profiler as profiler
@@ -407,6 +409,7 @@ def validate_and_save(
             and num_updates % cfg.checkpoint.save_interval_updates == 0
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
+            and num_updates == 5
         )
         or should_stop
     )
@@ -423,6 +426,7 @@ def validate_and_save(
     do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
         cfg.checkpoint.evaluate_interval_updates > 0
         and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
+        and num_updates == 5
     )
     assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
@@ -504,9 +508,12 @@ def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
 
 
 def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix):
-    # WARNING: evals command needs to properly wait for
-    # all ranks to have finished uploading. Here we just
-    # wait for rank 0.
+    group_gloo = dist.new_group(backend="gloo")
+    # Make sure all ranks have finished uploading checkpoints.
+    # If any rank doesn't hit the barrier within the timeout period, we crash.
+    dist.monitored_barrier(group=group_gloo, timeout=timedelta(seconds=60))
+    print(distributed_utils.get_global_rank())
+    # Run evals on rank 0
     if distributed_utils.get_global_rank() != 0:
         return
     assert eval_cmd is not None, "--eval-command needs to be set."
@@ -515,7 +522,12 @@ def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix)
     # The evals command must accept these two args and properly merge the cloud path
     # with the checkpoint name.
     cmd.extend(
-        ["--model-cloud-path", cloud_upload_path, "--model-cloud-filename", checkpoint_name]
+        [
+            "--model-cloud-path",
+            cloud_upload_path,
+            "--model-cloud-filename",
+            checkpoint_name,
+        ]
     )
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
