@@ -33,12 +33,15 @@ def load_megatron_fused_kernel():
         return
 
     if not torch.distributed.is_initialized():
-        args = Namespace(rank=0, masked_softmax_fusion=True)
+        # gradient_accumulation_fusion=False is an arg added to latest megatron for
+        # fused gradient accumulation, we ccurrently dont need it as we almost always
+        # use update-freq=1
+        args = Namespace(rank=0, masked_softmax_fusion=True, gradient_accumulation_fusion=False)
         fused_kernels.load(args)
         return
 
     global_rank = torch.distributed.get_rank()
-    args = Namespace(rank=global_rank, masked_softmax_fusion=True)
+    args = Namespace(rank=global_rank, masked_softmax_fusion=True, gradient_accumulation_fusion=False)
 
     # Always build on rank zero first.
     if global_rank == 0:

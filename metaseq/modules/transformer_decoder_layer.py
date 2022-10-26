@@ -163,9 +163,6 @@ class TransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
         )
 
-    def residual_connection(self, x, residual):
-        return residual + x
-
     def forward_attention(
         self,
         query,
@@ -185,7 +182,8 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
-        return self.residual_connection(x, residual)
+        x = residual + x
+        return x
 
     def forward(
         self,
@@ -222,7 +220,7 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        x = self.residual_connection(x, residual)
+        x = residual + x
         return x
 
     def make_generation_fast_(self, **kwargs):
