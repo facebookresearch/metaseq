@@ -56,23 +56,10 @@ def download_files(handler, remote_path, i):
     return handler._get_local_path(remote_path, force=True)
 
 
-def download_files_v2(handler, remote_paths, i):
-    for remote_path in remote_paths:
-        logging.info(f"Downloading {remote_path} from worker {i}...")
-        # Try to reproduce the race condition from checkpoint_utils...
-        local_path = handler._get_local_path(remote_path)
-        if local_path != remote_path:
-            try:
-                os.remove(local_path)
-            except FileNotFoundError:
-                pass
-            local_path = handler._get_local_path(remote_path)
-
-
 class TestDriver:
     def test(self):
         num_files = 4
-        max_workers = 2
+        max_workers = 8
         file_size_bytes = 2 * 1024 * 1024
         remote_path_base = get_base_path()
 
@@ -94,7 +81,6 @@ class TestDriver:
                 processes = []
                 ctx = multiprocessing.get_context("spawn")
                 for i in range(max_workers):
-                    # process = ctx.Process(target=download_files_v2, args=(handler, remote_paths, i))
                     process = ctx.Process(
                         target=download_files,
                         args=(handler, os.path.dirname(remote_paths[0]), i),
@@ -114,7 +100,7 @@ class TestDriver:
                 )
 
                 # Make sure all files were successfully downloaded
-                actual = {f for f in os.listdir(cache_path)}
+                actual = {f for f in os.listdir(cache_path) if not f.endswith(".lock")}
                 expected = {f"file{i}.bin" for i in range(num_files)}
                 assert actual == set(expected), f"{expected}\n{actual}"
             except FileNotFoundError:

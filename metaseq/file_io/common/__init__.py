@@ -88,7 +88,7 @@ def file_lock(path: str):  # type: ignore
         # the lock. If failed to create the directory, the next line will raise
         # exceptions.
         pass
-    return portalocker.TemporaryFileLock(path + ".lock", timeout=3600)  # type: ignore
+    return portalocker.Lock(path + ".lock", timeout=3600)  # type: ignore
 
 
 class PathHandler:
