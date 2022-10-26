@@ -1055,7 +1055,8 @@ class PathManager:
             parent = os.path.dirname(path)
             pattern = os.path.basename(path)[:-1]
             return [
-                p for p in self.ls(parent, **kwargs)
+                p
+                for p in self.ls(parent, **kwargs)
                 if os.path.basename(p).startswith(pattern)
             ]
         return self.__get_path_handler(path)._ls(path, **kwargs)
