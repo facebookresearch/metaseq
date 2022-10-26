@@ -165,7 +165,7 @@ def get_grid(args):
     grid += task_config
 
     if args.profile:
-        grid += [hyperparam("--new-profiler")]
+        grid += [hyperparam("--profile")]
 
     no_save_params = args.no_save_dir
     args.snapshot_code = True
