@@ -409,7 +409,6 @@ def validate_and_save(
             and num_updates % cfg.checkpoint.save_interval_updates == 0
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
-            and num_updates == 5
         )
         or should_stop
     )
@@ -426,7 +425,6 @@ def validate_and_save(
     do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
         cfg.checkpoint.evaluate_interval_updates > 0
         and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
-        and num_updates == 5
     )
     assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
