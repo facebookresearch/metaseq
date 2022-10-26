@@ -327,31 +327,73 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
     return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
-def get_paths_to_load(local_path, suffix="rank-"):
-    checkpoint_files = glob(re.sub(f"{suffix}[0-9]+", f"{suffix}*", local_path))
+def _cache_checkpoint_files(path: str, suffix):
+    """
+    Given a checkpoint path, first try to expand it according to
+    a specified filename pattern. If `path` doesn't match the pattern
+    we search the remote for it as-is. Then cache all matching files
+    and return the local paths.
+
+    Ex. 1:
+        Remote: [path://checkpoint_last-shard0.pt, path://checkpoint_last-shard1.pt]
+        Input: path=remote://path/checkpoint_last-shard0.pt, suffix=shard
+        Output: [/local/checkpoint_last-shard0.pt, /local/checkpoint_last-shard1.pt]
+
+    Ex. 2:
+        Remote: [path://checkpoint_last-model_part-0.pt, path://checkpoint_last-model_part-1.pt]
+        Input: path=remote://path/checkpoint_last-model_part-0.pt, suffix=shard
+        Output: [/local/checkpoint_last-model_part-0.pt]
+
+    Ex. 3:
+        Remote: [path://checkpoint_last.pt]
+        Input: path=remote://path/checkpoint_last-shard0.pt, suffix=shard
+        Output: []
+    """
+    src_dir = os.path.dirname(path)
+    path_prefix = re.sub(f"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
+    local_paths = []
+
+    for filepath in PathManager.ls(path_prefix):
+        src_path = os.path.join(src_dir, os.path.basename(filepath))
+        # Cached versions of remote files that are periodically
+        # updated/overwritten may be stale (ex: checkpoint_last.pt)
+        # Pass force=True to ensure we get the latest
+        local_path = PathManager.get_local_path(src_path, force=True)
+        local_paths.append(local_path)
+
+    return local_paths
+
+
+def get_paths_to_load(path, suffix="rank-"):
+    checkpoint_files = _cache_checkpoint_files(path, suffix)
+
+    # Check if this looks like a sharded checkpoint
     if not _is_checkpoint_sharded(checkpoint_files):
-        return [local_path]
+        return [checkpoint_files[0]]
+
+    # Check if we actually need to assign >1 shard
     checkpoint_files_count = len(checkpoint_files)
     world_size = distributed_utils.get_data_parallel_world_size()
-    fnames = []
     if world_size >= checkpoint_files_count:
-        return [local_path]
+        return [checkpoint_files[0]]
 
+    # Assign an equal number of shards
     assert checkpoint_files_count % world_size == 0
-
     n_local_files = int(checkpoint_files_count / world_size)
     rank = distributed_utils.get_data_parallel_rank()
-    start_rank = n_local_files * rank  #
+    start_rank = n_local_files * rank
+    fnames = []
     for rank_to_load in range(start_rank, start_rank + n_local_files):
         fname = re.sub(
             f"{suffix}[0-9]+",
             f"{suffix}{rank_to_load}",
-            local_path,
+            checkpoint_files[0],
         )
         fnames.append(fname)
     logger.info(
-        f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker. "
+        f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker."
     )
+
     return fnames
 
 
@@ -371,20 +413,15 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     There's currently no support for > 1 but < all processes loading the
     checkpoint on each node.
     """
-    # The locally cached file may be stale for
-    # remote files that are periodically updated/overwritten (ex:
-    # checkpoint_last.pt) - so we pass force=True to override
-    # all caching rules. PathManager will synchronize
-    # access across all workers on the same node
-    local_path = PathManager.get_local_path(path, force=True)
 
-    # path to checkpoint...-shared.pt
-    paths_to_load = get_paths_to_load(local_path, suffix="shard")
+    # Expand multi-part checkpoints like "checkpoint_last-shard0.pt" if needed
+    paths_to_load = get_paths_to_load(path, suffix="shard")
+
     try:
         if len(paths_to_load) > 1:
             state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
         else:
-            state = torch_load_cpu(local_path)
+            state = torch_load_cpu(paths_to_load[0])
     except Exception as error:
         logger.error(
             f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."

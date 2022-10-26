@@ -88,7 +88,7 @@ def file_lock(path: str):  # type: ignore
         # the lock. If failed to create the directory, the next line will raise
         # exceptions.
         pass
-    return portalocker.Lock(path + ".lock", timeout=3600)  # type: ignore
+    return portalocker.TemporaryFileLock(path + ".lock", timeout=3600)  # type: ignore
 
 
 class PathHandler:
@@ -1050,6 +1050,14 @@ class PathManager:
         Returns:
             List[str]: list of contents in given path
         """
+        # Support trailing wildcard
+        if path.endswith("*"):
+            parent = os.path.dirname(path)
+            pattern = os.path.basename(path)[:-1]
+            return [
+                p for p in self.ls(parent, **kwargs)
+                if os.path.basename(p).startswith(pattern)
+            ]
         return self.__get_path_handler(path)._ls(path, **kwargs)
 
     def mkdirs(self, path: str, **kwargs: Any) -> None:
