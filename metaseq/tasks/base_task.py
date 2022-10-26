@@ -365,6 +365,7 @@ class BaseTask(object):
             beam_size=getattr(args, "beam", 5),
             max_len_a=getattr(args, "max_len_a", 0),
             max_len_b=getattr(args, "max_len_b", 200),
+            max_gen_tokens=getattr(args, "max_gen_tokens", 2048),
             min_len=getattr(args, "min_len", 1),
             temperature=getattr(args, "temperature", 1.0),
             topp=sampling_topp,

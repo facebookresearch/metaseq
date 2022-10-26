@@ -22,6 +22,7 @@ class SequenceGenerator(nn.Module):
         beam_size: int = 1,
         max_len_a: int = 0,
         max_len_b: int = 200,
+        max_gen_tokens: int = 2048,
         min_len: int = 1,
         temperature: float = 1.0,
         need_logprobs: bool = False,
@@ -57,6 +58,7 @@ class SequenceGenerator(nn.Module):
         self.beam_size = min(beam_size, self.vocab_size - 1)
         self.max_len_a = max_len_a
         self.max_len_b = max_len_b
+        self.max_gen_tokens = max_gen_tokens
         self.min_len = min_len
         self.need_logprobs = need_logprobs
         self.stop = stop if stop is not None else []
@@ -128,7 +130,7 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99)
+        max_len = min(self.model.max_decoder_positions() - 1, self.max_len_b or 1e99, src_tokens.size(1) + self.max_gen_tokens)
         min_len = min(max_len - 1, self.min_len or 0)
 
         assert (
