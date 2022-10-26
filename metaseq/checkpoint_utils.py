@@ -349,7 +349,7 @@ def _cache_checkpoint_files(path: str, suffix):
         Output: []
     """
     src_dir = os.path.dirname(path)
-    path_prefix = re.sub(f"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
+    path_prefix = re.sub(rf"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
 
     if path == path_prefix:
         local_path = PathManager.get_local_path(path)
