@@ -582,6 +582,7 @@ class Trainer(object):
                 not self.cfg.optimization.train_with_epoch_remainder_batch
             ),
         )
+        logger.info("finished creating batch iterator")
         self.reset_dummy_batch(batch_iterator.first_batch)
         return batch_iterator
 
@@ -646,6 +647,12 @@ class Trainer(object):
         # forward and backward pass
         logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
+            if (
+                self.get_num_updates() == 0
+                and i == 0
+                and distributed_utils.get_global_rank() == 0
+            ):
+                logger.info(f"First batch on first rank: " + str(sample))
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             def maybe_no_sync():

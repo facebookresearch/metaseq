@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
 #
 # This source code is licensed under the MIT license found in the
@@ -6,13 +8,13 @@
 import os
 import unittest
 
+from metaseq.file_io.s3 import S3PathHandler
+
+
 try:
     import boto3
-    from metaseq.s3_utils import S3PathHandler
 except ImportError:
     boto3 = None
-    S3PathHandler = None
-
 
 # Hack to make the test cases ordered.
 # https://stackoverflow.com/questions/4005695/changing-order-of-unit-tests-in-python
@@ -374,3 +376,7 @@ class TestsS3(unittest.TestCase):
         )
         with self.assertRaises(NotImplementedError):
             self.s3_pathhandler._symlink(s3_src_path_f1, s3_dst_path_f1)
+
+
+if __name__ == "__main__":
+    unittest.main()
