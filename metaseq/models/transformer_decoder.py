@@ -360,6 +360,8 @@ class TransformerDecoder(IncrementalDecoder):
         if self.dropout_module is not None:
             x = self.dropout_module(x)
 
+        # Returning in T x B x C format as that makes integrating sequence parallelism easier.
+        x = x.transpose(0, 1).contiguous()
         return x, embed, positions
 
     # forward for TransformerDecoder
@@ -404,6 +406,9 @@ class TransformerDecoder(IncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
+
+        # Transposing back to B x T x C, so that the interface stays the same.
+        x = x.transpose(0, 1).contiguous()
         return x, extra
 
     def extract_features(
@@ -422,6 +427,7 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
+        # x is T x B x C
         x, tok, pos = self.forward_embedding(
             prev_output_tokens, token_embeddings, incremental_state
         )
@@ -432,9 +438,6 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
         else:
             self_attn_mask = None
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
 
         # decoder layers
         # store other representations for instrumentation in VocabParallelCrossEntCrit
@@ -454,12 +457,10 @@ class TransformerDecoder(IncrementalDecoder):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
-
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
+        # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
         return x, {"inner_states": inner_states}
 
     def output_layer(self, features):
@@ -473,7 +474,7 @@ class TransformerDecoder(IncrementalDecoder):
         return min(self.max_target_positions, self.embed_positions.max_positions)
 
     def buffered_future_mask(self, tensor, input_tokens=None):
-        batch_size, cur_seq_len = tensor.size(0), tensor.size(1)
+        cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
         need_to_make_new_mask = (
             self._future_mask.size(0) == 0
