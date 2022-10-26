@@ -438,6 +438,10 @@ def validate_and_save(
 
     # Save checkpoint
     if do_save:
+        eval_kwargs = {
+            "checkpoint_suffix": trainer.checkpoint_suffix,
+            "gloo_pg": dist.new_group(backend="gloo"),
+        }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
@@ -445,7 +449,7 @@ def validate_and_save(
             valid_losses[0],
             training_finished=should_stop,
             async_callback_fn=functools.partial(
-                post_checkpoint_callback, cfg, do_evaluate, trainer.checkpoint_suffix
+                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
@@ -455,7 +459,7 @@ def validate_and_save(
     return valid_losses, should_stop
 
 
-def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
+def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -503,16 +507,15 @@ def post_checkpoint_callback(cfg, do_evaluate, checkpoint_suffix, filename):
                 cfg.checkpoint.eval_command,
                 cfg.checkpoint.cloud_upload_path,
                 filename,
-                checkpoint_suffix,
+                **eval_kwargs,
             )
 
 
-def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix):
-    group_gloo = dist.new_group(backend="gloo")
+def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg):
     # Make sure all ranks have finished uploading checkpoints.
-    # If any rank doesn't hit the barrier within the timeout period, we crash.
-    dist.monitored_barrier(group=group_gloo, timeout=timedelta(seconds=60))
-    print(distributed_utils.get_global_rank())
+    # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
+    # not run evals. Error doesn't stop training run.
+    dist.monitored_barrier(group=gloo_pg, timeout=timedelta(minutes=5))
     # Run evals on rank 0
     if distributed_utils.get_global_rank() != 0:
         return
