@@ -509,7 +509,9 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             )
 
 
-def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg):
+def _run_evaluations(
+    eval_cmd, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg
+):
     # Make sure all ranks have finished uploading checkpoints.
     # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
     # not run evals. Error doesn't stop training run.
@@ -530,6 +532,7 @@ def _run_evaluations(eval_cmd, cloud_upload_path, local_file, checkpoint_suffix,
             checkpoint_name,
         ]
     )
+    logger.info(f"Kicking off evaluation cmd: {cmd}")
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
         print("Error: {}, evaluation failed".format(res.returncode))
