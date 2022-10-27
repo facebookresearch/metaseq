@@ -150,10 +150,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
 
-    attn_implementation: ATTN_CHOICES = field(
+    attn_variant: ATTN_CHOICES = field(
         default="default", metadata={"help": "variant to use for attention"}
     )
-    xf_memeff_attn_op: str = field(
+    xf_attn_op: str = field(
         default="None",
         metadata={
             "help": "which memory efficient attention operation to use from xFormers."

@@ -11,11 +11,16 @@ import torch
 from torch import Tensor, nn
 
 from metaseq import utils
+from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
 
+try:
+    import xformers.ops as xops
 
-import xformers.ops as xops
+    has_xformers = True
+except (ImportError, ModuleNotFoundError):
+    has_xformers = False
 
 try:
     from megatron.mpu import (
@@ -63,8 +68,8 @@ class ModelParallelMultiheadAttention(nn.Module):
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
-        flash_attn=False,
-        xf_memeff_attn_op=None,
+        attn_variant=False,
+        xf_attn_op=None,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -265,14 +270,17 @@ class ModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
-        self.flash_attn = flash_attn
-        if self.flash_attn:
-            self.xf_op = None
-            if xf_memeff_attn_op is not None:
-                try:
-                    self.xf_op = getattr(xops, xf_memeff_attn_op)
-                except AttributeError:
-                    logging.warning(f"Invalid xformers memorry efficient op specified.")
+        self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        self.xf_op = None
+        if self.xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+        if self.xf_eff_attn and xf_attn_op is not None:
+            try:
+                self.xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
 
     def forward(
         self,
@@ -331,7 +339,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if self.flash_attn:
+        if self.xf_eff_attn:
             q = q.view(
                 tgt_len, bsz * self.num_heads_partition, self.head_dim
             ).transpose(0, 1)
@@ -538,7 +546,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
 
-        if not self.flash_attn:
+        if not self.xf_eff_attn:
             attn = torch.bmm(attn_probs, v)
             # logger.info("attn:" + str(attn.float().norm().item()))
 
