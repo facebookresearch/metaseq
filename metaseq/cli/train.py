@@ -279,9 +279,7 @@ def train(
         i,
         samples,
     ):
-        with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
-            "train_step-%d" % i
-        ):
+        with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
             log_output = trainer.train_step(samples)
@@ -311,11 +309,7 @@ def train(
         return valid_losses, should_stop
 
     for i, samples in enumerate(progress):
-        if (
-            distributed_utils.get_global_rank() == 0
-            and cfg.common.new_profiler
-            and i == 5
-        ):
+        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
             logger.info("STARTING PROFILER")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
@@ -323,7 +317,7 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
@@ -601,12 +595,7 @@ def cli_main(
             f"Started plasma server pid {server.server.pid} {cfg.common.plasma_path}"
         )
 
-    if args.profile:
-        with torch.cuda.profiler.profile():
-            with torch.autograd.profiler.emit_nvtx():
-                distributed_utils.call_main(cfg, main)
-    else:
-        distributed_utils.call_main(cfg, main)
+    distributed_utils.call_main(cfg, main)
 
 
 if __name__ == "__main__":
