@@ -22,6 +22,8 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
+from metaseq.utils import print_r0
+
 logger = logging.getLogger(__name__)
 
 
@@ -329,6 +331,7 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
 
 def get_paths_to_load(local_path, suffix="rank-"):
     checkpoint_files = glob(re.sub(f"{suffix}[0-9]+", f"{suffix}*", local_path))
+    print_r0(f"Inside get_paths_to_load local_path = {local_path} suffix = {suffix} checkpoint_files = {checkpoint_files}")
     if not _is_checkpoint_sharded(checkpoint_files):
         return [local_path]
     checkpoint_files_count = len(checkpoint_files)
@@ -371,6 +374,8 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     There's currently no support for > 1 but < all processes loading the
     checkpoint on each node.
     """
+
+    print_r0(f"Inside load_checkpoint_to_cpu path = {path} arg_overrides = {arg_overrides}")
     local_path = PathManager.get_local_path(path)
     # The locally cached file returned by get_local_path() may be stale for
     # remote files that are periodically updated/overwritten (ex:
@@ -444,6 +449,8 @@ def load_model_ensemble_and_task(
     ), "Cannot load state dict with strict=True and checkpoint shards > 1"
     ensemble = []
     cfg = None
+
+    print_r0(f"In load_model_ensemble_and_task filenames = {filenames} arg_overrides = {arg_overrides} suffix = {suffix}")
 
     for filename in filenames:
         orig_filename = filename
