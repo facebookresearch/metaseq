@@ -44,9 +44,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
     )
-    decoder_output_dim: int = field(
-        default=512, metadata={"help": "decoder output dimension"}
-    )
     decoder_input_dim: int = field(
         default=512, metadata={"help": "decoder input dimension"}
     )
@@ -217,10 +214,6 @@ def base_lm_architecture(args):
     args.add_bos_token = getattr(args, "add_bos_token", False)
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
-    )
-
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
     )
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 

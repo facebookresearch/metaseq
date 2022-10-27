@@ -100,9 +100,6 @@ def base_lm_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
