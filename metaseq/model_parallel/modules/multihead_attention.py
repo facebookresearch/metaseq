@@ -64,6 +64,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         num_layers=None,
         dtype=torch.float32,
         flash_attn=False,
+        xf_memeff_attn_op=None,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -265,6 +266,13 @@ class ModelParallelMultiheadAttention(nn.Module):
             dtype=dtype,
         )
         self.flash_attn = flash_attn
+        if self.flash_attn:
+            self.xf_op = None
+            if xf_memeff_attn_op is not None:
+                try:
+                    self.xf_op = getattr(xops, xf_memeff_attn_op)
+                except AttributeError:
+                    logging.warning(f"Invalid xformers memorry efficient op specified.")
 
     def forward(
         self,
@@ -338,7 +346,11 @@ class ModelParallelMultiheadAttention(nn.Module):
                     .transpose(0, 1)
                 )
             attn = xops.memory_efficient_attention(
-                q, k, v, attn_bias=xops.LowerTriangularMask()
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                op=self.xf_op,
             )
         elif CHANGES:
             output_size = (

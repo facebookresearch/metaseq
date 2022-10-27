@@ -152,6 +152,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
             flash_attn=args.attn_implementation == AttentionVariants.XFORMERS,
+            xf_memeff_attn_op=getattr(args, "xf_memeff_attn_op", None),
         )
 
     def forward_attention(

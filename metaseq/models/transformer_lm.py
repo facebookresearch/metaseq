@@ -153,6 +153,12 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     attn_implementation: ATTN_CHOICES = field(
         default="default", metadata={"help": "variant to use for attention"}
     )
+    xf_memeff_attn_op: str = field(
+        default="None",
+        metadata={
+            "help": "which memory efficient attention operation to use from xFormers."
+        },
+    )
 
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
