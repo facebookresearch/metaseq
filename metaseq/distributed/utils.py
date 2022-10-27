@@ -16,6 +16,7 @@ from argparse import Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional
+from metaseq.utils import print_r0
 
 import torch
 import torch.distributed as dist
@@ -164,6 +165,7 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
+    print_r0(f"In distributed utils - cfg.common.model_parallel_size = {cfg.common.model_parallel_size}")
     if cfg.common.model_parallel_size > 1:
         try:
             from megatron.mpu import (
@@ -260,6 +262,7 @@ def _spawn_helper(main, cfg, kwargs):
 
 
 def call_main(cfg: MetaseqConfig, main, **kwargs):
+    print_r0(f"cfg.distributed_training = {cfg.distributed_training}")
     if cfg.distributed_training.distributed_init_method is None:
         infer_init_method(cfg.distributed_training)
 
