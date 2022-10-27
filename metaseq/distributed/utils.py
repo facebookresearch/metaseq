@@ -265,6 +265,7 @@ def call_main(cfg: MetaseqConfig, main, **kwargs):
     if cfg.distributed_training.distributed_init_method is None:
         infer_init_method(cfg.distributed_training)
 
+    cfg.distributed_training.distributed_init_method = "tcp://localhost:13000"
     print_r0(f"cfg.distributed_training = {cfg.distributed_training}")
     if cfg.distributed_training.distributed_init_method is not None:
         # distributed training
