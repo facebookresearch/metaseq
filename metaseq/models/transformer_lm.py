@@ -11,7 +11,7 @@ from typing import Optional
 
 from omegaconf import II
 
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
@@ -149,8 +149,9 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
-    flash_attn: Optional[bool] = field(
-        default=False, metadata={"help": "Use memory efficient flash attention"}
+
+    attn_implementation: ATTN_CHOICES = field(
+        default="default", metadata={"help": "variant to use for attention"}
     )
 
     # options from other parts of the config

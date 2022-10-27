@@ -8,6 +8,7 @@ import math
 import torch
 from torch import nn
 
+from metaseq.dataclass.constants import AttentionVariants
 import metaseq.utils as utils
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
@@ -150,7 +151,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
-            flash_attn=getattr(args, "flash_attn", False),
+            flash_attn=args.attn_implementation == AttentionVariants.XFORMERS,
         )
 
     def forward_attention(
