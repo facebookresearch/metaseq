@@ -397,11 +397,6 @@ def convert_namespace_to_omegaconf(args: Namespace) -> DictConfig:
         cfg.lr_scheduler = Namespace(**vars(args))
         from metaseq.optim.lr_scheduler import LR_SCHEDULER_REGISTRY
 
-        if args.lr_scheduler == "fixed":
-            # hack since we don't want to call a "fixed" LR scheduler.
-            logger.info("Overriding lr_scheduler config from fixed to inverse_sqrt")
-            args.lr_scheduler = "inverse_sqrt"
-
         _set_legacy_defaults(cfg.lr_scheduler, LR_SCHEDULER_REGISTRY[args.lr_scheduler])
         cfg.lr_scheduler._name = args.lr_scheduler
     if cfg.criterion is None and getattr(args, "criterion", None):
