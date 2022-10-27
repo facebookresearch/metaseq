@@ -76,7 +76,6 @@ class TransformerDecoder(IncrementalDecoder):
             self.dropout_module = None
 
         self.share_input_output_embed = args.share_decoder_input_output_embed
-        input_embed_dim = embed_tokens.embedding_dim
         self.embed_dim = args.decoder_embed_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
@@ -89,17 +88,6 @@ class TransformerDecoder(IncrementalDecoder):
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.project_in_dim = (
-            Linear(
-                input_embed_dim,
-                self.embed_dim,
-                bias=False,
-                initialize_params_on_gpu=initialize_params_on_gpu,
-                dtype=dtype,
-            )
-            if self.embed_dim != input_embed_dim
-            else None
-        )
         self.use_alibi: bool = getattr(args, "alibi", False)
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
@@ -336,9 +324,6 @@ class TransformerDecoder(IncrementalDecoder):
             token_embedding = self.embed_tokens(tokens)
 
         x = embed = self.embed_scale * token_embedding
-
-        if self.project_in_dim is not None:
-            x = self.project_in_dim(x)
 
         if positions is not None:
             x += positions
