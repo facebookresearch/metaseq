@@ -280,17 +280,6 @@ def train(
     should_stop = False
     num_updates = trainer.get_num_updates()
 
-    if cfg.dataset.validate_at_beginning:
-        valid_losses, should_stop = validate_and_save(
-            cfg,
-            trainer,
-            task,
-            epoch_itr,
-            valid_subsets,
-            end_of_epoch=False,
-            was_successful_step=True,
-        )
-
     logger.info("Start iterating over samples")
 
     def train(
