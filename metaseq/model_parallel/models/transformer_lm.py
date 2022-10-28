@@ -46,7 +46,7 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         assert getattr(
             args, "use_sharded_state", False
@@ -100,10 +100,6 @@ def base_lm_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
