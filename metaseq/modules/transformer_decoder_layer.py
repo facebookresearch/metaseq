@@ -76,6 +76,7 @@ class TransformerDecoderLayer(nn.Module):
             "full_megatron_init": getattr(args, "full_megatron_init", False),
             "full_megatron_init_scalar": getattr(args, "full_megatron_init_scalar", 1.0),
             "megatron_init_sigma": getattr(args, "megatron_init_sigma", 0.006),
+            "num_layers": args.decoder_layers,
             "dtype": utils.get_model_init_dtype(args),
             "disable_bias": getattr(args, "disable_bias", False),
         }

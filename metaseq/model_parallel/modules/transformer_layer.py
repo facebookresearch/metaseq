@@ -68,6 +68,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         full_megatron_init,
         full_megatron_init_scalar,
         megatron_init_sigma,
+        num_layers,
         dtype,
         disable_bias=False,
     ):
