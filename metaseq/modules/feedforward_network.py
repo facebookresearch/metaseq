@@ -13,8 +13,6 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
     Feedforward network consisting of two linear layers (fc1, fc2), where activation_fn is applied
     between the two layers and dropout_module is applied at the end.
     """
-    x_shape = x.shape
-    x = x.reshape(-1, x.size(-1))
     # apex fused bias gelu is not yet supported with megatron model parallel
     # TODO [namangoyal]: Find better way to do this
     model_parallel = not isinstance(fc1, nn.Linear) and not isinstance(fc1, Linear)
@@ -25,6 +23,5 @@ def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
     else:
         x = activation_fn(x, fc1(x), model_parallel=False)
         x = fc2(x)
-    x = x.view(x_shape)
     x = dropout_module(x)
     return x
