@@ -16,15 +16,13 @@ from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
+from metaseq.launcher.opt_job_constants import Size, M
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
 @unittest.skipIf(
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
-)
-@unittest.skip(
-    "Skipping cause it was showing CUDA OOM while upgrading megatron version, but is not reproducible lcoally"
 )
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
@@ -169,12 +167,14 @@ def run_training(events, max_update):
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
         "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
-    with patch("sys.argv", argv_injection.split()[1:]):
-        with patch(
-            "metaseq.launcher.slurm.local_run",
-            partial(local_run_mock, max_update=max_update, events=events),
-        ):
-            sweep_cli_main()
+    with patch("sys.argv", argv_injection.split()[1:]), patch(
+        "metaseq.launcher.slurm.local_run",
+        partial(local_run_mock, max_update=max_update, events=events),
+    ), patch.dict(
+        "metaseq.launcher.opt_job_constants.MODEL_SIZES",
+        {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
+    ):
+        sweep_cli_main()
 
 
 def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
