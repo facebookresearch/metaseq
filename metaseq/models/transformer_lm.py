@@ -134,7 +134,9 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     full_megatron_init_scalar: float = field(
         default=1.0,
-        metadata={"help": "Factor to scale num_layers by for the second layer in FFN and out_proj of MHA"},
+        metadata={
+            "help": "Factor to scale num_layers by for the second layer in FFN and out_proj of MHA"
+        },
     )
     megatron_init_sigma: float = field(
         default=0.006,

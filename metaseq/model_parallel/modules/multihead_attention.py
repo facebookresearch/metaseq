@@ -91,6 +91,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
         self.combine_qkv_proj = True
         if self.combine_qkv_proj:
+
             def _init_method_weight_cpu(weight):
                 # Following is required to match gshard weight initialization
                 # because of how megatron splits initialized weights over model
