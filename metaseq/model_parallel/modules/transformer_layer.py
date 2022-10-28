@@ -96,12 +96,14 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         )
 
     # TODO[susanz]: unify method signatures with non-model-parallel version.
+    # Note: only fc2 includes the full_megatron_init_scalar arg, given the scaled_init_method_normal call.
     def build_fc2(
         self,
         input_dim,
         output_dim,
         initialize_params_on_gpu,
         full_megatron_init,
+        full_megatron_init_scalar,
         megatron_init_sigma,
         num_layers,
         dtype,
@@ -110,7 +112,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+                megatron_init_sigma, num_layers * full_megatron_init_scalar
             )
         else:
             init_method_weights = _weight_init
@@ -143,6 +145,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
             full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),

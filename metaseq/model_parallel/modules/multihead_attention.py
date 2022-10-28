@@ -56,6 +56,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         self_attention=False,
         use_cpu_initialization=True,
         full_megatron_init=False,
+        full_megatron_init_scalar=1.0,
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
@@ -87,9 +88,9 @@ class ModelParallelMultiheadAttention(nn.Module):
             not self.self_attention or self.qkv_same_dim
         ), "Self-attention requires query, key and value to be of the same size"
 
+        # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
         self.combine_qkv_proj = True
         if self.combine_qkv_proj:
-
             def _init_method_weight_cpu(weight):
                 # Following is required to match gshard weight initialization
                 # because of how megatron splits initialized weights over model
@@ -166,6 +167,7 @@ class ModelParallelMultiheadAttention(nn.Module):
 
             if full_megatron_init:
                 assert megatron_init_sigma is not None
+                # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
                 init_method_weights = megatron_utils.init_method_normal(
                     megatron_init_sigma
                 )
@@ -245,7 +247,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             assert megatron_init_sigma is not None
             assert num_layers is not None
             init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+                megatron_init_sigma, num_layers * full_megatron_init_scalar
             )
         self.out_proj = RowParallelLinear(
             embed_dim,
