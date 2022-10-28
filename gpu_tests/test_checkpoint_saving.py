@@ -195,7 +195,7 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
     with patch("logging.Logger._log", partial(log_to_events, events=events)):
         with patch(
-            "metaseq.cli.train.subprocess.run",
+            "metaseq.cli.train._run_azcopy",
             partial(subprocess_run_mock, events=events),
         ):
             with patch("metaseq.cli.train.os.remove"):
