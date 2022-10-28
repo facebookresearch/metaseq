@@ -66,6 +66,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         output_dim,
         initialize_params_on_gpu,
         full_megatron_init,
+        full_megatron_init_scalar,
         megatron_init_sigma,
         dtype,
         disable_bias=False,
@@ -77,7 +78,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
 
         if full_megatron_init:
             # Setting bias init method to None, initializes biases with zero.
-            init_method_weights = megatron_utils.init_method_normal(megatron_init_sigma)
+            init_method_weights = megatron_utils.scaled_init_method_normal(megatron_init_sigma, num_layers * full_megatron_init_scalar)
             init_method_bias = None
         else:
             init_method_weights = _weight_init

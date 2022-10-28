@@ -168,9 +168,8 @@ class ModelParallelMultiheadAttention(nn.Module):
 
             if full_megatron_init:
                 assert megatron_init_sigma is not None
-                # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
-                init_method_weights = megatron_utils.init_method_normal(
-                    megatron_init_sigma
+                init_method_weights = megatron_utils.scaled_init_method_normal(
+                    megatron_init_sigma, num_layers * full_megatron_init_scalar
                 )
                 init_method_bias = None
             else:

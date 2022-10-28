@@ -74,6 +74,7 @@ class TransformerDecoderLayer(nn.Module):
         fc1_kwargs = {
             "initialize_params_on_gpu": initialize_params_on_gpu,
             "full_megatron_init": getattr(args, "full_megatron_init", False),
+            "full_megatron_init_scalar": getattr(args, "full_megatron_init_scalar", 1.0),
             "megatron_init_sigma": getattr(args, "megatron_init_sigma", 0.006),
             "dtype": utils.get_model_init_dtype(args),
             "disable_bias": getattr(args, "disable_bias", False),
