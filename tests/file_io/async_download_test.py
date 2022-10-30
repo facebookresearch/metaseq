@@ -36,14 +36,6 @@ def get_base_path():
     return os.path.join(base_path, str(uuid.uuid4()))
 
 
-# def get_local_test_file(parent_dir, name, length=4096):
-#     path = os.path.join(parent_dir, name)
-#     value = random.randint(0, 16)
-#     with open(path, "wb") as f:
-#         array.array("b", [value] * length).tofile(f)
-#     return path
-
-
 def create_remote_test_file(handler, path, length=4096):
     value = random.randint(0, 16)
     with handler._open(path, "wb") as f:

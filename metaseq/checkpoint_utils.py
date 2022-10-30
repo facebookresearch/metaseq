@@ -326,7 +326,7 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
     return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
-def _cache_checkpoint_files(path: str, suffix):
+def _cache_checkpoint_files(path: str, suffix: str) -> List[str]:
     """
     Given a checkpoint path, first try to expand it according to
     a specified filename pattern. If `path` doesn't match the pattern
@@ -348,15 +348,17 @@ def _cache_checkpoint_files(path: str, suffix):
         Input: path=remote://path/checkpoint_last-shard0.pt, suffix=shard
         Output: []
     """
-    src_dir = os.path.dirname(path)
-    path_prefix = re.sub(rf"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
 
+    # Ex. 2: if `path` doesn't match the pattern suggested by suffix
+    # just return the path itself without expansion
+    path_prefix = re.sub(rf"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
     if path == path_prefix:
         local_path = PathManager.get_local_path(path)
         return [local_path]
 
     local_paths = []
     for filepath in PathManager.ls(path_prefix):
+        src_dir = os.path.dirname(path)
         src_path = os.path.join(src_dir, os.path.basename(filepath))
         # Cached versions of remote files that are periodically
         # updated/overwritten may be stale (ex: checkpoint_last.pt)
@@ -369,15 +371,17 @@ def _cache_checkpoint_files(path: str, suffix):
 
 def get_paths_to_load(path, suffix="rank-"):
     checkpoint_files = _cache_checkpoint_files(path, suffix)
+    checkpoint_files_count = len(checkpoint_files)
 
     # Check if this looks like a sharded checkpoint
     if not _is_checkpoint_sharded(checkpoint_files):
+        assert checkpoint_files_count == 1, ", ".join(checkpoint_files)
         return [checkpoint_files[0]]
 
     # Check if we actually need to assign >1 shard
-    checkpoint_files_count = len(checkpoint_files)
     world_size = distributed_utils.get_data_parallel_world_size()
     if world_size >= checkpoint_files_count:
+        assert checkpoint_files_count == 1, ", ".join(checkpoint_files)
         return [checkpoint_files[0]]
 
     # Assign an equal number of shards
