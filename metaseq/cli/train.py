@@ -30,6 +30,7 @@ from metaseq import (
 )
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
+from metaseq.dataclass.configs import DynamicConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
@@ -38,7 +39,7 @@ from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
 logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
@@ -308,9 +309,18 @@ def train(
 
         return valid_losses, should_stop
 
+    dcfg = DynamicConfig(
+        json_file_path=cfg.common.dynamic_config_path,
+        timeout=cfg.common.dynamic_config_timeout,
+    )
+
     for i, samples in enumerate(progress):
-        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
-            logger.info("STARTING PROFILER")
+        force_profile = dcfg["force_profile"]
+        do_profile = (distributed_utils.get_global_rank() == 0) and (
+            (cfg.common.profile and i == 5) or force_profile
+        )
+        if do_profile:
+            logger.info(f"STARTING PROFILER: step {i}")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
             ) as prof:
@@ -326,8 +336,9 @@ def train(
                     file=sourceFile,
                 )
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+                os.path.join(cfg.checkpoint.save_dir, f"profiler_trace_step_{i}.json")
             )
+            logger.info(f"FINISHING PROFILER: step {i}")
         else:
             valid_losses, should_stop = train(i, samples)
         if should_stop:

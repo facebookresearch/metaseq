@@ -4,6 +4,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import sys
+import time
+import json
+import os
 from dataclasses import _MISSING_TYPE, dataclass, field
 from typing import Any, List, Optional
 
@@ -193,6 +196,15 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
+    )
+    dynamic_config_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "a path to place a file and load dynamic configuratinons from (it is being checked periodically)"
+        },
+    )
+    dynamic_config_timeout: float = field(
+        default=30.0, metadata={"help": "dynamic configuration state timeout"}
     )
 
 
@@ -737,3 +749,49 @@ class MetaseqConfig(MetaseqDataclass):
     lr_scheduler: Any = MISSING
     bpe: Any = MISSING
     tokenizer: Any = None
+
+
+class DynamicConfig(dict):
+    """
+    can be used instead of redis to store updatable key-value
+
+    test:
+        data = {"a": 1}
+        with open('data.json', 'w') as fp:
+            json.dump(data, fp)
+        dcfg = DynoCfg(json_file_path = "data.json", timeout = 1)
+        print(dcfg["a"]) # > 1
+        data = {"a": 4}
+        with open('data.json', 'w') as fp:
+            json.dump(data, fp)
+        print(dcfg["a"]) # > 1
+        time.sleep(1)
+        print(dcfg["a"]) # > 4
+    """
+
+    default_state = {"force_profile": False}
+
+    def __init__(self, json_file_path=None, timeout=30):  # timeout in sec
+        self.timeout = timeout
+        self.timer_start = time.time()
+        self.json_file_path = json_file_path
+        if self.json_file_path is not None:
+            with open(self.json_file_path, "r") as json_file:
+                super().__init__(**json.load(json_file))
+        else:
+            super().__init__(**DynamicConfig.default_state)
+
+    def refresh(self):
+        if self.json_file_path is not None:
+            # if data have not been updated in a while, reload from the file
+            # can speed up if were to calculate hash sum of the file to monitor updates
+            timer_value = time.time() - self.timer_start
+            if timer_value > self.timeout:
+                with open(self.json_file_path, "r") as json_file:
+                    refreshed_config = json.load(json_file)
+                    super().__init__(**refreshed_config)
+                self.timer_start = time.time()
+
+    def __getitem__(self, key):
+        self.refresh()
+        return super().__getitem__(key)
