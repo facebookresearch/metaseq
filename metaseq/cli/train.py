@@ -455,7 +455,7 @@ def post_checkpoint_callback(cfg, filename):
                 filename,
                 cfg.checkpoint.cloud_upload_path,
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if res.returncode != 0:
                 print("Error: {}, azcopy failed".format(res.returncode))
                 print("Azcopy stdout = {}".format(res.stdout))
@@ -479,6 +479,10 @@ def post_checkpoint_callback(cfg, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
+
+
+def _run_azcopy(cmd, stdout, stderr):
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def get_training_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
