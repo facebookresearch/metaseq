@@ -482,7 +482,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
         pythonpath_added = oss_destination + ":"
         if has_internal:
             pythonpath_added += internal_destination + ":"
-        os.environ["PYTHONPATH"] = pythonpath_added + os.environ["PYTHONPATH"]
+        os.environ["PYTHONPATH"] = pythonpath_added + os.environ.get("PYTHONPATH", "")
 
     # set environment
     base_env = os.environ.copy()
