@@ -32,7 +32,7 @@ class hyperparam(object):
         Arguments:
         - name : the name of the hyperparameter (e.g., `--dropout`)
         - values : the set of values to sweep over (e.g., `[0.0, 0.1, 0.2]`)
-        - binary_flag : whether the hyperparameter uses a boolean flag (e.g., `--no-save`)
+        - binary_flag : whether the hyperparameter uses a boolean flag (e.g., `--no-tensorboard`)
         - save_dir_key : function that takes the hyperparameter value and returns the "key"
                          to be appended to the output directory name
         - positional_arg : whether the hyperparameter is a positional argument
@@ -75,16 +75,17 @@ class hyperparam(object):
 
 
 def get_env_from_args(args):
-    # Returns a ComputeEnvs enum.
     if args.azure:
         return ComputeEnvs.AZURE
     elif args.aws:
         return ComputeEnvs.AWS
     elif args.fair:
         return ComputeEnvs.FAIR
+    elif args.rsc:
+        return ComputeEnvs.RSC
     else:
         raise NotImplementedError(
-            "Env not passed in! Please pass in one of: --azure, --aws, --fair"
+            "Env not passed in! Please pass in one of: --azure, --aws, --fair, --rsc"
         )
 
 
@@ -154,9 +155,20 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "--exclusive", action="store_true", help="if set, get exclusive host"
     )
     parser.add_argument(
+        "--dep",
+        metavar="JOBID",
+        type=int,
+        help="add JOBID as a dependency (i.e., wait for it to finish)",
+    )
+    parser.add_argument(
+        "--sequential", action="store_true", help="schedule jobs to run sequentially"
+    )
+    parser.add_argument(
         "--time", default="4320", help="expected job duration in minutes"
     )
     parser.add_argument("--mem", "--mem", help="memory to request")
+    parser.add_argument("--container-image")
+    parser.add_argument("--container-save")
     parser.add_argument(
         "--constraint",
         metavar="CONSTRAINT",
@@ -178,6 +190,11 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         help="root path for saving the snapshot code.",
     )
     parser.add_argument(
+        "--snapshot-recurse-dirs-internal",
+        default="metaseq_internal",
+        help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
+    )
+    parser.add_argument(
         "--snapshot-recurse-dirs-oss",
         default="metaseq",
         help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
@@ -186,11 +203,19 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "--no-tensorboard", action="store_true", help="disable tensorboard logging"
     )
     parser.add_argument("--no-wandb", action="store_true", help="disable WandB logging")
+    parser.add_argument(
+        "--post-steps",
+        nargs="+",
+        help="additional steps to execute after the primary job is complete. "
+        "this can be a file with the steps, or a string. some placeholders such as "
+        "{job_dir} will be replaced",
+    )
 
     # Env flags
     parser.add_argument("--azure", action="store_true", help="running on azure")
     parser.add_argument("--aws", action="store_true", help="running on aws")
     parser.add_argument("--fair", action="store_true", help="running on fair")
+    parser.add_argument("--rsc", action="store_true", help="running on rsc")
 
     # Azure specific flag
     parser.add_argument(
@@ -227,6 +252,15 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         default=None,  # None will default to save_dir/tb
         help="save tensorboard logs in <tensorboard-logdir>/<prefix>.<save_dir_key>",
     )
+    parser.add_argument(
+        "-ts",
+        "--tombstonable",
+        type=bool,
+        default=False,
+        help="""make the job killable by writing a 
+                tombstone 'tombstone_<job_id>' file to user's home ditectory
+                (/shared/home/$USER)""",
+    )
 
     if add_extra_options_func is not None:  # mutates parser
         add_extra_options_func(parser)
@@ -234,8 +268,8 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
 
     # Env check
     assert (
-        sum([args.azure, args.aws, args.fair]) == 1
-    ), "Must pass an env, and only one env (--azure, --aws, --fair)!"
+        sum([args.azure, args.aws, args.fair, args.rsc]) == 1
+    ), "Must pass an env, and only one env (--azure, --aws, --fair, or --rsc)!"
 
     # Set defaults based on env
     env = get_env_from_args(args)
@@ -248,6 +282,8 @@ def _modify_arg_defaults_based_on_env(env, args):
     default_partition = None
     if env == ComputeEnvs.FAIR:
         default_partition = "learnfair"
+    elif env == ComputeEnvs.RSC:
+        default_partition = "learn"
 
     default_prefix = ""
     if env == ComputeEnvs.AZURE:
@@ -256,8 +292,10 @@ def _modify_arg_defaults_based_on_env(env, args):
         default_prefix = "/checkpoints"
     elif env == ComputeEnvs.FAIR:
         default_prefix = "/checkpoint"
+    elif env == ComputeEnvs.RSC:
+        default_prefix = "/checkpoint/xlmg"
 
-    if env == ComputeEnvs.FAIR:
+    if env == ComputeEnvs.FAIR or env == ComputeEnvs.RSC:
         default_checkpoint_dir = os.path.join(
             default_prefix, os.environ["USER"], str(datetime.date.today())
         )
@@ -274,6 +312,8 @@ def _modify_arg_defaults_based_on_env(env, args):
         default_cpu_per_task = 12
     elif env == ComputeEnvs.FAIR:
         default_cpu_per_task = 10
+    elif env == ComputeEnvs.RSC:
+        default_cpu_per_task = 32
 
     default_cpu_bind = "none"
     if env == ComputeEnvs.AZURE:
@@ -298,7 +338,7 @@ def _modify_arg_defaults_based_on_env(env, args):
         if azure_upload_path != "":
             # write checkpoints to local scratch storage on each node
             default_local_checkpoints_dir = os.path.join(
-                "/mnt/scratch",
+                "/mnt/resource_nvme",
                 os.environ["USER"],
                 "checkpoints",
                 str(datetime.date.today()),
