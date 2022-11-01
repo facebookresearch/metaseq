@@ -741,6 +741,14 @@ class PathManager:
                 return True
         return False
 
+    def supports_rename(self, path: str) -> bool:
+        # PathManager doesn't yet support renames
+        return not self.path_requires_pathmanager(path)
+
+    @staticmethod
+    def rename(src: str, dst: str):
+        os.rename(src, dst)
+
     # pyre-fixme[24]: Generic type `os.PathLike` expects 1 type parameter.
     def __get_path_handler(self, path: Union[str, os.PathLike]) -> PathHandler:
         """
