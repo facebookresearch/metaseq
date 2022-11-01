@@ -13,6 +13,7 @@ from metaseq.models.transformer_decoder import TransformerDecoder
 from metaseq.models.transformer_encoder import TransformerEncoder
 
 try:
+    from megatron import mpu
     from megatron.mpu import (
         copy_to_tensor_model_parallel_region,
         gather_from_tensor_model_parallel_region,
@@ -61,13 +62,21 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
         features = copy_to_tensor_model_parallel_region(features)
 
         # project back to size of vocabulary
-        x = self.output_projection(features)
+        x = mpu.LinearWithGradAccumulationAndAsyncCommunication.apply(
+            features,
+            self.output_projection.weight,
+            None,
+            False,
+            False,
+            False,
+        )
         # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings
         if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
             self, "inference", False
         ):
             x = gather_from_tensor_model_parallel_region(x).contiguous()
+
         return x
 
     # This hook used as proxy for tracking state if model is in eval or generation mode.

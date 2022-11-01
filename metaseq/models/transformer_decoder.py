@@ -76,14 +76,11 @@ class TransformerDecoder(IncrementalDecoder):
             self.dropout_module = None
 
         self.share_input_output_embed = args.share_decoder_input_output_embed
-        input_embed_dim = embed_tokens.embedding_dim
-        embed_dim = args.decoder_embed_dim
-        self.embed_dim = embed_dim
-        self.output_embed_dim = args.decoder_output_dim
+        self.embed_dim = args.decoder_embed_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
         self.embed_tokens = embed_tokens
-        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(self.embed_dim)
 
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
@@ -91,17 +88,6 @@ class TransformerDecoder(IncrementalDecoder):
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.project_in_dim = (
-            Linear(
-                input_embed_dim,
-                embed_dim,
-                bias=False,
-                initialize_params_on_gpu=initialize_params_on_gpu,
-                dtype=dtype,
-            )
-            if embed_dim != input_embed_dim
-            else None
-        )
         self.use_alibi: bool = getattr(args, "alibi", False)
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
@@ -110,7 +96,7 @@ class TransformerDecoder(IncrementalDecoder):
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_target_positions,
-                embed_dim,
+                self.embed_dim,
                 self.padding_idx,
                 learned=args.decoder_learned_pos,
                 learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
@@ -169,22 +155,10 @@ class TransformerDecoder(IncrementalDecoder):
         self.num_layers = len(self.layers)
 
         self.layer_norm = LayerNorm(
-            embed_dim,
+            self.embed_dim,
             elementwise_affine=not getattr(args, "disable_affine_ln", False),
         )
         self.layer_norm.to(device).to(dtype)
-
-        self.project_out_dim = (
-            Linear(
-                embed_dim,
-                self.output_embed_dim,
-                bias=False,
-                initialize_params_on_gpu=initialize_params_on_gpu,
-                dtype=dtype,
-            )
-            if embed_dim != self.output_embed_dim
-            else None
-        )
 
         self.output_projection = None
         if self.share_input_output_embed:
@@ -198,14 +172,14 @@ class TransformerDecoder(IncrementalDecoder):
             self.output_projection.weight = self.embed_tokens.weight
         else:
             self.output_projection = Linear(
-                self.output_embed_dim,
+                self.embed_dim,
                 len(dictionary),
                 bias=False,
                 initialize_params_on_gpu=initialize_params_on_gpu,
                 dtype=dtype,
             )
             nn.init.normal_(
-                self.output_projection.weight, mean=0, std=self.output_embed_dim**-0.5
+                self.output_projection.weight, mean=0, std=self.embed_dim**-0.5
             )
 
         if self.use_alibi:
@@ -351,15 +325,14 @@ class TransformerDecoder(IncrementalDecoder):
 
         x = embed = self.embed_scale * token_embedding
 
-        if self.project_in_dim is not None:
-            x = self.project_in_dim(x)
-
         if positions is not None:
             x += positions
 
         if self.dropout_module is not None:
             x = self.dropout_module(x)
 
+        # Returning in T x B x C format as that makes integrating sequence parallelism easier.
+        x = x.transpose(0, 1).contiguous()
         return x, embed, positions
 
     # forward for TransformerDecoder
@@ -404,6 +377,9 @@ class TransformerDecoder(IncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
+
+        # Transposing back to B x T x C, so that the interface stays the same.
+        x = x.transpose(0, 1).contiguous()
         return x, extra
 
     def extract_features(
@@ -422,6 +398,7 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
+        # x is T x B x C
         x, tok, pos = self.forward_embedding(
             prev_output_tokens, token_embeddings, incremental_state
         )
@@ -432,9 +409,6 @@ class TransformerDecoder(IncrementalDecoder):
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
         else:
             self_attn_mask = None
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
 
         # decoder layers
         # store other representations for instrumentation in VocabParallelCrossEntCrit
@@ -454,12 +428,7 @@ class TransformerDecoder(IncrementalDecoder):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
-
-        if self.project_out_dim is not None:
-            x = self.project_out_dim(x)
-
+        # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
         return x, {"inner_states": inner_states}
 
     def output_layer(self, features):
@@ -473,7 +442,7 @@ class TransformerDecoder(IncrementalDecoder):
         return min(self.max_target_positions, self.embed_positions.max_positions)
 
     def buffered_future_mask(self, tensor, input_tokens=None):
-        batch_size, cur_seq_len = tensor.size(0), tensor.size(1)
+        cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
         need_to_make_new_mask = (
             self._future_mask.size(0) == 0

@@ -44,12 +44,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
     )
-    decoder_output_dim: int = field(
-        default=512, metadata={"help": "decoder output dimension"}
-    )
-    decoder_input_dim: int = field(
-        default=512, metadata={"help": "decoder input dimension"}
-    )
     decoder_ffn_embed_dim: int = field(
         default=2048, metadata={"help": "decoder embedding dimension for FFN"}
     )
@@ -180,7 +174,7 @@ class TransformerLanguageModel(LanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         decoder = TransformerDecoder(
             args,
@@ -218,12 +212,6 @@ def base_lm_architecture(args):
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
     )
-
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)
