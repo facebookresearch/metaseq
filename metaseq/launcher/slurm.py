@@ -23,9 +23,11 @@ from metaseq.launcher.sweep import get_env_from_args
 
 try:
     import metaseq_internal
+
     has_internal = True
 except ImportError:
     has_internal = False
+
 
 def main(get_grid, postprocess_hyperparams, args):
     def dry_run(msg):
@@ -459,7 +461,9 @@ def dry_run_batch(env, train_log, train_stderr, sbatch_cmd_str, sbatch_cmd, dry_
 
 def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
     oss_destination = str(Path(metaseq.__file__).parents[1])
-    internal_destination = str(Path(metaseq_internal.__file__).parents[1]) if has_internal else ""
+    internal_destination = (
+        str(Path(metaseq_internal.__file__).parents[1]) if has_internal else ""
+    )
     if args.snapshot_code:
         # Currently hash is just the current time in ISO format.
         # Remove colons since they cannot be escaped in POSIX PATH env vars.
@@ -510,7 +514,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             if has_internal:
                 abs_int = os.path.abspath(internal_destination)
                 subprocess.check_output(
-                f"ln -fs {abs_int} {save_dir}/snapshot_internal", shell=True
+                    f"ln -fs {abs_int} {save_dir}/snapshot_internal", shell=True
                 )
             abs_oss = os.path.abspath(oss_destination)
             subprocess.check_output(

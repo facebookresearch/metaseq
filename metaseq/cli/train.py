@@ -584,6 +584,7 @@ def get_valid_stats(
         )
     return stats
 
+
 def set_local_per_worker_env_variables():
     savedir = os.environ.get("METASEQ_SAVE_DIR")
     if savedir is not None:
@@ -603,6 +604,7 @@ def set_local_per_worker_env_variables():
         with open(os.path.join(env_dir, f"rank_{rank:04d}_{hostname}"), "w") as f:
             for key in sorted(os.environ.keys()):
                 f.write(f"{key}={os.environ[key]}\n")
+
 
 def cli_main(
     modify_parser: Optional[Callable[[argparse.ArgumentParser], None]] = None

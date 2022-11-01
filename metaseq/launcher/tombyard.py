@@ -10,6 +10,7 @@ import os
 import time
 from pathlib import Path
 
+
 def tombstones_procedure(
     job_id,
     dirstones,
