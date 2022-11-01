@@ -458,23 +458,22 @@ def dry_run_batch(env, train_log, train_stderr, sbatch_cmd_str, sbatch_cmd, dry_
 
 
 def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
-    oss_destination = ""
-    internal_destination = ""
+    oss_destination = str(Path(metaseq.__file__).parents[1])
+    internal_destination = str(Path(metaseq_internal.__file__).parents[1])
     if args.snapshot_code:
         # Currently hash is just the current time in ISO format.
         # Remove colons since they cannot be escaped in POSIX PATH env vars.
         code_snapshot_hash = datetime.datetime.now().isoformat().replace(":", "_")
         if has_internal:
             internal_destination = copy_all_python_files(
-                ".",
+                internal_destination,
                 os.path.join(args.snapshot_root, "slurm_snapshot_code_internal"),
                 code_snapshot_hash,
                 args.snapshot_recurse_dirs_internal,
             )
         # Need to copy MetaSeq OSS code as well
-        metaseq_oss_path = str(Path(metaseq.__file__).parents[1])
         oss_destination = copy_all_python_files(
-            metaseq_oss_path,
+            oss_destination,
             os.path.join(args.snapshot_root, "slurm_snapshot_code_oss"),
             code_snapshot_hash,
             args.snapshot_recurse_dirs_oss,
