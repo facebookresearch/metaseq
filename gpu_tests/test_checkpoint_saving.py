@@ -177,7 +177,7 @@ def run_training(events, max_update):
         sweep_cli_main()
 
 
-def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
+def local_run_mock(args, env, train_cmd, post_cmds, dry_run, max_update, events):
     train_cmd[train_cmd.index("--max-update") + 1] = str(max_update)
     train_cmd[train_cmd.index("--log-interval") + 1] = "1"
     train_cmd[train_cmd.index("--save-interval-updates") + 1] = "18"
