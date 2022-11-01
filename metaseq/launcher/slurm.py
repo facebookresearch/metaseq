@@ -459,7 +459,7 @@ def dry_run_batch(env, train_log, train_stderr, sbatch_cmd_str, sbatch_cmd, dry_
 
 def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
     oss_destination = str(Path(metaseq.__file__).parents[1])
-    internal_destination = str(Path(metaseq_internal.__file__).parents[1])
+    internal_destination = str(Path(metaseq_internal.__file__).parents[1]) if has_internal else ""
     if args.snapshot_code:
         # Currently hash is just the current time in ISO format.
         # Remove colons since they cannot be escaped in POSIX PATH env vars.
