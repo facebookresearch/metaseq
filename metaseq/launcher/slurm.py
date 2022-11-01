@@ -23,10 +23,9 @@ from metaseq.launcher.sweep import get_env_from_args
 
 try:
     import metaseq_internal
-    has_internal = False
-except ImportError:
     has_internal = True
-    metaseq_internal = None
+except ImportError:
+    has_internal = False
 
 def main(get_grid, postprocess_hyperparams, args):
     def dry_run(msg):
