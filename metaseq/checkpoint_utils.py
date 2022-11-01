@@ -358,6 +358,9 @@ def _cache_checkpoint_files(path: str, suffix: str) -> List[str]:
 
     local_paths = []
     for filepath in PathManager.ls(path_prefix):
+        # Ignore non-checkpoint files
+        if not filepath.endswith(".pt"):
+            continue
         src_dir = os.path.dirname(path)
         src_path = os.path.join(src_dir, os.path.basename(filepath))
         # Cached versions of remote files that are periodically
