@@ -314,11 +314,13 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             first_launch = True
             checkpoint_path_to_load = cfg.restore_file
 
-    if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
-        raise ValueError(
-            "--finetune-from-model and --restore-file (non-default value) "
-            "can not be specified together: " + str(cfg)
-        )
+    # Commenting this because it fails when checkpoint_last isnt saved i.e. 
+    # when we save per-interval checkpoints
+    # if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
+        # raise ValueError(
+            # "--finetune-from-model and --restore-file (non-default value) "
+            # "can not be specified together: " + str(cfg)
+        # )
 
     # Azure logic
     try:
