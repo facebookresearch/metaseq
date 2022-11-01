@@ -183,6 +183,16 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "help": "disable gamma and bias of layer norm,"
         }
     )
+    custom_autograd_transformer: Optional[bool] = field(
+        default=False,  metadata={
+            "help": "hardcoded FFN layer with custom autograd fn"
+        }
+    )
+    recompute_fc1_num_layers: Optional[int] = field(
+        default=0,  metadata={
+            "help": "Num layers for which to recompute FC1 in backwards"
+        }
+    )
 
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")

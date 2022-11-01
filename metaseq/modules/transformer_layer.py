@@ -493,6 +493,7 @@ class TransformerDecoderLayer(nn.Module):
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
         need_head_weights: bool = False,
+        recompute_fc1: bool=False,
     ):
         """
         Args:
@@ -507,6 +508,19 @@ class TransformerDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
+        if getattr(self.args, "custom_autograd_transformer", False):
+            from megatron.mpu.layers import TransformerBlockAutograd
+            x = TransformerBlockAutograd.apply(
+                x,
+                self.self_attn.qkv_proj.weight,
+                self.self_attn.out_proj.weight,
+                self.fc1.weight,
+                self.fc2.weight,
+                self.self_attn.head_dim,
+                recompute_fc1,
+            )
+            return x, None, None, None
+
         if need_head_weights:
             need_attn = True
 
@@ -593,7 +607,9 @@ class TransformerDecoderLayer(nn.Module):
             x = x + residual
             if not self.normalize_before:
                 x = self.encoder_attn_layer_norm(x)
+        l_aux = None
         residual = x
+
         if self.normalize_before:
             x = self.final_layer_norm(x)
         x = _ffn(
@@ -604,7 +620,6 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        l_aux = None
         x = x + residual
         if not self.normalize_before:
             x = self.final_layer_norm(x)

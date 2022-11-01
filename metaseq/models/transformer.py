@@ -834,6 +834,7 @@ class TransformerDecoder(IncrementalDecoder):
                     self_attn_padding_mask=self_attn_padding_mask,
                     need_attn=bool((idx == alignment_layer)),
                     need_head_weights=bool((idx == alignment_layer)),
+                    recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
                 )
 
             l_aux.append(l_aux_i)

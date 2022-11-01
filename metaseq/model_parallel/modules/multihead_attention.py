@@ -75,7 +75,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         self.self_attention = self_attention
         num_heads_partition = num_heads // self.model_parallel_size
         head_dim = embed_dim // num_heads
-
+        self.head_dim = head_dim
         assert (
             num_heads_partition * self.model_parallel_size == num_heads
         ), "Number of heads must be divisible by model parallel size"
