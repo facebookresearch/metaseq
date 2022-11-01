@@ -54,6 +54,7 @@ class ComputeEnvs(Enum):
     AWS = "aws"
     AZURE = "azure"
     FAIR = "fair"
+    RSC = "rsc"
 
 
 DATA_LOCATIONS = {
