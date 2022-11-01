@@ -26,6 +26,7 @@ try:
     has_internal = False
 except ImportError:
     has_internal = True
+    metaseq_internal = None
 
 def main(get_grid, postprocess_hyperparams, args):
     def dry_run(msg):
