@@ -16,7 +16,10 @@ import os
 import subprocess
 import sys
 import time
+import shutil
+import re
 from datetime import timedelta
+
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
 import torch.distributed as dist
@@ -418,7 +421,7 @@ def validate_and_save(
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
-    # Save checkpoint
+    # Save checkpointC
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
@@ -439,6 +442,13 @@ def validate_and_save(
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
+
+
+def _checkpoint_add_directory(basename):
+    pattern = r"(checkpoint(\d+|_\d+|_last))(.*)"
+    m = re.match(pattern, basename)
+    assert m, f"checkpoint file doesn't follow pattern {pattern}"
+    return m[1], f"checkpoint{m[3]}"
 
 
 def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
@@ -469,6 +479,34 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             logger.info(
                 f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
             )
+            os.remove(filename)
+        elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
+            path, basename = os.path.split(filename)
+            checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
+            destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
+            temporary_checkpoint_dir = f"_{checkpoint_dir}"
+            try:
+                os.mkdir(
+                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
+                )
+            except FileExistsError:
+                pass  # another worker got here first
+            shutil.copyfile(
+                filename,
+                os.path.join(
+                    destination_checkpoints_dir,
+                    temporary_checkpoint_dir,
+                    checkpoint_file,
+                ),
+            )
+            torch.distributed.monitored_barrier(
+                group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
+            )
+            if distributed_utils.get_global_rank() == 0:
+                os.rename(
+                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
+                    os.path.join(destination_checkpoints_dir, checkpoint_dir),
+                )
             os.remove(filename)
         else:
             try:
@@ -505,7 +543,7 @@ def _run_evaluations(
         return
     assert eval_module is not None, "--eval-module needs to be set."
     module = importlib.import_module(eval_module)
-    if not hasattr(module, 'eval_fn'):
+    if not hasattr(module, "eval_fn"):
         raise RuntimeError(
             f"{eval_module} must have a function called eval_fn to utilize for evaluations. "
             "It expects the following signature:\n"

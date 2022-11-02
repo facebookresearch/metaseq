@@ -10,7 +10,9 @@ import logging
 import os
 import re
 import traceback
+from glob import glob
 from typing import Any, Dict, List, Optional, Tuple
+import shutil
 
 import torch
 from omegaconf import OmegaConf
@@ -228,42 +230,71 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     # TODO(susanz): fix all of this spagetti, split out logic by env
     # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
-    if (
-        cfg.cloud_upload_path
-        and cfg.cluster_env == ComputeEnvs.AZURE.value
-        and has_metaseq_internal
-    ):
-        if (
-            # --restore-file was not passed, always download latest checkpoint
-            (
-                cfg.restore_file == default_restore_file
-                and cfg.finetune_from_model is None
-            )
-            # --restore-file was passed, but we requeued, so download latest checkpoint
-            or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
-        ):
-            # download checkpoint into local save_dir
+
+    if cfg.cloud_upload_path:
+        if cfg.cloud_upload_path.startswith("nfs:"):
             checkpoint_path_to_load = os.path.join(
                 cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
             )
-            azure_utils.download_recent_ckpt(
-                cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
+            nfs_path = cfg.cloud_upload_path[4:]
+            filename = None
+            specific_restore_file_provided = cfg.restore_file != default_restore_file
+            slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            restart_from_latest = slurm_was_restarted or (
+                cfg.finetune_from_model is None and not specific_restore_file_provided
             )
-        elif (
-            # --restore-file was passed and is a blob URL, download that checkpoint
-            cfg.restore_file != default_restore_file
-            and "windows.net" in cfg.restore_file
-        ):
-            blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
-            # download checkpoint into local save_dir
-            checkpoint_path_to_load = os.path.join(
-                cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
-            )
-            azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
-        else:
-            logger.info(
-                f"Using checkpoint {checkpoint_path_to_load} even while on Azure"
-            )
+            if restart_from_latest:
+                max_checkpoint = None
+                for candidate in os.listdir(nfs_path):
+                    m = re.match(r"checkpoint_(\d+)", candidate)
+                    if m and (max_checkpoint is None or int(m[1]) > max_checkpoint):
+                        max_checkpoint = int(m[1])
+                        filename = os.path.join(
+                            nfs_path, candidate, f"checkpoint{suffix}.pt"
+                        )
+            else:
+                filename = cfg.restore_file.replace(".pt", suffix + ".pt")
+            if filename is not None:
+                logger.info(
+                    f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
+                )
+                shutil.copyfile(filename, checkpoint_path_to_load)
+            else:
+                logger.info(f"No NFS checkpoints found")
+
+        elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
+            if (
+                # --restore-file was not passed, always download latest checkpoint
+                (
+                    cfg.restore_file == default_restore_file
+                    and cfg.finetune_from_model is None
+                )
+                # --restore-file was passed, but we requeued, so download latest checkpoint
+                or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            ):
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_recent_ckpt(
+                    cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
+                )
+            elif (
+                # --restore-file was passed and is a blob URL, download that checkpoint
+                cfg.restore_file != default_restore_file
+                and "windows.net" in cfg.restore_file
+            ):
+                blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
+            else:
+                logger.info(
+                    f"Using checkpoint {checkpoint_path_to_load} even while on Azure"
+                )
+
     # RSC logic: --restore-file was passed, and we requeued
     elif (
         cfg.restore_file != default_restore_file
