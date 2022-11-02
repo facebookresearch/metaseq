@@ -23,7 +23,7 @@ from metaseq.launcher.sweep import get_env_from_args
 
 try:
     import metaseq_internal
-
+    import metaseq_internal.fb_sweep.internal as internal
     has_internal = True
 except ImportError:
     has_internal = False
@@ -411,31 +411,6 @@ def write_git_commit(train_log):
         print(git_commit.rstrip(), file=train_log_h)
 
 
-def klist(train_log):
-    with open(train_log, "a") as train_log_h:
-        try:
-            auks_output = subprocess.check_output(
-                "auks -g -C ./testcache", shell=True, encoding="utf-8"
-            )
-            print(auks_output.rstrip(), file=train_log_h)
-            klist_output = subprocess.check_output(
-                "KRB5CCNAME=./testcache klist", shell=True, encoding="utf-8"
-            )
-            print(klist_output.rstrip(), file=train_log_h)
-            train_dir = "/".join(train_log.split("/")[:-1]) + "/"
-            mv_output = subprocess.check_output(
-                f"mv testcache {train_dir}", shell=True, encoding="utf-8"
-            )
-            print(mv_output.rstrip(), file=train_log_h)
-        except subprocess.CalledProcessError as e:
-            print(
-                "command '{}' return with error (code {}): {}".format(
-                    e.cmd, e.returncode, e.output
-                ),
-                file=train_log_h,
-            )
-
-
 def dry_run_batch(env, train_log, train_stderr, sbatch_cmd_str, sbatch_cmd, dry_run):
     dry_run("start remote training")
     dry_run(f"- log stdout to: {train_log}")
@@ -565,7 +540,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             else:
                 write_git_commit(train_log)
                 if args.rsc:
-                    klist(train_log)
+                    internal.klist(train_log)
                 with open(train_log, "a") as train_log_h:
                     job_id, stdout = run_batch(env, sbatch_cmd_str, sbatch_cmd)
                     print(stdout, file=train_log_h)
