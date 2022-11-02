@@ -149,7 +149,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
-
     attn_variant: ATTN_CHOICES = field(
         default="default", metadata={"help": "variant to use for attention"}
     )
@@ -159,7 +158,12 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "help": "which memory efficient attention operation to use from xFormers."
         },
     )
-
+    recompute_fc1_num_layers: Optional[int] = field(
+        default=0,  metadata={
+            "help": "Num layers for which to recompute FC1 in backwards, "
+            "only applicable when --sequence-parallel option is set"
+        }
+    )
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
     tokens_per_sample: int = II("task.tokens_per_sample")
