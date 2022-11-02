@@ -155,20 +155,9 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "--exclusive", action="store_true", help="if set, get exclusive host"
     )
     parser.add_argument(
-        "--dep",
-        metavar="JOBID",
-        type=int,
-        help="add JOBID as a dependency (i.e., wait for it to finish)",
-    )
-    parser.add_argument(
-        "--sequential", action="store_true", help="schedule jobs to run sequentially"
-    )
-    parser.add_argument(
         "--time", default="4320", help="expected job duration in minutes"
     )
     parser.add_argument("--mem", "--mem", help="memory to request")
-    parser.add_argument("--container-image")
-    parser.add_argument("--container-save")
     parser.add_argument(
         "--constraint",
         metavar="CONSTRAINT",

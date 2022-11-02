@@ -279,19 +279,6 @@ def gen_srun_command_and_str(
         ]
         base_srun_cmd += ["-x", excluded_hosts] if excluded_hosts is not None else []
         base_srun_cmd += ["-w", included_hosts] if included_hosts is not None else []
-    if args.container_image is not None:
-        # e.g., --container-image=nvcr.io/nvidia/pytorch:21.03-py3
-        base_srun_cmd += ["--container-image", args.container_image]
-        # hardcoded for Azure
-        base_srun_cmd += [
-            "--container-mounts",
-            f"/nfs2:/nfs2,/mnt:/mnt,/sys:/sys,/usr/local/bin:/usr/local/bin,{os.getcwd()}:/workspace",
-        ]
-        assert (
-            not args.snapshot_code
-        ), "--snapshot-code is not supported on Azure when using containers"
-        if args.container_save is not None:
-            base_srun_cmd += ["--container-save", args.container_save]
 
     srun_cmd = base_srun_cmd + train_cmd
     srun_cmd_str = " ".join(map(shlex.quote, srun_cmd))
@@ -365,9 +352,6 @@ def gen_sbatch_command_and_str(
             "--comment",
             f"OSS Code Location: {oss_destination} Internal Code Location: {internal_destination}",
         ]
-
-    if args.dep is not None:
-        sbatch_cmd.extend(["-d", str(args.dep)])
     if args.time is not None:
         sbatch_cmd.extend(["--time", args.time])
     if args.mem is not None:
@@ -587,10 +571,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
                     print(stdout, file=train_log_h)
         if job_id is not None:
             print("Launched {}".format(job_id))
-        if args.sequential and not args.local and job_id is not None:
-            args.dep = job_id
-
-        if hasattr(args, "tombstonable") and has_internal:
+        if hasattr(args, "tombstonable"):
             if args.tombstonable:
                 tombstones(job_id=job_id)
 
