@@ -11,8 +11,16 @@ import torch
 from torch import Tensor, nn
 
 from metaseq import utils
+from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
+
+try:
+    import xformers.ops as xops
+
+    has_xformers = True
+except (ImportError, ModuleNotFoundError):
+    has_xformers = False
 
 try:
     from megatron.mpu import (
@@ -60,6 +68,8 @@ class ModelParallelMultiheadAttention(nn.Module):
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
+        attn_variant=False,
+        xf_attn_op=None,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -260,6 +270,17 @@ class ModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
+        self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        self.xf_op = None
+        if self.xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+        if self.xf_eff_attn and xf_attn_op is not None:
+            try:
+                self.xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
 
     def forward(
         self,
@@ -318,7 +339,28 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if CHANGES:
+        if self.xf_eff_attn:
+            q = q.view(
+                tgt_len, bsz * self.num_heads_partition, self.head_dim
+            ).transpose(0, 1)
+            if k is not None:
+                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim).transpose(
+                    0, 1
+                )
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            attn = xops.memory_efficient_attention(
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                op=self.xf_op,
+            )
+        elif CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
@@ -503,8 +545,11 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
-        # logger.info("attn:" + str(attn.float().norm().item()))
+
+        if not self.xf_eff_attn:
+            attn = torch.bmm(attn_probs, v)
+            # logger.info("attn:" + str(attn.float().norm().item()))
+
         assert list(attn.size()) == [
             bsz * self.num_heads_partition,
             tgt_len,

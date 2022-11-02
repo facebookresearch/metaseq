@@ -51,7 +51,7 @@ jobs:
         pip install --upgrade pip
         pip install --upgrade setuptools
 
-    - name: Install Fairscale From Source
+    - name: Install Fairscale and xFormers From Source
       shell: bash -l {0}
       run: |
         conda activate metaseq
@@ -61,6 +61,12 @@ jobs:
         git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
         pip install .
         cd ~/
+        git clone https://github.com/facebookresearch/xformers.git
+        cd xformers
+        git submodule update --init --recursive
+        pip install .
+        cd ~/
+
 
     - name: Install Repository
       shell: bash -l {0}
