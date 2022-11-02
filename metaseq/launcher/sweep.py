@@ -12,9 +12,19 @@ from urllib.parse import urlparse
 
 try:
     # internal logic denoting where data locations are
-    from metaseq_internal.constants import ComputeEnvs
+    from metaseq_internal.constants import (
+        ComputeEnvs,
+        DEFAULT_PARTITION,
+        DEFAULT_PREFIX,
+        DEFAULT_CPU_PER_TASK,
+    )
 except ImportError:
-    from metaseq.launcher.opt_job_constants import ComputeEnvs
+    from metaseq.launcher.opt_job_constants import (
+        ComputeEnvs,
+        DEFAULT_PARTITION,
+        DEFAULT_PREFIX,
+        DEFAULT_CPU_PER_TASK,
+    )
 
 
 class hyperparam(object):
@@ -270,21 +280,8 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
 
 def _modify_arg_defaults_based_on_env(env, args):
     # TODO(susan): move all this default logic into separate config file
-    default_partition = None
-    if env == ComputeEnvs.FAIR:
-        default_partition = "learnfair"
-    elif env == ComputeEnvs.RSC:
-        default_partition = "learn"
-
-    default_prefix = ""
-    if env == ComputeEnvs.AZURE:
-        default_prefix = "/shared/home"
-    elif env == ComputeEnvs.AWS:
-        default_prefix = "/checkpoints"
-    elif env == ComputeEnvs.FAIR:
-        default_prefix = "/checkpoint"
-    elif env == ComputeEnvs.RSC:
-        default_prefix = "/checkpoint/zetta"
+    default_partition = DEFAULT_PARTITION[env]
+    default_prefix = DEFAULT_PREFIX[env]
 
     if env == ComputeEnvs.FAIR or env == ComputeEnvs.RSC:
         default_checkpoint_dir = os.path.join(
@@ -298,13 +295,7 @@ def _modify_arg_defaults_based_on_env(env, args):
             str(datetime.date.today()),
         )
 
-    default_cpu_per_task = None
-    if env == ComputeEnvs.AZURE or env == ComputeEnvs.AWS:
-        default_cpu_per_task = 12
-    elif env == ComputeEnvs.FAIR:
-        default_cpu_per_task = 10
-    elif env == ComputeEnvs.RSC:
-        default_cpu_per_task = 32
+    default_cpu_per_task = DEFAULT_CPU_PER_TASK[env]
 
     default_cpu_bind = "none"
     if env == ComputeEnvs.AZURE:
