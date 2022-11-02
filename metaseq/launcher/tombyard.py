@@ -8,6 +8,33 @@ import datetime
 import os
 import time
 
+JOB_STATE_CODES = [
+    "BOOT_FAIL",
+    "CANCELLED",
+    "COMPLETED",
+    "CONFIGURING",
+    "COMPLETING",
+    "DEADLINE",
+    "FAILED",
+    "NODE_FAIL",
+    "OUT_OF_MEMORY",
+    "PENDING",
+    "PREEMPTED",
+    "RUNNING",
+    "RESV_DEL_HOLD",
+    "REQUEUE_FED",
+    "REQUEUE_HOLD",
+    "REQUEUED",
+    "RESIZING",
+    "REVOKED",
+    "SIGNALING",
+    "SPECIAL_EXIT",
+    "STAGE_OUT",
+    "STOPPED",
+    "SUSPENDED",
+    "TIMEOUT",
+]
+
 
 def tombstones_procedure(
     job_id,
@@ -15,33 +42,6 @@ def tombstones_procedure(
     period_before_tombstone_detected=datetime.timedelta(seconds=60),
     period_after_tombstone_detected=datetime.timedelta(seconds=3),
 ):
-
-    job_state_codes = [
-        "BOOT_FAIL",
-        "CANCELLED",
-        "COMPLETED",
-        "CONFIGURING",
-        "COMPLETING",
-        "DEADLINE",
-        "FAILED",
-        "NODE_FAIL",
-        "OUT_OF_MEMORY",
-        "PENDING",
-        "PREEMPTED",
-        "RUNNING",
-        "RESV_DEL_HOLD",
-        "REQUEUE_FED",
-        "REQUEUE_HOLD",
-        "REQUEUED",
-        "RESIZING",
-        "REVOKED",
-        "SIGNALING",
-        "SPECIAL_EXIT",
-        "STAGE_OUT",
-        "STOPPED",
-        "SUSPENDED",
-        "TIMEOUT",
-    ]
 
     tombstone_detected = False
     period = period_before_tombstone_detected
@@ -51,7 +51,7 @@ def tombstones_procedure(
         status = sacct_result.strip()
         if tombstone_detected:
             print(f".. scanceling the job and its current squeue.state is {status}")
-        if status not in job_state_codes:
+        if status not in JOB_STATE_CODES:
             print(f"Done scanceling the job. Its squeue.state now is: {status}")
             return
         if not tombstone_detected:
