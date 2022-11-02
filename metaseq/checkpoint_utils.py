@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import traceback
-from glob import glob
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
 
@@ -246,6 +245,10 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             if restart_from_latest:
                 max_checkpoint = None
                 for candidate in os.listdir(nfs_path):
+                    if candidate == "checkpoint_last":
+                        raise RuntimeError(
+                            "trying to restart a job that already wrote checkpoint_last"
+                        )
                     m = re.match(r"checkpoint_(\d+)", candidate)
                     if m and (max_checkpoint is None or int(m[1]) > max_checkpoint):
                         max_checkpoint = int(m[1])
