@@ -493,6 +493,24 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
+    eval_module: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Python module that is dinamically imported to run evaluations. It must have an eval_fn method."
+                "Required args for eval_fn:"
+                "1. First one contains the cloud upload path."
+                "2. Second one contains the filename of the checkpoints in the cloud"
+            )
+        },
+    )
+    evaluate_interval_updates: int = field(
+        default=0, metadata={"help": "run eval_fn from eval_module every N updates"}
+    )
+    evaluate_last_checkpoint: bool = field(
+        default=False,
+        metadata={"help": "run the eval_fn from eval_module at the end of the training run"},
+    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
