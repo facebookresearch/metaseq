@@ -293,7 +293,7 @@ def _modify_arg_defaults_based_on_env(env, args):
     elif env == ComputeEnvs.FAIR:
         default_prefix = "/checkpoint"
     elif env == ComputeEnvs.RSC:
-        default_prefix = "/checkpoint/xlmg"
+        default_prefix = "/checkpoint/zetta"
 
     if env == ComputeEnvs.FAIR or env == ComputeEnvs.RSC:
         default_checkpoint_dir = os.path.join(
