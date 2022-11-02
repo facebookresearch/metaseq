@@ -11,7 +11,7 @@ from typing import Optional
 
 from omegaconf import II
 
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
@@ -43,12 +43,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
-    )
-    decoder_output_dim: int = field(
-        default=512, metadata={"help": "decoder output dimension"}
-    )
-    decoder_input_dim: int = field(
-        default=512, metadata={"help": "decoder input dimension"}
     )
     decoder_ffn_embed_dim: int = field(
         default=2048, metadata={"help": "decoder embedding dimension for FFN"}
@@ -132,6 +126,12 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "Exact same init as Megatron"},
     )
+    full_megatron_init_scalar: float = field(
+        default=1.0,
+        metadata={
+            "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
+        },
+    )
     megatron_init_sigma: float = field(
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
@@ -148,6 +148,16 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
+    )
+
+    attn_variant: ATTN_CHOICES = field(
+        default="default", metadata={"help": "variant to use for attention"}
+    )
+    xf_attn_op: str = field(
+        default="None",
+        metadata={
+            "help": "which memory efficient attention operation to use from xFormers."
+        },
     )
 
     # options from other parts of the config
@@ -180,7 +190,7 @@ class TransformerLanguageModel(LanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         decoder = TransformerDecoder(
             args,
@@ -218,12 +228,6 @@ def base_lm_architecture(args):
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
     )
-
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)

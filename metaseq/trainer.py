@@ -582,6 +582,7 @@ class Trainer(object):
                 not self.cfg.optimization.train_with_epoch_remainder_batch
             ),
         )
+        logger.info("finished creating batch iterator")
         self.reset_dummy_batch(batch_iterator.first_batch)
         return batch_iterator
 
@@ -646,6 +647,12 @@ class Trainer(object):
         # forward and backward pass
         logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
+            if (
+                self.get_num_updates() == 0
+                and i == 0
+                and distributed_utils.get_global_rank() == 0
+            ):
+                logger.info(f"First batch on first rank: " + str(sample))
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             def maybe_no_sync():
@@ -720,34 +727,31 @@ class Trainer(object):
         overflow = False
         logger.debug(f"[{self.get_num_updates()}] done with fwd, bwd")
         try:
-            with torch.autograd.profiler.record_function("reduce-grads"):
-                # reduce gradients across workers
-                self.optimizer.all_reduce_grads(self.model)
-                if utils.has_parameters(self.criterion):
-                    self.optimizer.all_reduce_grads(self.criterion)
+            # reduce gradients across workers
+            self.optimizer.all_reduce_grads(self.model)
+            if utils.has_parameters(self.criterion):
+                self.optimizer.all_reduce_grads(self.criterion)
 
-            with torch.autograd.profiler.record_function("multiply-grads"):
-                # multiply gradients by (data_parallel_size / sample_size) since
-                # DDP normalizes by the number of data parallel workers for
-                # improved fp16 precision.
-                # Thus we get (sum_of_gradients / sample_size) at the end.
-                # In case of fp16, this step also undoes loss scaling.
-                # (Debugging note: Some optimizers perform this scaling on the
-                # fly, so inspecting model.parameters() or optimizer.params may
-                # still show the original, unscaled gradients.)
-                numer = self.data_parallel_world_size if self._sync_stats() else 1
-                self.optimizer.multiply_grads(numer / (sample_size or 1.0))
-                # Note: (sample_size or 1.0) handles the case of a zero gradient, in a
-                # way that avoids CPU/device transfers in case sample_size is a GPU or
-                # TPU object. The assumption is that the gradient itself is also 0.
+            # multiply gradients by (data_parallel_size / sample_size) since
+            # DDP normalizes by the number of data parallel workers for
+            # improved fp16 precision.
+            # Thus we get (sum_of_gradients / sample_size) at the end.
+            # In case of fp16, this step also undoes loss scaling.
+            # (Debugging note: Some optimizers perform this scaling on the
+            # fly, so inspecting model.parameters() or optimizer.params may
+            # still show the original, unscaled gradients.)
+            numer = self.data_parallel_world_size if self._sync_stats() else 1
+            self.optimizer.multiply_grads(numer / (sample_size or 1.0))
+            # Note: (sample_size or 1.0) handles the case of a zero gradient, in a
+            # way that avoids CPU/device transfers in case sample_size is a GPU or
+            # TPU object. The assumption is that the gradient itself is also 0.
 
-            with torch.autograd.profiler.record_function("clip-grads"):
-                # clip grads
-                grad_norm = self.clip_grad_norm(
-                    self.cfg.optimization.clip_norm,
-                    self.cfg.optimization.clip_norm_type,
-                    self.cfg.optimization.skip_gradient_update_on_clip_norm,
-                )
+            # clip grads
+            grad_norm = self.clip_grad_norm(
+                self.cfg.optimization.clip_norm,
+                self.cfg.optimization.clip_norm_type,
+                self.cfg.optimization.skip_gradient_update_on_clip_norm,
+            )
 
             # check that grad norms are consistent across workers
             self._check_grad_norms(grad_norm)
@@ -755,11 +759,10 @@ class Trainer(object):
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
 
-            with torch.autograd.profiler.record_function("optimizer"):
-                # take an optimization step
-                self.task.optimizer_step(
-                    self.optimizer, model=self.model, update_num=self.get_num_updates()
-                )
+            # take an optimization step
+            self.task.optimizer_step(
+                self.optimizer, model=self.model, update_num=self.get_num_updates()
+            )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
         except FloatingPointError:

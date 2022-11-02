@@ -47,11 +47,13 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
-logger = logging.getLogger("metaseq_cli.train")
+logger = logging.getLogger("metaseq.cli.train")
 
 
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
+
+    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
     if distributed_utils.is_master(cfg.distributed_training):
         # save a (vaguely human readable) copy of the training config
@@ -79,23 +81,11 @@ def main(cfg: DictConfig) -> None:
     np.random.seed(cfg.common.seed)
     utils.set_torch_seed(cfg.common.seed)
 
-    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
-
     # Print nvidia smi stats
     logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
 
     # Print args
     logger.info(cfg)
-
-    if cfg.checkpoint.write_checkpoints_asynchronously:
-        try:
-            import iopath  # noqa: F401
-        except ImportError:
-            logging.exception(
-                "Asynchronous checkpoint writing is specified but iopath is "
-                "not installed: `pip install iopath`"
-            )
-            return
 
     # Setup task, e.g., translation, language modeling, etc.
     task = tasks.setup_task(cfg.task)
@@ -189,14 +179,13 @@ def main(cfg: DictConfig) -> None:
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
-    # ioPath implementation to wait for all asynchronous file writes to complete.
+    # Wait for all asynchronous file writes to complete.
     if cfg.checkpoint.write_checkpoints_asynchronously:
         logger.info(
-            "ioPath PathManager waiting for all asynchronous checkpoint "
-            "writes to finish."
+            "PathManager waiting for all asynchronous checkpoint writes to finish."
         )
         PathManager.async_close()
-        logger.info("ioPath PathManager finished waiting.")
+        logger.info("PathManager finished waiting.")
 
 
 def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
@@ -293,9 +282,7 @@ def train(
         i,
         samples,
     ):
-        with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
-            "train_step-%d" % i
-        ):
+        with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
             log_output = trainer.train_step(samples)
@@ -325,11 +312,7 @@ def train(
         return valid_losses, should_stop
 
     for i, samples in enumerate(progress):
-        if (
-            distributed_utils.get_global_rank() == 0
-            and cfg.common.new_profiler
-            and i == 5
-        ):
+        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
             logger.info("STARTING PROFILER")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
@@ -337,7 +320,7 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
@@ -476,7 +459,7 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
                 filename,
                 cfg.checkpoint.cloud_upload_path,
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if res.returncode != 0:
                 print("Error: {}, azcopy failed".format(res.returncode))
                 print("Azcopy stdout = {}".format(res.stdout))
@@ -532,6 +515,10 @@ def _run_evaluations(
     logger.info(f"Kicking off eval_fn from: {module}")
     module.eval_fn(cloud_upload_path, checkpoint_name)
     logger.info(f"Successfully ran evaluation")
+
+
+def _run_azcopy(cmd, stdout, stderr):
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def get_training_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
@@ -659,12 +646,7 @@ def cli_main(
             f"Started plasma server pid {server.server.pid} {cfg.common.plasma_path}"
         )
 
-    if args.profile:
-        with torch.cuda.profiler.profile():
-            with torch.autograd.profiler.emit_nvtx():
-                distributed_utils.call_main(cfg, main)
-    else:
-        distributed_utils.call_main(cfg, main)
+    distributed_utils.call_main(cfg, main)
 
 
 if __name__ == "__main__":

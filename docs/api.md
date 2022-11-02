@@ -33,7 +33,7 @@ properly ended on an interrupt.
 ```bash
 srun --ntasks-per-node 1 --gpus-per-node $MODEL_PARALLEL --nodes 1 --cpus-per-task 8 --mem 400gb \
     --quit-on-interrupt --job-name genwork \
-    python3 -m metaseq_cli.interactive_hosted
+    python3 -m metaseq.cli.interactive_hosted
 ```
 
 ## FAQ

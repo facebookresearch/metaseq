@@ -15,7 +15,7 @@ from typing import Any, Dict, IO, List, Optional, Tuple, Union
 import boto3
 import botocore
 from boto3.s3.transfer import TransferConfig
-from iopath.common.file_io import file_lock, get_cache_dir, PathHandler
+from metaseq.file_io.common import file_lock, get_cache_dir, PathHandler
 
 logger = logging.getLogger(__name__)
 

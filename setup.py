@@ -147,7 +147,6 @@ def do_setup(package_data):
             "fire",
             "flask==2.1.1",  # for api
             "hydra-core>=1.1.0,<1.2",
-            "iopath",
             "ipdb",
             "ipython",
             "Jinja2==3.1.1",  # for evals
@@ -157,6 +156,7 @@ def do_setup(package_data):
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf<=2.1.1",
+            "portalocker>=2.5",
             "pre-commit",
             "pytest",
             "pytest-regressions",
@@ -188,6 +188,7 @@ def do_setup(package_data):
                 "transformers",
                 "pyarrow",
                 "boto3",
+                "pandas",
             ]
         },
         package_data=package_data,
@@ -195,10 +196,10 @@ def do_setup(package_data):
         test_suite="tests",
         entry_points={
             "console_scripts": [
-                "metaseq-train = metaseq_cli.train:cli_main",
-                "metaseq-validate = metaseq_cli.validate:cli_main",
+                "metaseq-train = metaseq.cli.train:cli_main",
+                "metaseq-validate = metaseq.cli.validate:cli_main",
                 "opt-baselines = metaseq.launcher.opt_baselines:cli_main",
-                "metaseq-api-local = metaseq_cli.interactive_hosted:cli_main",
+                "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
         cmdclass=cmdclass,

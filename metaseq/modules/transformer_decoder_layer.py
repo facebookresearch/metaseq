@@ -44,14 +44,12 @@ class TransformerDecoderLayer(nn.Module):
         self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
         )
-
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -72,6 +70,7 @@ class TransformerDecoderLayer(nn.Module):
         activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
         self.skip_bias_add = (activation_fn_name == "gelu") and has_fused_bias_gelu
 
+        # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
             "initialize_params_on_gpu": initialize_params_on_gpu,
             "full_megatron_init": getattr(args, "full_megatron_init", False),
@@ -79,6 +78,8 @@ class TransformerDecoderLayer(nn.Module):
             "dtype": utils.get_model_init_dtype(args),
             "disable_bias": getattr(args, "disable_bias", False),
         }
+
+        # Note: ModelParallelTransformerDecoderLayer overrides build_fc1.
         self.fc1 = self.build_fc1(
             self.embed_dim,
             ffn_dim,
@@ -93,11 +94,13 @@ class TransformerDecoderLayer(nn.Module):
             **fc1_kwargs,
         )
 
+        # Note: ModelParallelTransformerDecoderLayer overrides build_fc2.
         self.fc2 = self.build_fc2(
             ffn_dim,
             self.embed_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
@@ -106,8 +109,6 @@ class TransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
-
-        self.onnx_trace = False
         self.args = args
 
     # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
@@ -155,7 +156,7 @@ class TransformerDecoderLayer(nn.Module):
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
@@ -167,12 +168,6 @@ class TransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
         )
 
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True
-
-    def residual_connection(self, x, residual):
-        return residual + x
-
     def forward_attention(
         self,
         query,
@@ -181,20 +176,19 @@ class TransformerDecoderLayer(nn.Module):
         residual,
         key_padding_mask=None,
         incremental_state=None,
-        need_weights=False,
         attn_mask=None,
     ):
-        x, attn = self.self_attn(
+        x, _ = self.self_attn(
             query=query,
             key=key,
             value=value,
             key_padding_mask=key_padding_mask,
             incremental_state=incremental_state,
-            need_weights=need_weights,
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
-        return self.residual_connection(x, residual), attn
+        x = residual + x
+        return x
 
     def forward(
         self,
@@ -213,14 +207,13 @@ class TransformerDecoderLayer(nn.Module):
 
         residual = x
         x = self.self_attn_layer_norm(x)
-        x, attn = self.forward_attention(
+        x = self.forward_attention(
             query=x,
             key=x,
             value=x,
             residual=residual,
             key_padding_mask=self_attn_padding_mask,
             incremental_state=incremental_state,
-            need_weights=False,
             attn_mask=self_attn_mask,
         )
         residual = x
@@ -232,21 +225,8 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        l_aux = None
-        x = self.residual_connection(x, residual)
-        if self.onnx_trace and incremental_state is not None:
-            saved_state = self.self_attn._get_input_buffer(incremental_state)
-            assert saved_state is not None
-            if self_attn_padding_mask is not None:
-                self_attn_state = [
-                    saved_state["prev_key"],
-                    saved_state["prev_value"],
-                    saved_state["prev_key_padding_mask"],
-                ]
-            else:
-                self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
-        return x, attn, None, l_aux
+        x = residual + x
+        return x
 
     def make_generation_fast_(self, **kwargs):
         pass

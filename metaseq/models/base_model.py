@@ -60,18 +60,6 @@ class BaseModel(nn.Module):
         log_probs: bool,
     ):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(net_output, log_probs)
-
-    # TorchScript doesn't support super() method so that the scriptable Subclass
-    # can't access the base class model in Torchscript.
-    # Current workaround is to add a helper function with different name and
-    # call the helper function from scriptable Subclass.
-    def get_normalized_probs_scriptable(
-        self,
-        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-        log_probs: bool,
-    ):
-        """Scriptable helper function for get_normalized_probs in ~BaseModel"""
         if hasattr(self, "decoder"):
             return self.decoder.get_normalized_probs(net_output, log_probs)
         elif torch.is_tensor(net_output):
@@ -152,64 +140,16 @@ class BaseModel(nn.Module):
         self.eval()
         self.train = train
 
-    def prepare_for_onnx_export_(self, **kwargs):
-        """Make model exportable via ONNX trace."""
-        seen = set()
-
-        def apply_prepare_for_onnx_export_(module):
-            if (
-                module != self
-                and hasattr(module, "prepare_for_onnx_export_")
-                and module not in seen
-            ):
-                seen.add(module)
-                module.prepare_for_onnx_export_(**kwargs)
-
-        self.apply(apply_prepare_for_onnx_export_)
-
     @classmethod
     def from_pretrained(
         cls,
         model_name_or_path,
         checkpoint_file="model.pt",
         data_name_or_path=".",
-        moe_disable_padding=True,
         skip_prepare_for_inference=False,
         **kwargs,
     ):
-        """
-        Load from a pre-trained model file. Downloads and caches the pre-trained
-        model file if needed.
-        The base implementation returns a
-        :class:`~metaseq.hub_utils.GeneratorHubInterface`, which can be used to
-        generate translations or sample from language models.
-        Other models may override this to implement custom hub interfaces.
-        Args:
-            model_name_or_path (str): either the name of a pre-trained model to
-                load or a path/URL to a pre-trained model state dict
-            checkpoint_file (str, optional): colon-separated list of checkpoint
-                files in the model archive to ensemble (default: 'model.pt')
-            data_name_or_path (str, optional): point args.data to the archive
-                at the given path/URL. Can start with '.' or './' to reuse the
-                model archive path.
-        """
-        from metaseq import hub_utils
-
-        x = hub_utils.from_pretrained(
-            model_name_or_path,
-            checkpoint_file,
-            data_name_or_path,
-            archive_map=cls.hub_models(),
-            **kwargs,
-        )
-        logger.info(x["args"])
-        return hub_utils.GeneratorHubInterface(
-            x["args"],
-            x["task"],
-            x["models"],
-            moe_disable_padding=moe_disable_padding,
-            skip_prepare_for_inference=skip_prepare_for_inference,
-        )
+        raise NotImplementedError
 
     @classmethod
     def hub_models(cls):

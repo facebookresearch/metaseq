@@ -6,7 +6,7 @@
 """
 Host the demo.
 
-Launch with `python -m metaseq_cli.interactive_hosted` to run locally.
+Launch with `python -m metaseq.cli.interactive_hosted` to run locally.
 
 See docs/api.md for more information.
 """
@@ -23,11 +23,18 @@ from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
-from metaseq.service.constants import (
-    TOTAL_WORLD_SIZE,
-    LAUNCH_ARGS,
-)
 from metaseq.service.utils import build_logger
+
+import importlib
+
+if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
+    constants_module = importlib.import_module("metaseq.service.constants")
+else:
+    constants_module = importlib.import_module(
+        os.environ["METASEQ_SERVICE_CONSTANTS_MODULE"]
+    )
+TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
+LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 
 logger = build_logger()
 
@@ -112,4 +119,14 @@ def cli_main():
 
 
 if __name__ == "__main__":
+    if os.getenv("SLURM_NODEID") is None:
+        logger.warning(
+            f"Missing slurm configuration, defaulting to 'use entire node' for API"
+        )
+        os.environ["SLURM_NODEID"] = "0"
+        os.environ["SLURM_NNODES"] = "1"
+        os.environ["SLURM_NTASKS"] = "1"
+        import socket
+
+        os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()
     cli_main()

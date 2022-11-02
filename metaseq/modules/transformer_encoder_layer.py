@@ -51,9 +51,6 @@ class TransformerEncoderLayer(nn.Module):
             self_attention=True,
         )
 
-    def residual_connection(self, x, residual):
-        return residual + x
-
     def forward(
         self,
         x,
@@ -89,12 +86,11 @@ class TransformerEncoderLayer(nn.Module):
             key=x,
             value=x,
             key_padding_mask=encoder_padding_mask,
-            need_weights=False,
             attn_mask=attn_mask,
         )
 
         x = self.dropout_module(x)
-        x = self.residual_connection(x, residual)
+        x = residual + x
 
         residual = x
         x = self.final_layer_norm(x)
@@ -105,6 +101,5 @@ class TransformerEncoderLayer(nn.Module):
             self.fc2,
             self.dropout_module,
         )
-        l_aux = None
-        x = self.residual_connection(x, residual)
-        return x, l_aux
+        x = residual + x
+        return x

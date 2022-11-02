@@ -6,7 +6,7 @@
 """
 Host the demo.
 
-Launch with `python -m metaseq_cli.interactive_hosted` to run locally.
+Launch with `python -m metaseq.cli.interactive_hosted` to run locally.
 
 See docs/api.md for more information.
 """
@@ -29,17 +29,27 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.queue import PriorityQueueRingShard
 from metaseq.service.workers import WorkItem
-from metaseq.service.constants import (
-    MAX_SEQ_LEN,
-    MAX_BATCH_TOKENS,
-    MAX_BEAM,
-    DEFAULT_PORT,
-    TOTAL_WORLD_SIZE,
-    LAUNCH_ARGS,
-)
 from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
+import importlib
+
+if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
+    constants_module = importlib.import_module("metaseq.service.constants")
+else:
+    constants_module = importlib.import_module(
+        os.environ["METASEQ_SERVICE_CONSTANTS_MODULE"]
+    )
+    # Don't forget to patch OAIResponse
+    import metaseq.service.responses
+
+    metaseq.service.responses.CHECKPOINT_FOLDER = constants_module.CHECKPOINT_FOLDER
+MAX_SEQ_LEN = constants_module.MAX_SEQ_LEN
+MAX_BATCH_TOKENS = constants_module.MAX_BATCH_TOKENS
+MAX_BEAM = constants_module.MAX_BEAM
+DEFAULT_PORT = constants_module.DEFAULT_PORT
+TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
+LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 
 app = Flask(__name__)
 
@@ -96,7 +106,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
             # fit the max sequence length
             max_prompt_len = max(x.prompt_len for x in [item] + batch)
             max_gen_len = max(x.gen_len for x in [item] + batch)
-            overflow = max_prompt_len + max_gen_len < MAX_SEQ_LEN
+            overflow = (max_prompt_len + max_gen_len) > MAX_SEQ_LEN
             if batch and (batch_cost > max_tokens or overflow):
                 # we're over budget, put it back in the queue
                 target_queue.put(item)

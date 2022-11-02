@@ -46,7 +46,7 @@ install_dep_fused_ops: &install_dep_fused_ops
           cd ~/
         fi
         if ! python -c 'import megatron_lm'; then
-          git clone --depth=1 --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
+          git clone --depth=1 --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
           cd Megatron-LM
           pip install -r requirements.txt
           pip install -e .

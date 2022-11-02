@@ -11,10 +11,11 @@ from typing import Any, Callable, Dict, List
 import torch
 from omegaconf import DictConfig
 
-from metaseq import metrics, tokenizer
+from metaseq import metrics
 from metaseq.data import Dictionary, BaseDataset, data_utils, encoders, iterators
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.dataclass.utils import gen_parser_from_dataclass
+from metaseq.utils import tokenize_line
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +115,7 @@ class BaseTask(object):
         """
         d = Dictionary()
         for filename in filenames:
-            Dictionary.add_file_to_dictionary(
-                filename, d, tokenizer.tokenize_line, workers
-            )
+            Dictionary.add_file_to_dictionary(filename, d, tokenize_line, workers)
         d.finalize(threshold=threshold, nwords=nwords, padding_factor=padding_factor)
         return d
 
@@ -339,15 +338,6 @@ class BaseTask(object):
     def build_generator(
         self, models, args, seq_gen_cls=None, extra_gen_cls_kwargs=None
     ):
-
-        if getattr(args, "score_reference", False):
-            from metaseq.sequence_scorer import SequenceScorer
-
-            return SequenceScorer(
-                self.target_dictionary,
-                compute_vocab_dist=getattr(args, "compute_vocab_dist", False),
-            )
-
         from metaseq.sequence_generator import SequenceGenerator
 
         # Choose search strategy.
@@ -401,12 +391,20 @@ class BaseTask(object):
         """
         model.train()
         model.set_num_updates(update_num)
-        with torch.autograd.profiler.record_function("forward"):
-            loss, sample_size, logging_output = criterion(model, sample)
+        if update_num == 0:
+            logger.info(
+                "Starting first forward pass and waiting for dataloader in other ranks"
+            )
+        # forward
+        loss, sample_size, logging_output = criterion(model, sample)
         if ignore_grad:
             loss *= 0
-        with torch.autograd.profiler.record_function("backward"):
-            optimizer.backward(loss)
+        if update_num == 0:
+            logger.info("Starting backward pass")
+        # backward
+        optimizer.backward(loss)
+        if update_num == 0:
+            logger.info("Finished first backward pass")
         return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
