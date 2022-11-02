@@ -509,7 +509,9 @@ class CheckpointConfig(MetaseqDataclass):
     )
     evaluate_last_checkpoint: bool = field(
         default=False,
-        metadata={"help": "run the eval_fn from eval_module at the end of the training run"},
+        metadata={
+            "help": "run the eval_fn from eval_module at the end of the training run"
+        },
     )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
