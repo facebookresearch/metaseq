@@ -10,6 +10,7 @@ Train a new model on one or across multiple GPUs.
 import argparse
 import functools
 import logging
+import importlib
 import math
 import os
 import subprocess
@@ -502,7 +503,7 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
 
         if do_evaluate:
             _run_evaluations(
-                cfg.checkpoint.eval_command,
+                cfg.checkpoint.eval_module,
                 cfg.checkpoint.cloud_upload_path,
                 filename,
                 **eval_kwargs,
@@ -510,7 +511,7 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
 
 
 def _run_evaluations(
-    eval_cmd, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg
+    eval_module, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg
 ):
     # Make sure all ranks have finished uploading checkpoints.
     # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
@@ -519,25 +520,13 @@ def _run_evaluations(
     # Run evals on rank 0
     if distributed_utils.get_global_rank() != 0:
         return
-    assert eval_cmd is not None, "--eval-command needs to be set."
-    cmd = eval_cmd.split()
+    assert eval_module is not None, "--eval-module needs to be set."
+    module = importlib.import_module(eval_module)
     checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
-    # The evals command must accept these two args and properly merge the cloud path
+    # The module must have an eval_fn that accepts these two args and properly merge the cloud path
     # with the checkpoint name.
-    cmd.extend(
-        [
-            "--model-cloud-path",
-            cloud_upload_path,
-            "--model-cloud-filename",
-            checkpoint_name,
-        ]
-    )
-    logger.info(f"Kicking off evaluation cmd: {cmd}")
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if res.returncode != 0:
-        print("Error: {}, evaluation failed".format(res.returncode))
-        print("Evaluation stdout = {}".format(res.stdout))
-        sys.exit(1)
+    logger.info(f"Kicking off eval_fn from: {module}")
+    module.eval_fn(cloud_upload_path, checkpoint_name)
     logger.info(f"Successfully ran evaluation")
 
 
