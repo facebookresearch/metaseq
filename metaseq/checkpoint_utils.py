@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from omegaconf import OmegaConf
@@ -326,7 +326,7 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
     return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
-def _cache_checkpoint_files(path: str, suffix: str) -> List[str]:
+def _cache_checkpoint_files(path: str, suffix: str) -> Tuple[str, List[str]]:
     """
     Given a checkpoint path, first try to expand it according to
     a specified filename pattern. If `path` doesn't match the pattern
@@ -349,43 +349,42 @@ def _cache_checkpoint_files(path: str, suffix: str) -> List[str]:
         Output: []
     """
 
+    local_path = PathManager.get_local_path(path, force=True)
+    local_name = os.path.basename(local_path)
+
     # Ex. 2: if `path` doesn't match the pattern suggested by suffix
     # just return the path itself without expansion
     path_prefix = re.sub(rf"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
     if path == path_prefix:
-        local_path = PathManager.get_local_path(path)
-        return [local_path]
+        return local_path, [local_path]
 
     local_paths = []
     for filepath in PathManager.ls(path_prefix):
         # Ignore non-checkpoint files
         if not filepath.endswith(".pt"):
             continue
-        src_dir = os.path.dirname(path)
-        src_path = os.path.join(src_dir, os.path.basename(filepath))
-        # Cached versions of remote files that are periodically
-        # updated/overwritten may be stale (ex: checkpoint_last.pt)
-        # Pass force=True to ensure we get the latest
-        local_path = PathManager.get_local_path(src_path, force=True)
-        local_paths.append(local_path)
+        src_name = os.path.basename(filepath)
+        if src_name == local_name:
+            continue
+        src_path = os.path.join(os.path.dirname(path), src_name)
+        tgt_path = PathManager.get_local_path(src_path, force=True)
+        local_paths.append(tgt_path)
 
-    return local_paths
+    return local_path, local_paths
 
 
 def get_paths_to_load(path, suffix="rank-"):
-    checkpoint_files = _cache_checkpoint_files(path, suffix)
+    local_path, checkpoint_files = _cache_checkpoint_files(path, suffix)
     checkpoint_files_count = len(checkpoint_files)
 
     # Check if this looks like a sharded checkpoint
     if not _is_checkpoint_sharded(checkpoint_files):
-        assert checkpoint_files_count == 1, ", ".join(checkpoint_files)
-        return [checkpoint_files[0]]
+        return [local_path]
 
-    # Check if we actually need to assign >1 shard
+    # Check if we need to merge shards
     world_size = distributed_utils.get_data_parallel_world_size()
     if world_size >= checkpoint_files_count:
-        assert checkpoint_files_count == 1, ", ".join(checkpoint_files)
-        return [checkpoint_files[0]]
+        return [local_path]
 
     # Assign an equal number of shards
     assert checkpoint_files_count % world_size == 0
@@ -424,7 +423,7 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     checkpoint on each node.
     """
 
-    # Expand multi-part checkpoints like "checkpoint_last-shard0.pt" if needed
+    # Expand multi-part checkpoints like "checkpoint_last-shard0.pt"
     paths_to_load = get_paths_to_load(path, suffix="shard")
 
     try:
