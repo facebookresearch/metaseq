@@ -39,19 +39,15 @@ from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
 if "SLURM_PROCID" in os.environ:
-    logging.basicConfig(
-        format=f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        level=os.environ.get("LOGLEVEL", "INFO").upper(),
-        stream=sys.stdout,
-    )
+    format_string = f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s"
 else:
-    logging.basicConfig(
-        format=f"%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        level=os.environ.get("LOGLEVEL", "INFO").upper(),
-        stream=sys.stdout,
-    )
+    format_string = f"%(asctime)s | %(levelname)s | %(name)s | %(message)s"  
+logging.basicConfig(
+    format=format_string,
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=os.environ.get("LOGLEVEL", "INFO").upper(),
+    stream=sys.stdout,
+)
 logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
 logger = logging.getLogger("metaseq.cli.train")
 

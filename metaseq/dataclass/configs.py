@@ -6,6 +6,7 @@
 import sys
 import time
 import json
+import logging
 from dataclasses import _MISSING_TYPE, dataclass, field
 from typing import Any, List, Optional
 
@@ -750,7 +751,7 @@ class MetaseqConfig(MetaseqDataclass):
     tokenizer: Any = None
 
 
-class DynamicConfig(dict):
+class DynamicConfig():
     """
     can be used instead of redis to store updatable key-value
 
@@ -771,14 +772,11 @@ class DynamicConfig(dict):
     default_state = {"force_profile": False}
 
     def __init__(self, json_file_path=None, timeout=30):  # timeout in sec
+        self.data = DynamicConfig.default_state
         self.timeout = timeout
-        self.timer_start = time.time()
+        self.timer_start = 0
         self.json_file_path = json_file_path
-        if self.json_file_path is not None:
-            with open(self.json_file_path, "r") as json_file:
-                super().__init__(**json.load(json_file))
-        else:
-            super().__init__(**DynamicConfig.default_state)
+        self.refresh()
 
     def refresh(self):
         if self.json_file_path is not None:
@@ -786,11 +784,18 @@ class DynamicConfig(dict):
             # can speed up if were to calculate hash sum of the file to monitor updates
             timer_value = time.time() - self.timer_start
             if timer_value > self.timeout:
-                with open(self.json_file_path, "r") as json_file:
-                    refreshed_config = json.load(json_file)
-                    super().__init__(**refreshed_config)
-                self.timer_start = time.time()
+                try:
+                    with open(self.json_file_path, "r") as json_file:
+                        self.data = json.load(json_file)
+                    self.timer_start = time.time()
+                except json.JSONDecodeError as jsonerror:
+                    logging.warning(f"""Error refreshing dynamic config: reading file {json_file}
+                    resulted in JSONDecodeError {jsonerror}""")
+                except IOError as ioerror:
+                    logging.warning(f"""Error refreshing dynamic config: reading file {json_file}
+                    resulted in IOError {ioerror}""")
+                    
 
     def __getitem__(self, key):
         self.refresh()
-        return super().__getitem__(key)
+        return self.data[key]
