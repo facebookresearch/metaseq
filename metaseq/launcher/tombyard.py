@@ -5,10 +5,8 @@
 
 import multiprocessing as mp
 import datetime
-import signal
 import os
 import time
-from pathlib import Path
 
 
 def tombstones_procedure(
@@ -56,7 +54,6 @@ def tombstones_procedure(
         if status not in job_state_codes:
             print(f"Done scanceling the job. Its squeue.state now is: {status}")
             return
-
         if not tombstone_detected:
             for tombstone_name in dirstones["scancel"]:
                 if os.path.exists(tombstone_name):
@@ -67,7 +64,6 @@ def tombstones_procedure(
                     )
                     tombstone_detected = True
                     period = period_after_tombstone_detected
-
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
@@ -76,12 +72,11 @@ def tombstones_procedure(
                          remove the file {tombstone_name} within the next {period_before_tombstone_detected}
                          for it not to trigger the same command again"""
                     )
-                    report = os.popen(
+                    _ = os.popen(
                         f"""
                         scontrol requeuehold {job_id} 
                         """
                     ).read()
-
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
@@ -90,24 +85,21 @@ def tombstones_procedure(
                          remove the file {tombstone_name} within the next {period_before_tombstone_detected}
                          for it not to trigger the same command again"""
                     )
-                    report = os.popen(
+                    _ = os.popen(
                         f"""
                         scontrol release {job_id} 
                         """
                     ).read()
-
         if tombstone_detected:
-            report = os.popen(
+            _ = os.popen(
                 f"""
                     scancel {job_id}
                     """
             ).read()
-
         time.sleep(period.total_seconds())
 
 
 def tombstones(job_id, period=datetime.timedelta(seconds=60), dirstones=None):
-
     if dirstones is None:
         dirstones = {"scancel": [], "requeuehold": [], "release": []}
         azure_base = "/shared/home"
