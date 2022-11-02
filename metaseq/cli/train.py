@@ -505,7 +505,7 @@ def _run_evaluations(
         return
     assert eval_module is not None, "--eval-module needs to be set."
     module = importlib.import_module(eval_module)
-    if not hasattr(module, 'eval_fn'):
+    if not hasattr(module, "eval_fn"):
         raise RuntimeError(
             f"{eval_module} must have a function called eval_fn to utilize for evaluations. "
             "It expects the following signature:\n"
