@@ -72,11 +72,7 @@ def tombstones_procedure(
                          remove the file {tombstone_name} within the next {period_before_tombstone_detected}
                          for it not to trigger the same command again"""
                     )
-                    _ = os.popen(
-                        f"""
-                        scontrol requeuehold {job_id}
-                         """
-                    ).read()
+                    _ = os.popen(f"scontrol requeuehold {job_id}").read()
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
