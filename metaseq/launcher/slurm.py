@@ -24,6 +24,7 @@ from metaseq.launcher.sweep import get_env_from_args
 try:
     import metaseq_internal
     import metaseq_internal.fb_sweep.internal as internal
+
     has_internal = True
 except ImportError:
     has_internal = False
