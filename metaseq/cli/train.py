@@ -421,7 +421,7 @@ def validate_and_save(
 
     should_stop |= should_stop_early(cfg, valid_losses[0])
 
-    # Save checkpointC
+    # Save checkpoint
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
@@ -491,6 +491,7 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
                 )
             except FileExistsError:
                 pass  # another worker got here first
+            # copy the checkpoint from local storage to nfs in the background
             shutil.copyfile(
                 filename,
                 os.path.join(
@@ -503,6 +504,8 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
                 group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
             )
             if distributed_utils.get_global_rank() == 0:
+                # atomic rename of the final checkpoint directory, now that all workers have completed
+                # their copies
                 os.rename(
                     os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
                     os.path.join(destination_checkpoints_dir, checkpoint_dir),
