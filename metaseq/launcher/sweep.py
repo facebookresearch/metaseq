@@ -367,6 +367,9 @@ def _modify_arg_defaults_based_on_env(env, args):
     if args.local_checkpoints_dir is None:
         args.local_checkpoints_dir = default_local_checkpoints_dir
 
+    # assign default prefix
+    args.default_prefix = default_prefix
+
 
 def main(
     get_grid: Callable[[argparse.Namespace], List[hyperparam]],

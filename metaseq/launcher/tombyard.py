@@ -95,19 +95,20 @@ def tombstones_procedure(
         time.sleep(period.total_seconds())
 
 
-def tombstones(job_id, period=datetime.timedelta(seconds=60), dirstones=None):
+def tombstones(
+    job_id, base_dir, period=datetime.timedelta(seconds=60), dirstones=None
+):
     if dirstones is None:
         dirstones = {"scancel": [], "requeuehold": [], "release": []}
-        azure_base = "/shared/home"
-        for userdir in os.listdir(azure_base):
+        for userdir in os.listdir(base_dir):
             dirstones["scancel"].append(
-                os.path.join(azure_base, userdir, f"scancel_{job_id}")
+                os.path.join(base_dir, userdir, f"scancel_{job_id}")
             )
             dirstones["requeuehold"].append(
-                os.path.join(azure_base, userdir, f"requeuehold_{job_id}")
+                os.path.join(base_dir, userdir, f"requeuehold_{job_id}")
             )
             dirstones["release"].append(
-                os.path.join(azure_base, userdir, f"release_{job_id}")
+                os.path.join(base_dir, userdir, f"release_{job_id}")
             )
 
     for directive in ["scancel", "requeuehold", "release"]:
