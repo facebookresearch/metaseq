@@ -257,8 +257,8 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "--tombstonable",
         type=bool,
         default=False,
-        help="""make the job killable by writing a 
-                tombstone 'tombstone_<job_id>' file to user's home ditectory
+        help="""make the job killable by writing a
+                 tombstone 'tombstone_<job_id>' file to user's home ditectory
                 (/shared/home/$USER)""",
     )
 
