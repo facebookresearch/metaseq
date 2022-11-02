@@ -41,7 +41,7 @@ from metaseq.trainer import Trainer
 if "SLURM_PROCID" in os.environ:
     format_string = f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s"
 else:
-    format_string = f"%(asctime)s | %(levelname)s | %(name)s | %(message)s"  
+    format_string = f"%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
     format=format_string,
     datefmt="%Y-%m-%d %H:%M:%S",

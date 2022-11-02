@@ -751,7 +751,7 @@ class MetaseqConfig(MetaseqDataclass):
     tokenizer: Any = None
 
 
-class DynamicConfig():
+class DynamicConfig:
     """
     can be used instead of redis to store updatable key-value
 
@@ -789,12 +789,15 @@ class DynamicConfig():
                         self.data = json.load(json_file)
                     self.timer_start = time.time()
                 except json.JSONDecodeError as jsonerror:
-                    logging.warning(f"""Error refreshing dynamic config: reading file {json_file}
-                    resulted in JSONDecodeError {jsonerror}""")
+                    logging.warning(
+                        f"""Error refreshing dynamic config: reading file {json_file}
+                    resulted in JSONDecodeError {jsonerror}"""
+                    )
                 except IOError as ioerror:
-                    logging.warning(f"""Error refreshing dynamic config: reading file {json_file}
-                    resulted in IOError {ioerror}""")
-                    
+                    logging.warning(
+                        f"""Error refreshing dynamic config: reading file {json_file}
+                    resulted in IOError {ioerror}"""
+                    )
 
     def __getitem__(self, key):
         self.refresh()
