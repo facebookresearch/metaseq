@@ -522,9 +522,13 @@ def _run_evaluations(
         return
     assert eval_module is not None, "--eval-module needs to be set."
     module = importlib.import_module(eval_module)
+    if not hasattr(module, 'eval_fn'):
+        raise RuntimeError(
+            f"{eval_module} must have a function called eval_fn to utilize for evaluations. "
+            "It expects the following signature:\n"
+            "def eval_fn(cloud_upload_path: str, checkpoint_name: str)"
+        )
     checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
-    # The module must have an eval_fn that accepts these two args and properly merge the cloud path
-    # with the checkpoint name.
     logger.info(f"Kicking off eval_fn from: {module}")
     module.eval_fn(cloud_upload_path, checkpoint_name)
     logger.info(f"Successfully ran evaluation")
