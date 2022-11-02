@@ -365,10 +365,12 @@ def _cache_checkpoint_files(path: str, suffix: str) -> Tuple[str, List[str]]:
             continue
         src_name = os.path.basename(filepath)
         if src_name == local_name:
-            continue
-        src_path = os.path.join(os.path.dirname(path), src_name)
-        tgt_path = PathManager.get_local_path(src_path, force=True)
-        local_paths.append(tgt_path)
+            # Target path is already cached
+            local_paths.append(local_path)
+        else:
+            src_path = os.path.join(os.path.dirname(path), src_name)
+            tgt_path = PathManager.get_local_path(src_path, force=True)
+            local_paths.append(tgt_path)
 
     return local_path, local_paths
 
