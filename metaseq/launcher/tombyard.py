@@ -58,46 +58,36 @@ def tombstones_procedure(
             for tombstone_name in dirstones["scancel"]:
                 if os.path.exists(tombstone_name):
                     print(
-                        f"""tombstones_procedure has detected file {tombstone_name}.
-                          scancel {job_id} will be called every {period_after_tombstone_detected}
-                          until the job is dead"""
+                        f"tombstones_procedure has detected file {tombstone_name}. "
+                        f"scancel {job_id} will be called every {period_after_tombstone_detected} "
+                        f"until the job is dead "
                     )
                     tombstone_detected = True
                     period = period_after_tombstone_detected
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
-                        f"""tombstones_procedure has detected file {tombstone_name}.
-                          scontrol requeuehold {job_id} will be called once.
-                         remove the file {tombstone_name} within the next {period_before_tombstone_detected}
-                         for it not to trigger the same command again"""
+                        f"tombstones_procedure has detected file {tombstone_name}. "
+                        f"scontrol requeuehold {job_id} will be called once. "
+                        f"remove the file {tombstone_name} within the next {period_before_tombstone_detected} "
+                        f"for it not to trigger the same command again "
                     )
                     _ = os.popen(f"scontrol requeuehold {job_id}").read()
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
-                        f"""tombstones_procedure has detected file {tombstone_name}.
-                          scontrol release {job_id} will be called once.
-                         remove the file {tombstone_name} within the next {period_before_tombstone_detected}
-                         for it not to trigger the same command again"""
+                        f"tombstones_procedure has detected file {tombstone_name}. "
+                        f"scontrol release {job_id} will be called once. "
+                        f"remove the file {tombstone_name} within the next {period_before_tombstone_detected} "
+                        f"for it not to trigger the same command again "
                     )
-                    _ = os.popen(
-                        f"""
-                        scontrol release {job_id}
-                         """
-                    ).read()
+                    _ = os.popen(f"scontrol release {job_id} ").read()
         if tombstone_detected:
-            _ = os.popen(
-                f"""
-                    scancel {job_id}
-                    """
-            ).read()
+            _ = os.popen(f"scancel {job_id} ").read()
         time.sleep(period.total_seconds())
 
 
-def tombstones(
-    job_id, base_dir, period=datetime.timedelta(seconds=60), dirstones=None
-):
+def tombstones(job_id, base_dir, period=datetime.timedelta(seconds=60), dirstones=None):
     if dirstones is None:
         dirstones = {"scancel": [], "requeuehold": [], "release": []}
         for userdir in os.listdir(base_dir):
