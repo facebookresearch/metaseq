@@ -47,6 +47,7 @@ class JsonlDataset(torch.utils.data.Dataset):
     ):
         self.path = path
         self.tokenizer = tokenizer
+        self.benchmark = self.path.split('/')[-1].split('__')[0]
 
         self.threadlocal = threading.local()
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.

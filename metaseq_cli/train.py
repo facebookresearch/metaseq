@@ -618,6 +618,12 @@ def validate(
     if "batch_loss" in stats:
         del stats["batch_loss"]
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
+
+    if torch.distributed.get_rank() == 0:
+        total_examples_used = sum(task.concat_dataset.num_times_used.values())
+        for benchmark in task.concat_dataset.num_times_used:
+            print(f'{benchmark} Proportion: {task.concat_dataset.num_times_used[benchmark] * 100 / total_examples_used}')
+
     return valid_losses
 
 

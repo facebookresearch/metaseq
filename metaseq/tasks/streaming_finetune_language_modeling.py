@@ -149,6 +149,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
+        self.concat_dataset = dataset
 
         # shuffle order across epochs
         dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
