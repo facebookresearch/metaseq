@@ -394,8 +394,7 @@ def validate_and_save(
         or should_stop
     )
     do_validate = (
-        (not end_of_epoch and do_save)  # validate during mid-epoch saves
-        or should_stop
+        should_stop
         or (
             cfg.dataset.validate_interval_updates > 0
             and num_updates > 0
