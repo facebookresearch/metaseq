@@ -505,7 +505,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             print("Launched {}".format(job_id))
         if hasattr(args, "tombstonable"):
             if args.tombstonable:
-                tombstones(job_id=job_id, base_dir=args.default_prefix)
+                tombstones(job_id=job_id, base_dir=args.base_directory)
 
 
 def has_finished(save_dir):
