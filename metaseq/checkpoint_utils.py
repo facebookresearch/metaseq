@@ -19,7 +19,7 @@ from omegaconf import OmegaConf
 from metaseq.dataclass.configs import CheckpointConfig
 from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as distributed_utils
-from metaseq.file_io import PathManager, torch_load_cpu
+from metaseq.file_io import PathManager, torch_load_cpu, dietgpu_compress
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
 logger = logging.getLogger(__name__)
@@ -591,12 +591,15 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
     return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
+# TODO does this get cuda tensors or cpu tensors?
 def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
+    obj, filename: str, async_write: bool = False, async_callback_fn=None, diet = False
 ):
     assert (
         async_callback_fn is None or async_write
     ), "async_callback_fn requires async_write=True (--save-async)"
+    if diet:
+        dietgpu_compress(state)
     if async_write and async_callback_fn is not None:
         callback = functools.partial(async_callback_fn, filename)
     else:
