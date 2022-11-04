@@ -233,24 +233,7 @@ def gen_train_command(
     return train_cmd
 
 
-def gen_post_commands(args, save_dir):
-    post_cmds = []
-    if args.post_steps:
-        for post_step in args.post_steps:
-            if os.path.isfile(post_step):
-                post_cmd = Path(post_step).read_text()
-            else:
-                post_cmd = post_step
-            post_cmd = post_cmd.strip().format(
-                job_dir=save_dir
-            )  # assume to provide job_dir
-            post_cmds.append(post_cmd)
-    return post_cmds
-
-
-def gen_srun_command_and_str(
-    args, save_dir_key, train_log, train_stderr, train_cmd, post_cmds
-):
+def gen_srun_command_and_str(args, save_dir_key, train_log, train_stderr, train_cmd):
     base_srun_cmd = [
         "srun",
         "--job-name",
@@ -287,13 +270,6 @@ def gen_srun_command_and_str(
         # sometimes we want the job to just be requeued magically if it exit codes
         # i.e. in the case of very very large models with long runtimes.
         srun_cmd_str = f"( {srun_cmd_str} || scontrol requeue $SLURM_JOB_ID )"
-    for post_cmd in post_cmds:
-        post_cmd_str = " ".join(map(shlex.quote, base_srun_cmd)) + f" {post_cmd}"
-        srun_cmd_str = (
-            f"({srun_cmd_str} && {post_cmd_str})"
-            if len(srun_cmd_str) > 0
-            else post_cmd_str
-        )
     return srun_cmd, srun_cmd_str
 
 
@@ -305,7 +281,6 @@ def gen_sbatch_command_and_str(
     oss_destination,
     internal_destination,
     srun_cmd_str,
-    array_length=None,
 ):
     excluded_hosts = os.environ.get("EXCLUDED_HOSTS", None)
     included_hosts = os.environ.get("INCLUDED_HOSTS", None)
@@ -331,9 +306,6 @@ def gen_sbatch_command_and_str(
         "--signal",
         "B:USR1@180",
     ]
-    if array_length is not None:
-        sbatch_cmd += ["--array", f"0-{array_length-1}"]
-
     if args.constraint:
         sbatch_cmd += ["--constraint", args.constraint]
 
@@ -363,16 +335,14 @@ def gen_sbatch_command_and_str(
     wrapped_cmd = requeue_support()
     if args.azure:
         wrapped_cmd += "\n" + azure_support()
-    wrapped_cmd += "\n" + srun_cmd_str
-    if array_length is None:
-        wrapped_cmd = wrapped_cmd + " \n wait $! \n sleep 610 & \n wait $!"
+    wrapped_cmd += "\n" + srun_cmd_str + " \n wait $! \n sleep 610 & \n wait $!"
 
     sbatch_cmd += ["--wrap", wrapped_cmd]
     sbatch_cmd_str = " ".join(map(shlex.quote, sbatch_cmd))
     return sbatch_cmd, sbatch_cmd_str
 
 
-def local_run(args, env, train_cmd, post_cmds, dry_run):
+def local_run(args, env, train_cmd, dry_run):
     assert args.num_nodes == 1, "distributed training cannot be combined with --local"
     if not dry_run("start training locally"):
         if "CUDA_VISIBLE_DEVICES" not in env:
@@ -380,9 +350,6 @@ def local_run(args, env, train_cmd, post_cmds, dry_run):
         env["NCCL_DEBUG"] = DEFAULT_NCCL_DEBUG_LOCAL
         train_proc = subprocess.Popen(train_cmd, env=env)
         train_proc.wait()
-        for post_cmd in post_cmds:
-            post_cmd_proc = subprocess.Popen(post_cmd, shell=True, env=env)
-            post_cmd_proc.wait()
 
 
 def run_batch(env, sbatch_cmd_str, sbatch_cmd):
@@ -494,23 +461,18 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             save_dir_key,
         )
 
-        # post cmds
-        post_cmds = gen_post_commands(args, save_dir)
-
         train_log = os.path.join(save_dir, "train.log")
         train_stderr = os.path.join(save_dir, "train.stderr.%j")  # %j = slurm job id
         srun_cmd, srun_cmd_str = gen_srun_command_and_str(
-            args, save_dir_key, train_log, train_stderr, train_cmd, post_cmds
+            args, save_dir_key, train_log, train_stderr, train_cmd
         )
 
         job_id = None
         if args.dry_run:
             train_cmd_str = " ".join(train_cmd)
             dry_run(f"train command: {train_cmd_str}")
-            for post_cmd in post_cmds:
-                dry_run(f"post steps command: {post_cmd}")
         if args.local:
-            local_run(args, env, train_cmd, post_cmds, dry_run)
+            local_run(args, env, train_cmd, dry_run)
         else:
             srun_cmd_str = srun_cmd_str + " &"
             # build command
