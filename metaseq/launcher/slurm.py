@@ -343,16 +343,11 @@ def gen_sbatch_command_and_str(
         sbatch_cmd += ["--reservation", args.reservation]
     if args.exclusive:
         sbatch_cmd += ["--exclusive"]
-    if args.comment:
-        comment = args.comment
-        if args.snapshot_code:
-            comment += f", OSS Code Location: {oss_destination} Internal Code Location: {internal_destination}"
+    comment = args.comment if args.comment else ""
+    if args.snapshot_code:
+        comment += f"- OSS Code Location: {oss_destination} Internal Code Location: {internal_destination}"
+    if len(comment) > 0:
         sbatch_cmd += ["--comment", comment]
-    elif args.snapshot_code:
-        sbatch_cmd += [
-            "--comment",
-            f"OSS Code Location: {oss_destination} Internal Code Location: {internal_destination}",
-        ]
     if args.time is not None:
         sbatch_cmd.extend(["--time", args.time])
     if args.mem is not None:
