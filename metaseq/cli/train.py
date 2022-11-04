@@ -56,6 +56,11 @@ logger = logging.getLogger("metaseq.cli.train")
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
 
+    # replace with actual job id
+    slurm_jobid = os.environ.get("SLURM_JOBID", None)
+    if "%jobid" in cfg.checkpoint.save_dir and slurm_jobid is not None:
+        cfg.checkpoint.save_dir = cfg.checkpoint.save_dir.replace("%jobid", slurm_jobid)
+
     checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
     if distributed_utils.is_master(cfg.distributed_training):
