@@ -33,7 +33,7 @@ from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import ByteLevelBPETokenizer, Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -48,6 +48,9 @@ logger = logging.getLogger(__name__)
 class LanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory"}
+    )
+    hf_tokenizer: Optional[str] = field(
+        default="", metadata={"help": "path to a HF tokenizer json file."}
     )
     # Begin args from StreamingLanguageModelingConfig
     vocab_filename: Optional[str] = field(
@@ -139,9 +142,12 @@ class LanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        self.tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename, args.merges_filename
-        )
+        if args.hf_tokenizer:
+            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            self.tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
 
         self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
         if self.eod is None:
