@@ -92,9 +92,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     )
     pretrain_data_sampling_prob: Optional[float] = field(
         default=0.0,
-        metadata={
-            "help": "Set this to mix the x% of pretrain data in finetuning. Use only during finetuning"
-        },
+        metadata={"help": "Set this to mix the x% of pretrain data in finetuning. Use only during finetuning"}
     )
     data_subshard_count: int = field(
         default=1,
@@ -214,16 +212,14 @@ class StreamingLanguageModelingTask(LegacyTask):
             dtype=float,
         )
         logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
-        if self.args.pretrain_data_sampling_prob >= 0:
+        if self.args.pretrain_data_sampling_prob>0:
             assert self.args.pretrain_data_sampling_prob < 1.0
-
             def prefix_match_index(l):
                 prefix = "pretrain__"
                 for i, s in enumerate(l):
-                    if prefix in s:
-                        return i
+                  if prefix in s:
+                      return i
                 return -1
-
             pretrain_corpus_index = prefix_match_index(corpora)
             assert pretrain_corpus_index != -1
             tmp_dataset_lengths = np.copy(dataset_lengths)
