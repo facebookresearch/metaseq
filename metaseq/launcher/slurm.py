@@ -360,7 +360,6 @@ def gen_sbatch_command_and_str(
     else:
         sbatch_cmd += ["--mem", "0"]
 
-    # The following QOS is only applicable to members of zetta team on RSC.
     if args.rsc:
         sbatch_cmd += ["--qos", "high"]
     sbatch_cmd += ["-x", excluded_hosts] if excluded_hosts is not None else []
