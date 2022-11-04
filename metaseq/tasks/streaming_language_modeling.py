@@ -29,6 +29,7 @@ from metaseq.data import (
 )
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
+import json
 
 try:
     from tokenizers import ByteLevelBPETokenizer
@@ -90,9 +91,9 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
-    pretrain_data_sampling_prob: Optional[float] = field(
-        default=0.0,
-        metadata={"help": "Set this to mix the x% of pretrain data in finetuning. Use only during finetuning"}
+    data_sampling_prob: Optional[str] = field(
+        default='{}',
+        metadata={"help": "Proportion of each finetuning benchmark to use. Use only during finetuning"}
     )
     data_subshard_count: int = field(
         default=1,
@@ -211,24 +212,41 @@ class StreamingLanguageModelingTask(LegacyTask):
             [len(d) for d in datasets],
             dtype=float,
         )
+        sample_probs = self._get_sample_prob(dataset_lengths)
         logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
-        if self.args.pretrain_data_sampling_prob>0:
-            assert self.args.pretrain_data_sampling_prob < 1.0
-            def prefix_match_index(l):
-                prefix = "pretrain__"
-                for i, s in enumerate(l):
-                  if prefix in s:
-                      return i
-                return -1
-            pretrain_corpus_index = prefix_match_index(corpora)
-            assert pretrain_corpus_index != -1
-            tmp_dataset_lengths = np.copy(dataset_lengths)
-            tmp_dataset_lengths[pretrain_corpus_index] = 0
-            sample_probs = self._get_sample_prob(tmp_dataset_lengths)
-            sample_probs = sample_probs * (1 - self.args.pretrain_data_sampling_prob)
-            sample_probs[pretrain_corpus_index] = self.args.pretrain_data_sampling_prob
-        else:
-            sample_probs = self._get_sample_prob(dataset_lengths)
+        per_benchmark_prob = {}
+        for i, s in enumerate(corpora):
+            benchmark = s.split('__')[0]
+            if benchmark not in per_benchmark_prob:
+                per_benchmark_prob[benchmark] = 0.0
+            per_benchmark_prob[benchmark] += sample_probs[i]
+        logger.info('Initial data proportions:')
+        logger.info(json.dumps(per_benchmark_prob))
+
+        data_sampling_prob = json.loads(self.args.data_sampling_prob)
+
+        # If proportions are not specified for all the benchmarks
+        # scale up/down the remaining proportions uniformly
+        total_benchmarks = len(per_benchmark_prob)
+        total_assigned_prob = sum(data_sampling_prob.values())
+        total_assigned_benchmarks = len(data_sampling_prob)
+        for benchmark in per_benchmark_prob:
+            if benchmark not in data_sampling_prob:
+                data_sampling_prob[benchmark] = per_benchmark_prob[benchmark] * (1.0 - total_assigned_prob)
+
+        for i, s in enumerate(corpora):
+            benchmark = s.split('__')[0]
+            sample_probs[i] = sample_probs[i] * data_sampling_prob[benchmark] / per_benchmark_prob[benchmark]
+
+        new_per_benchmark_prob = {}
+        for i, s in enumerate(corpora):
+            benchmark = s.split('__')[0]
+            if benchmark not in new_per_benchmark_prob:
+                new_per_benchmark_prob[benchmark] = 0.0
+            new_per_benchmark_prob[benchmark] += sample_probs[i]
+        logger.info('Final data proportions:')
+        logger.info(json.dumps(new_per_benchmark_prob))
+        assert(sum(new_per_benchmark_prob.values()) == 1.0, "Data Proportion probabilities do not sum to 1")
 
         logger.info(
             "Sample probability by corpus: %s",
