@@ -1050,6 +1050,15 @@ class PathManager:
         Returns:
             List[str]: list of contents in given path
         """
+        # Support trailing wildcard
+        if path.endswith("*"):
+            parent = os.path.dirname(path)
+            pattern = os.path.basename(path)[:-1]
+            return [
+                p
+                for p in self.ls(parent, **kwargs)
+                if os.path.basename(p).startswith(pattern)
+            ]
         return self.__get_path_handler(path)._ls(path, **kwargs)
 
     def mkdirs(self, path: str, **kwargs: Any) -> None:

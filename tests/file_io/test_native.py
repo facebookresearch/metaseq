@@ -126,6 +126,10 @@ class TestNativeIO(unittest.TestCase):
         children = sorted(self._pathmgr.ls(root_dir))
         self.assertListEqual(children, files)
 
+        # Test trailing wildcard
+        children = sorted(self._pathmgr.ls(root_dir + "/*"))
+        self.assertListEqual(children, files)
+
         # Cleanup the tempdir
         shutil.rmtree(root_dir)
 
