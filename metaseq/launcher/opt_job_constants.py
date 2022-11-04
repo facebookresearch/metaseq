@@ -54,12 +54,30 @@ class ComputeEnvs(Enum):
     AWS = "aws"
     AZURE = "azure"
     FAIR = "fair"
+    RSC = "rsc"
 
 
 DATA_LOCATIONS = {
     ComputeEnvs.AZURE: "/data/opt",
 }
 
+DEFAULT_PARTITION = {
+    ComputeEnvs.FAIR: "learnfair",
+    ComputeEnvs.AZURE: None,
+    ComputeEnvs.AWS: None,
+}
+
+DEFAULT_PREFIX = {
+    ComputeEnvs.AZURE: "/shared/home",
+    ComputeEnvs.AWS: "/checkpoints",
+    ComputeEnvs.FAIR: "/checkpoint",
+}
+
+DEFAULT_CPU_PER_TASK = {
+    ComputeEnvs.AZURE: 12,
+    ComputeEnvs.AWS: 12,
+    ComputeEnvs.FAIR: 10,
+}
 VALID_SUBSETS = [
     "BookCorpusFair",
     "CommonCrawl",

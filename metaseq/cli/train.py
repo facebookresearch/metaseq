@@ -16,10 +16,10 @@ import os
 import subprocess
 import sys
 import time
+import socket
 import shutil
 import re
 from datetime import timedelta
-
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
 import torch.distributed as dist
@@ -671,9 +671,31 @@ def get_valid_stats(
     return stats
 
 
+def set_local_per_worker_env_variables():
+    savedir = os.environ.get("METASEQ_SAVE_DIR")
+    if savedir is not None:
+        hostname = socket.gethostname()
+
+        restart = int(os.environ.get("SLURM_RESTART_COUNT", "0"))
+        nccl_dir = os.path.join(savedir, "nccl", f"restart_{restart:03d}")
+        os.makedirs(nccl_dir, exist_ok=True)
+        rank = int(os.environ.get("SLURM_PROCID", "0"))
+        os.environ["NCCL_DEBUG_FILE"] = os.path.join(
+            nccl_dir, f"rank_{rank:04d}_{hostname}"
+        )
+
+        # save a copy of all our environmental variables
+        env_dir = os.path.join(savedir, "envs", f"restart_{restart:03d}")
+        os.makedirs(env_dir, exist_ok=True)
+        with open(os.path.join(env_dir, f"rank_{rank:04d}_{hostname}"), "w") as f:
+            for key in sorted(os.environ.keys()):
+                f.write(f"{key}={os.environ[key]}\n")
+
+
 def cli_main(
     modify_parser: Optional[Callable[[argparse.ArgumentParser], None]] = None
 ) -> None:
+    set_local_per_worker_env_variables()
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
 
