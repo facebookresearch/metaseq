@@ -152,30 +152,10 @@ def _delete_old_checkpoint_files(
                 os.remove(old_chk)
 
 
-def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
-    """
-    Load a checkpoint and restore the training iterator.
-
-    *passthrough_args* will be passed through to
-    ``trainer.get_train_iterator``.
-    """
-
-    reset_optimizer = cfg.reset_optimizer
-    reset_lr_scheduler = cfg.reset_lr_scheduler
-    optimizer_overrides = ast.literal_eval(cfg.optimizer_overrides)
-    reset_meters = cfg.reset_meters
-    reset_dataloader = cfg.reset_dataloader
-
-    if cfg.finetune_from_model is not None and (
-        reset_optimizer or reset_lr_scheduler or reset_meters or reset_dataloader
-    ):
-        raise ValueError(
-            "--finetune-from-model can not be set together with either --reset-optimizer"
-            " or reset_lr_scheduler or reset_meters or reset_dataloader"
-        )
-
+def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
     suffix = trainer.checkpoint_suffix
     default_restore_file = "checkpoint_last.pt"
+
     # default to loading from restore file.
     if cfg.restore_file == default_restore_file:
         checkpoint_path_to_load = os.path.join(
@@ -185,10 +165,10 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         if cfg.finetune_from_model is not None and first_launch:
             # if there is no last checkpoint to restore, start the finetune from pretrained model
             # else just use usual logic to load checkpoint, e.g. restart from last checkpoint and etc.
-            reset_optimizer = True
-            reset_lr_scheduler = True
-            reset_meters = True
-            reset_dataloader = True
+            cfg.reset_optimizer = True
+            cfg.reset_lr_scheduler = True
+            cfg.reset_meters = True
+            cfg.reset_dataloader = True
             checkpoint_path_to_load = None
             if PathManager.exists(cfg.finetune_from_model):
                 checkpoint_path_to_load = cfg.finetune_from_model
@@ -240,7 +220,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             specific_restore_file_provided = cfg.restore_file != default_restore_file
             slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
             restart_from_latest = slurm_was_restarted or (
-                cfg.finetune_from_model is None and not specific_restore_file_provided
+                    cfg.finetune_from_model is None and not specific_restore_file_provided
             )
             if restart_from_latest and os.path.exists(nfs_path):
                 max_checkpoint = None
@@ -267,13 +247,13 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
         elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
             if (
-                # --restore-file was not passed, always download latest checkpoint
-                (
-                    cfg.restore_file == default_restore_file
-                    and cfg.finetune_from_model is None
-                )
-                # --restore-file was passed, but we requeued, so download latest checkpoint
-                or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+                    # --restore-file was not passed, always download latest checkpoint
+                    (
+                            cfg.restore_file == default_restore_file
+                            and cfg.finetune_from_model is None
+                    )
+                    # --restore-file was passed, but we requeued, so download latest checkpoint
+                    or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
             ):
                 # download checkpoint into local save_dir
                 checkpoint_path_to_load = os.path.join(
@@ -283,9 +263,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                     cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
                 )
             elif (
-                # --restore-file was passed and is a blob URL, download that checkpoint
-                cfg.restore_file != default_restore_file
-                and "windows.net" in cfg.restore_file
+                    # --restore-file was passed and is a blob URL, download that checkpoint
+                    cfg.restore_file != default_restore_file
+                    and "windows.net" in cfg.restore_file
             ):
                 blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
                 # download checkpoint into local save_dir
@@ -300,8 +280,8 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     # RSC logic: --restore-file was passed, and we requeued
     elif (
-        cfg.restore_file != default_restore_file
-        and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            cfg.restore_file != default_restore_file
+            and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
     ):
         # point checkpoint_path to the current checkpoint directory for loading, if it exists.
         save_dir_last = os.path.join(
@@ -309,6 +289,25 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         )
         if PathManager.isfile(save_dir_last):
             checkpoint_path_to_load = save_dir_last
+    return checkpoint_path_to_load
+
+
+def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
+    """
+    Load a checkpoint and restore the training iterator.
+
+    *passthrough_args* will be passed through to
+    ``trainer.get_train_iterator``.
+    """
+    if cfg.finetune_from_model is not None and (
+        cfg.reset_optimizer or cfg.reset_lr_scheduler or cfg.reset_meters or cfg.reset_dataloader
+    ):
+        raise ValueError(
+            "--finetune-from-model can not be set together with either --reset-optimizer"
+            " or reset_lr_scheduler or reset_meters or reset_dataloader"
+        )
+
+    checkpoint_path_to_load = get_checkpoint_path_to_load(cfg, trainer)
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
@@ -317,21 +316,21 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     extra_state = trainer.load_checkpoint(
         checkpoint_path_to_load,
-        reset_optimizer,
-        reset_lr_scheduler,
-        optimizer_overrides,
-        reset_meters=reset_meters,
+        cfg.reset_optimizer,
+        cfg.reset_lr_scheduler,
+        ast.literal_eval(cfg.optimizer_overrides),
+        reset_meters=cfg.reset_meters,
     )
 
     if (
         extra_state is not None
         and "best" in extra_state
-        and not reset_optimizer
-        and not reset_meters
+        and not cfg.reset_optimizer
+        and not cfg.reset_meters
     ):
         save_checkpoint.best = extra_state["best"]
 
-    if extra_state is not None and not reset_dataloader:
+    if extra_state is not None and not cfg.reset_dataloader:
         # restore iterator from checkpoint
         itr_state = extra_state["train_iterator"]
         epoch_itr = trainer.get_train_iterator(
