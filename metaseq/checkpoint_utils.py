@@ -228,18 +228,16 @@ def _delete_old_checkpoint_files(
                 os.remove(old_chk)
 
 
-def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
-    suffix = trainer.checkpoint_suffix
-    default_restore_file = "checkpoint_last.pt"
-
+def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     # Logic flow:
     # - restore_file is defined, will load from this first
     # - if no restore_file: < try to grab latest from checkpoint / cloud >
     # -   if cloud upload is defined, pull from cloud upload
     # -   if no cloud upload, pull from checkpoint
 
-    # default to loading from restore file.
-    if cfg.restore_file == default_restore_file:
+    suffix = trainer.checkpoint_suffix
+
+    if cfg.restore_file is None:
         checkpoint_path_to_load = os.path.join(
             cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
         )
@@ -272,7 +270,7 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
     else:
         checkpoint_path_to_load = cfg.restore_file
 
-    if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
+    if cfg.restore_file is not None and cfg.finetune_from_model:
         raise ValueError(
             "--finetune-from-model and --restore-file (non-default value) "
             "can not be specified together: " + str(cfg)
@@ -299,7 +297,7 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
             )
             nfs_path = cfg.cloud_upload_path[4:]
             filename = None
-            specific_restore_file_provided = cfg.restore_file != default_restore_file
+            specific_restore_file_provided = cfg.restore_file is not None
             slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
             restart_from_latest = slurm_was_restarted or (
                     cfg.finetune_from_model is None and not specific_restore_file_provided
@@ -331,7 +329,7 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
             if (
                     # --restore-file was not passed, always download latest checkpoint
                     (
-                            cfg.restore_file == default_restore_file
+                            cfg.restore_file is None
                             and cfg.finetune_from_model is None
                     )
                     # --restore-file was passed, but we requeued, so download latest checkpoint
@@ -346,7 +344,7 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
                 )
             elif (
                     # --restore-file was passed and is a blob URL, download that checkpoint
-                    cfg.restore_file != default_restore_file
+                    cfg.restore_file is not None
                     and "windows.net" in cfg.restore_file
             ):
                 blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
@@ -362,7 +360,7 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
 
     # RSC logic: --restore-file was passed, and we requeued
     elif (
-            cfg.restore_file != default_restore_file
+            cfg.restore_file is not None
             and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
     ):
         # point checkpoint_path to the current checkpoint directory for loading, if it exists.
@@ -389,7 +387,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             " or reset_lr_scheduler or reset_meters or reset_dataloader"
         )
 
-    checkpoint_path_to_load = get_checkpoint_path_to_load(cfg, trainer)
+    checkpoint_path_to_load = get_and_prep_checkpoint_path(cfg, trainer)
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
