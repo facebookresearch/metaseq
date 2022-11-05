@@ -316,7 +316,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                             nfs_path, candidate, f"checkpoint{suffix}.pt"
                         )
             else:
-                filename = cfg.restore_file.replace(".pt", suffix + ".pt")
+                filename = cfg.restore_file.replace(".pt", suffix + ".pt") if cfg.restore_file is not None else None
             if filename is not None and os.path.exists(checkpoint_path_to_load):
                 logger.info(
                     f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
