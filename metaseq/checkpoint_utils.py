@@ -154,7 +154,6 @@ def _delete_old_checkpoint_files(
 
 def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     # Logic flow:
-    # - restore_file is defined, will load from this first
     # - if no restore_file: < try to grab latest from checkpoint / cloud >
     # -   if cloud upload is defined, pull from cloud upload
     # -   if no cloud upload, pull from checkpoint
@@ -174,31 +173,30 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
             cfg.reset_meters = True
             cfg.reset_dataloader = True
             checkpoint_path_to_load = None
+            logger.warning(
+                "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
+            )
             if PathManager.exists(cfg.finetune_from_model):
-                checkpoint_path_to_load = cfg.finetune_from_model
+                return cfg.finetune_from_model
             elif suffix is not None:  # check for sharded version
                 sharded_path = cfg.finetune_from_model.replace(".pt", suffix + ".pt")
                 if PathManager.exists(sharded_path):
-                    checkpoint_path_to_load = sharded_path
-            if checkpoint_path_to_load is None:
+                    return sharded_path
+            else:
                 raise ValueError(
                     f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
                 )
+    else:  # restore_file specified
+        if suffix is not None:
+            checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
+        else:
+            checkpoint_path_to_load = cfg.restore_file
 
-            logger.info(
-                f"loading pretrained model from {checkpoint_path_to_load}: "
-                "optimizer, lr scheduler, meters, dataloader will be reset"
+        if cfg.restore_file is not None and cfg.finetune_from_model:
+            raise ValueError(
+                "--finetune-from-model and --restore-file (non-default value) "
+                "can not be specified together: " + str(cfg)
             )
-    elif suffix is not None:
-        checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
-    else:
-        checkpoint_path_to_load = cfg.restore_file
-
-    if cfg.restore_file is not None and cfg.finetune_from_model:
-        raise ValueError(
-            "--finetune-from-model and --restore-file (non-default value) "
-            "can not be specified together: " + str(cfg)
-        )
 
     # Azure logic
     try:
