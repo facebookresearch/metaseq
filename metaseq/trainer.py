@@ -413,10 +413,9 @@ class Trainer(object):
         other ranks.
         """
         extra_state, self._optim_history, last_optim_state = None, [], None
-
         is_distributed = self.data_parallel_world_size > 1
-        bexists = PathManager.isfile(filename)
-        if bexists:
+
+        if PathManager.isfile(filename):
             logger.info(f"Preparing to load checkpoint {filename}")
             load_on_all_ranks = (
                 self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
@@ -481,70 +480,70 @@ class Trainer(object):
             extra_state = state["extra_state"]
             self._optim_history = state["optimizer_history"]
 
-        if last_optim_state is not None and not reset_optimizer:
-            # rebuild optimizer after loading model, since params may have changed
-            self._build_optimizer()
+            if last_optim_state is not None and not reset_optimizer:
+                # rebuild optimizer after loading model, since params may have changed
+                self._build_optimizer()
 
-            # only reload optimizer and lr_scheduler if they match
-            last_optim = self._optim_history[-1]
-            assert (
-                last_optim["criterion_name"] == self.get_criterion().__class__.__name__
-            ), (
-                f"Criterion does not match; please reset the optimizer "
-                f"(--reset-optimizer). {last_optim['criterion_name']} vs "
-                f"{self.get_criterion().__class__.__name__}"
-            )
-            assert last_optim["optimizer_name"] == self.optimizer.__class__.__name__, (
-                f"Optimizer does not match; please reset the optimizer "
-                f"(--reset-optimizer). {last_optim['optimizer_name']} vs "
-                f"{self.optimizer.__class__.__name__}"
-            )
-
-            if not reset_lr_scheduler:
-                self.lr_scheduler.load_state_dict(last_optim["lr_scheduler_state"])
-
-            if not load_on_all_ranks and is_distributed:
-                last_optim_state = self.optimizer.broadcast_global_state_dict(
-                    last_optim_state
+                # only reload optimizer and lr_scheduler if they match
+                last_optim = self._optim_history[-1]
+                assert (
+                    last_optim["criterion_name"] == self.get_criterion().__class__.__name__
+                ), (
+                    f"Criterion does not match; please reset the optimizer "
+                    f"(--reset-optimizer). {last_optim['criterion_name']} vs "
+                    f"{self.get_criterion().__class__.__name__}"
                 )
-            elif self.is_fsdp and not self.use_sharded_state:
-                last_optim_state = self.model.get_shard_from_optim_state_dict(
-                    last_optim_state
+                assert last_optim["optimizer_name"] == self.optimizer.__class__.__name__, (
+                    f"Optimizer does not match; please reset the optimizer "
+                    f"(--reset-optimizer). {last_optim['optimizer_name']} vs "
+                    f"{self.optimizer.__class__.__name__}"
                 )
-                logger.info(f"FSDP got shard from optim_state for {filename}")
 
-            self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
-            logger.info(f"Loaded optim_state for {filename}")
-            self.set_num_updates(last_optim["num_updates"])
+                if not reset_lr_scheduler:
+                    self.lr_scheduler.load_state_dict(last_optim["lr_scheduler_state"])
 
-        if extra_state is not None:
-            itr_state = extra_state["train_iterator"]
-            epoch = itr_state["epoch"]
+                if not load_on_all_ranks and is_distributed:
+                    last_optim_state = self.optimizer.broadcast_global_state_dict(
+                        last_optim_state
+                    )
+                elif self.is_fsdp and not self.use_sharded_state:
+                    last_optim_state = self.model.get_shard_from_optim_state_dict(
+                        last_optim_state
+                    )
+                    logger.info(f"FSDP got shard from optim_state for {filename}")
 
-            if "previous_training_time" in extra_state:
-                self._previous_training_time = extra_state["previous_training_time"]
-                self._start_time = time.time()
+                self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
+                logger.info(f"Loaded optim_state for {filename}")
+                self.set_num_updates(last_optim["num_updates"])
 
-            self.lr_step(epoch)
+            if extra_state is not None:
+                itr_state = extra_state["train_iterator"]
+                epoch = itr_state["epoch"]
 
-            if (
-                itr_state.get("version", 1) >= 2
-                and itr_state["iterations_in_epoch"] == 0
-            ):
-                # reset meters at start of epoch
-                reset_meters = True
+                if "previous_training_time" in extra_state:
+                    self._previous_training_time = extra_state["previous_training_time"]
+                    self._start_time = time.time()
 
-            if "metrics" in extra_state and not reset_meters:
-                metrics.load_state_dict(extra_state["metrics"])
+                self.lr_step(epoch)
 
-                # reset TimeMeters, since their start times don't make sense anymore
-                for meter in metrics.get_meters("default"):
-                    if isinstance(meter, meters.TimeMeter):
-                        meter.reset()
+                if (
+                    itr_state.get("version", 1) >= 2
+                    and itr_state["iterations_in_epoch"] == 0
+                ):
+                    # reset meters at start of epoch
+                    reset_meters = True
 
-            logger.info(
-                f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
-            )
+                if "metrics" in extra_state and not reset_meters:
+                    metrics.load_state_dict(extra_state["metrics"])
+
+                    # reset TimeMeters, since their start times don't make sense anymore
+                    for meter in metrics.get_meters("default"):
+                        if isinstance(meter, meters.TimeMeter):
+                            meter.reset()
+
+                logger.info(
+                    f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
+                )
         else:
             logger.info("No existing checkpoint found {}".format(filename))
 

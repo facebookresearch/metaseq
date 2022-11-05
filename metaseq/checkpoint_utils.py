@@ -232,6 +232,12 @@ def get_checkpoint_path_to_load(cfg: CheckpointConfig, trainer) -> str:
     suffix = trainer.checkpoint_suffix
     default_restore_file = "checkpoint_last.pt"
 
+    # Logic flow:
+    # - restore_file is defined, will load from this first
+    # - if no restore_file: < try to grab latest from checkpoint / cloud >
+    # -   if cloud upload is defined, pull from cloud upload
+    # -   if no cloud upload, pull from checkpoint
+
     # default to loading from restore file.
     if cfg.restore_file == default_restore_file:
         checkpoint_path_to_load = os.path.join(
