@@ -242,7 +242,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             restart_from_latest = slurm_was_restarted or (
                 cfg.finetune_from_model is None and not specific_restore_file_provided
             )
-            if restart_from_latest:
+            if restart_from_latest and os.path.exists(nfs_path):
                 max_checkpoint = None
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
