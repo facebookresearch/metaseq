@@ -149,8 +149,8 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --cpus-per-task=12
 #SBATCH --time=4320
 #SBATCH --mem=0
-#SBATCH --output={nfs_dir}_cp_checkpoint_%j.stdout
-#SBATCH --error={nfs_dir}_cp_checkpoint_%j.stderr
+#SBATCH --output={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stdout
+#SBATCH --error={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stderr
 
 srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} \
 {num_files} {nfs_dir} {num_update}
@@ -167,8 +167,15 @@ def _launch_sbatch_for_checkpoint_copy(
         cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
     )
     if nfs_upload_path is not None:
+        nfs_dir = nfs_upload_path[4:]
+        cp_script_dir = "_cp_scripts"
+        if not nfs_dir.endswith("/"):
+            nfs_dir += "/"
+        copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
+        if not os.path.exists(copy_script_dir):
+            os.makedirs(copy_script_dir, exist_ok=True)
         sbatch_run_file = os.path.join(
-            nfs_upload_path[4:], f"_cp_sbatch_script_{num_update}.sh"
+            copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
         )
         slurm_nodes = os.environ["SLURM_NODELIST"]
         with open(sbatch_run_file, "w") as f:
@@ -179,6 +186,7 @@ def _launch_sbatch_for_checkpoint_copy(
                     local_dir=cfg.save_dir,
                     num_files=num_files_per_host,
                     nfs_dir=nfs_upload_path[4:],
+                    cp_script_dir=cp_script_dir,
                     num_update=num_update,
                 )
             )
