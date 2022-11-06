@@ -37,6 +37,7 @@ def save_checkpoint(
     val_loss,
     training_finished=False,
     async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     from metaseq import meters
 
@@ -103,6 +104,7 @@ def save_checkpoint(
             extra_state,
             training_finished=training_finished,
             async_callback_fn=async_callback_fn,
+            copy_to_nfs=copy_to_nfs,
         )
 
         def _copy_if_not_async(src, dest):
@@ -122,10 +124,9 @@ def save_checkpoint(
                 checkpoints[0], epoch, updates, val_loss, write_timer.sum
             )
         )
-        # TODO: gate this for nfs
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
-        if distributed_utils.get_global_rank() == 0:
+        if copy_to_nfs and distributed_utils.get_global_rank() == 0:
             _launch_sbatch_for_checkpoint_copy(
                 cfg, os.environ.get("METASEQ_OSS_DESTINATION")
             )
@@ -640,7 +641,7 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 
 
 def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
+    obj, filename: str, async_write: bool = False, async_callback_fn=None, copy_to_nfs=False
 ):
     assert (
         async_callback_fn is None or async_write
@@ -650,8 +651,15 @@ def torch_persistent_save(
     else:
         callback = None
     if async_write:
-        with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
-            _torch_persistent_save(obj, f)
+        if not copy_to_nfs:
+            with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
+                _torch_persistent_save(obj, f)
+        else:
+            # TODO[susanz] Clean this up - this is a workaround for when file is being written to local dir first
+            #  and we have decoupled nfs sync via an sbatch call.  Async callback here writes a _done_* file.
+            with PathManager.open(filename, "wb") as f:
+                _torch_persistent_save(obj, f)
+            async_callback_fn(filename)
     else:
         if PathManager.supports_rename(filename):
             # do atomic save

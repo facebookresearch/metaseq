@@ -427,11 +427,10 @@ def validate_and_save(
 
     # Save checkpoint
     if do_save:
-        gloo_pg = dist.new_group(backend="gloo")
-        # eval_kwargs = {
-        #     "checkpoint_suffix": trainer.checkpoint_suffix,
-        #     "gloo_pg": gloo_pg,
-        # }
+        eval_kwargs = {
+            "checkpoint_suffix": trainer.checkpoint_suffix,
+            "gloo_pg": dist.new_group(backend="gloo"),
+        }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
@@ -439,10 +438,11 @@ def validate_and_save(
             valid_losses[0],
             training_finished=should_stop,
             async_callback_fn=functools.partial(
-                post_checkpoint_callback, cfg, do_evaluate, gloo_pg
+                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
+            copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
@@ -457,7 +457,7 @@ def _checkpoint_add_directory(basename):
 
 
 # filename is absolute filepath on local disk
-def post_checkpoint_callback(cfg, do_evaluate, gloo_pg, filename):
+def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -487,39 +487,10 @@ def post_checkpoint_callback(cfg, do_evaluate, gloo_pg, filename):
             )
             os.remove(filename)
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
+            # TODO[susanz]: Add cleanup logic.
             file_parentpath, file_basename = os.path.split(filename)
             done_file = os.path.join(file_parentpath, "_done_" + file_basename)
             os.close(os.open(done_file, os.O_CREAT))
-
-            # checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
-            # destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
-            # temporary_checkpoint_dir = f"_{checkpoint_dir}"
-            # try:
-            #     os.mkdir(
-            #         os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
-            #     )
-            # except FileExistsError:
-            #     pass  # another worker got here first
-            # # copy the checkpoint from local storage to nfs in the background
-            # shutil.copyfile(
-            #     filename,
-            #     os.path.join(
-            #         destination_checkpoints_dir,
-            #         temporary_checkpoint_dir,
-            #         checkpoint_file,
-            #     ),
-            # )
-            torch.distributed.monitored_barrier(
-                group=gloo_pg, timeout=timedelta(minutes=5)
-            )
-            # if distributed_utils.get_global_rank() == 0:
-            #     # atomic rename of the final checkpoint directory, now that all workers have completed
-            #     # their copies
-            #     os.rename(
-            #         os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
-            #         os.path.join(destination_checkpoints_dir, checkpoint_dir),
-            #     )
-            # os.remove(filename)
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
@@ -534,13 +505,13 @@ def post_checkpoint_callback(cfg, do_evaluate, gloo_pg, filename):
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
 
-        # if do_evaluate:
-        #     _run_evaluations(
-        #         cfg.checkpoint.eval_module,
-        #         cfg.checkpoint.cloud_upload_path,
-        #         filename,
-        #         **eval_kwargs,
-        #     )
+        if do_evaluate:
+            _run_evaluations(
+                cfg.checkpoint.eval_module,
+                cfg.checkpoint.cloud_upload_path,
+                filename,
+                **eval_kwargs,
+            )
 
 
 def _run_evaluations(
