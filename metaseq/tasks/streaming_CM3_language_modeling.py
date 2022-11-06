@@ -407,9 +407,6 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
         # chunk into blocks of tokens
         self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
             self.args.lambda_sentinel_tokens,
