@@ -145,7 +145,7 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --time=4320
 #SBATCH --mem=0
 
-srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {oss_dir} {local_dir} {num_files} {nfs_dir}
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} {num_files} {nfs_dir}
 """
 
 
@@ -153,8 +153,9 @@ def _launch_sbatch_for_checkpoint_copy(cfg: CheckpointConfig, oss_dir: str, num_
     nfs_upload_path = cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
     if nfs_upload_path is not None:
         sbatch_run_file = os.path.join(nfs_upload_path[4:], f"{str(uuid.uuid4())}.sh")
+        slurm_nodes = os.environ["SLURM_NODELIST"]
         with open(sbatch_run_file, "w") as f:
-            f.write(SBATCH_CHECKPOINT_COPY_CMD.format(oss_dir=oss_dir, local_dir=cfg.save_dir, num_files=num_files_per_host, nfs_dir=nfs_upload_path[4:]))
+            f.write(SBATCH_CHECKPOINT_COPY_CMD.format(oss_dir=oss_dir, slurm_nodes=slurm_nodes, local_dir=cfg.save_dir, num_files=num_files_per_host, nfs_dir=nfs_upload_path[4:]))
         subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
     pass
 
