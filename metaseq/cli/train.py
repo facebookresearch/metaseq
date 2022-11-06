@@ -427,10 +427,11 @@ def validate_and_save(
 
     # Save checkpoint
     if do_save:
-        eval_kwargs = {
-            "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": dist.new_group(backend="gloo"),
-        }
+        gloo_pg = dist.new_group(backend="gloo")
+        # eval_kwargs = {
+        #     "checkpoint_suffix": trainer.checkpoint_suffix,
+        #     "gloo_pg": gloo_pg,
+        # }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
@@ -438,7 +439,7 @@ def validate_and_save(
             valid_losses[0],
             training_finished=should_stop,
             async_callback_fn=functools.partial(
-                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
+                post_checkpoint_callback, cfg, do_evaluate, gloo_pg
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
@@ -456,7 +457,7 @@ def _checkpoint_add_directory(basename):
 
 
 # filename is absolute filepath on local disk
-def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
+def post_checkpoint_callback(cfg, do_evaluate, gloo_pg, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -508,9 +509,9 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             #         checkpoint_file,
             #     ),
             # )
-            # torch.distributed.monitored_barrier(
-            #     group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
-            # )
+            torch.distributed.monitored_barrier(
+                group=gloo_pg, timeout=timedelta(minutes=5)
+            )
             # if distributed_utils.get_global_rank() == 0:
             #     # atomic rename of the final checkpoint directory, now that all workers have completed
             #     # their copies
