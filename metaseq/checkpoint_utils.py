@@ -61,7 +61,9 @@ def save_checkpoint(
     end_of_epoch = epoch_itr.end_of_epoch()
     num_update = trainer.get_num_updates()
 
-    logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {num_update} updates")
+    logger.info(
+        f"Preparing to save checkpoint for epoch {epoch} @ {num_update} updates"
+    )
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
@@ -124,7 +126,10 @@ def save_checkpoint(
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
         if copy_to_nfs and distributed_utils.get_global_rank() == 0:
             _launch_sbatch_for_checkpoint_copy(
-                cfg, os.environ.get("METASEQ_OSS_DESTINATION"), num_files_per_host=8, num_update=num_update
+                cfg,
+                os.environ.get("METASEQ_OSS_DESTINATION"),
+                num_files_per_host=8,
+                num_update=num_update,
             )
 
         _delete_old_checkpoint_files(
@@ -153,13 +158,18 @@ srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes}
 
 
 def _launch_sbatch_for_checkpoint_copy(
-    cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8, num_update: int = 0,
+    cfg: CheckpointConfig,
+    oss_dir: str,
+    num_files_per_host: int = 8,
+    num_update: int = 0,
 ):
     nfs_upload_path = (
         cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
     )
     if nfs_upload_path is not None:
-        sbatch_run_file = os.path.join(nfs_upload_path[4:], f"_cp_sbatch_script_{num_update}.sh")
+        sbatch_run_file = os.path.join(
+            nfs_upload_path[4:], f"_cp_sbatch_script_{num_update}.sh"
+        )
         slurm_nodes = os.environ["SLURM_NODELIST"]
         with open(sbatch_run_file, "w") as f:
             f.write(
@@ -640,7 +650,11 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 
 
 def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None, copy_to_nfs=False
+    obj,
+    filename: str,
+    async_write: bool = False,
+    async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     assert (
         async_callback_fn is None or async_write
@@ -651,7 +665,9 @@ def torch_persistent_save(
         callback = None
     if async_write:
         if not copy_to_nfs:
-            with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
+            with PathManager.opena(
+                filename, "wb", callback_after_file_close=callback
+            ) as f:
                 _torch_persistent_save(obj, f)
         else:
             # TODO[susanz] Clean this up - this is a workaround for when file is being written to local dir first
