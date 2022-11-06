@@ -10,6 +10,8 @@ import logging
 import os
 import re
 import traceback
+import uuid
+import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
 
@@ -124,13 +126,38 @@ def save_checkpoint(
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
         if trainer.data_parallel_rank == 0:
-            pass
+            _launch_sbatch_for_checkpoint_copy(cfg, os.environ.get("METASEQ_OSS_DESTINATION"))
 
         _delete_old_checkpoint_files(
             cfg,
             end_of_epoch,
             suffix,
         )
+
+
+SBATCH_CHECKPOINT_COPY_CMD = """
+#!/bin/bash
+#SBATCH --job-name=cp_checkpoint
+#SBATCH --qos=high
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --time=4320
+#SBATCH --mem=0
+
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {oss_dir} {local_dir} {num_files} {nfs_dir}
+"""
+
+
+def _launch_sbatch_for_checkpoint_copy(cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8):
+    nfs_upload_path = cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
+    if nfs_upload_path is not None:
+        sbatch_run_file = os.path.join(nfs_upload_path[4:], f"{str(uuid.uuid4())}.sh")
+        with open(sbatch_run_file, "w") as f:
+            f.write(SBATCH_CHECKPOINT_COPY_CMD.format(oss_dir=oss_dir, local_dir=cfg.save_dir, num_files=num_files_per_host, nfs_dir=nfs_upload_path[4:]))
+        subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
+    pass
 
 
 def _delete_old_checkpoint_files(
