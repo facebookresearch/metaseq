@@ -125,10 +125,10 @@ def save_checkpoint(
         # TODO: gate this for nfs
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
-        # if distributed_utils.get_global_rank() == 0:
-        #     _launch_sbatch_for_checkpoint_copy(
-        #         cfg, os.environ.get("METASEQ_OSS_DESTINATION")
-        #     )
+        if distributed_utils.get_global_rank() == 0:
+            _launch_sbatch_for_checkpoint_copy(
+                cfg, os.environ.get("METASEQ_OSS_DESTINATION")
+            )
 
         _delete_old_checkpoint_files(
             cfg,
