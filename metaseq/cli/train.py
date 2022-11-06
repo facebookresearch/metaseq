@@ -485,36 +485,37 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             )
             os.remove(filename)
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            path, basename = os.path.split(filename)
-            checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
-            destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
-            temporary_checkpoint_dir = f"_{checkpoint_dir}"
-            try:
-                os.mkdir(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
-                )
-            except FileExistsError:
-                pass  # another worker got here first
-            # copy the checkpoint from local storage to nfs in the background
-            shutil.copyfile(
-                filename,
-                os.path.join(
-                    destination_checkpoints_dir,
-                    temporary_checkpoint_dir,
-                    checkpoint_file,
-                ),
-            )
-            torch.distributed.monitored_barrier(
-                group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
-            )
-            if distributed_utils.get_global_rank() == 0:
-                # atomic rename of the final checkpoint directory, now that all workers have completed
-                # their copies
-                os.rename(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
-                    os.path.join(destination_checkpoints_dir, checkpoint_dir),
-                )
-            os.remove(filename)
+            pass
+            # path, basename = os.path.split(filename)
+            # checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
+            # destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
+            # temporary_checkpoint_dir = f"_{checkpoint_dir}"
+            # try:
+            #     os.mkdir(
+            #         os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
+            #     )
+            # except FileExistsError:
+            #     pass  # another worker got here first
+            # # copy the checkpoint from local storage to nfs in the background
+            # shutil.copyfile(
+            #     filename,
+            #     os.path.join(
+            #         destination_checkpoints_dir,
+            #         temporary_checkpoint_dir,
+            #         checkpoint_file,
+            #     ),
+            # )
+            # torch.distributed.monitored_barrier(
+            #     group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
+            # )
+            # if distributed_utils.get_global_rank() == 0:
+            #     # atomic rename of the final checkpoint directory, now that all workers have completed
+            #     # their copies
+            #     os.rename(
+            #         os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
+            #         os.path.join(destination_checkpoints_dir, checkpoint_dir),
+            #     )
+            # os.remove(filename)
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
@@ -529,13 +530,13 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
 
-        if do_evaluate:
-            _run_evaluations(
-                cfg.checkpoint.eval_module,
-                cfg.checkpoint.cloud_upload_path,
-                filename,
-                **eval_kwargs,
-            )
+        # if do_evaluate:
+        #     _run_evaluations(
+        #         cfg.checkpoint.eval_module,
+        #         cfg.checkpoint.cloud_upload_path,
+        #         filename,
+        #         **eval_kwargs,
+        #     )
 
 
 def _run_evaluations(
