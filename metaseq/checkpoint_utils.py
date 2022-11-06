@@ -126,7 +126,9 @@ def save_checkpoint(
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
         if distributed_utils.get_global_rank() == 0:
-            _launch_sbatch_for_checkpoint_copy(cfg, os.environ.get("METASEQ_OSS_DESTINATION"))
+            _launch_sbatch_for_checkpoint_copy(
+                cfg, os.environ.get("METASEQ_OSS_DESTINATION")
+            )
 
         _delete_old_checkpoint_files(
             cfg,
@@ -149,13 +151,25 @@ srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes}
 """
 
 
-def _launch_sbatch_for_checkpoint_copy(cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8):
-    nfs_upload_path = cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
+def _launch_sbatch_for_checkpoint_copy(
+    cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8
+):
+    nfs_upload_path = (
+        cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
+    )
     if nfs_upload_path is not None:
         sbatch_run_file = os.path.join(nfs_upload_path[4:], f"{str(uuid.uuid4())}.sh")
         slurm_nodes = os.environ["SLURM_NODELIST"]
         with open(sbatch_run_file, "w") as f:
-            f.write(SBATCH_CHECKPOINT_COPY_CMD.format(oss_dir=oss_dir, slurm_nodes=slurm_nodes, local_dir=cfg.save_dir, num_files=num_files_per_host, nfs_dir=nfs_upload_path[4:]))
+            f.write(
+                SBATCH_CHECKPOINT_COPY_CMD.format(
+                    oss_dir=oss_dir,
+                    slurm_nodes=slurm_nodes,
+                    local_dir=cfg.save_dir,
+                    num_files=num_files_per_host,
+                    nfs_dir=nfs_upload_path[4:],
+                )
+            )
         subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
     pass
 
