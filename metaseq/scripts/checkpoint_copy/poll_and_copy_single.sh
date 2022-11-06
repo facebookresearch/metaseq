@@ -13,15 +13,15 @@ NUM_UPDATE=$4
 NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}" | grep -c "_done_checkpoint_${NUM_UPDATE}*")
 while [ "$NUM_COMPLETE" -lt "$TOTAL_FILES" ]
 do
-  echo "Found only $NUM_COMPLETE files so far..."
+  echo "Found only $NUM_COMPLETE files so far on $(hostname)..."
   sleep 10
   # shellcheck disable=SC2010
   NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}" | grep -c "_done_checkpoint_${NUM_UPDATE}*")
 done
 
-echo "Found $NUM_COMPLETE files! Proceeding to copy..."
+echo "Found ${NUM_COMPLETE} files on $(hostname)! Proceeding to copy...  ${LOCAL_CHECKPOINT_DIR}/checkpoint_${NUM_UPDATE}* to ${NFS_CHECKPOINT_DIR}${NUM_UPDATE}"
 
 # TODO: use rsync?
 cp "${LOCAL_CHECKPOINT_DIR}/checkpoint_${NUM_UPDATE}*" "${NFS_CHECKPOINT_DIR}${NUM_UPDATE}"
-echo "Done copying to NFS...cleaning up."
+echo "Done copying to NFS...cleaning up on $(hostname). Removing... ${LOCAL_CHECKPOINT_DIR}/*checkpoint_${NUM_UPDATE}*"
 rm "${LOCAL_CHECKPOINT_DIR}/*checkpoint_${NUM_UPDATE}*"
