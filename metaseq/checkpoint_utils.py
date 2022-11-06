@@ -139,13 +139,12 @@ def save_checkpoint(
         )
 
 
-# Squatting on 8 GPUs to get mutually exclusive hosts. TODO: remove this?
 # nfs_dir contains trailing backslash
 SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --job-name=cp_{num_update}
 #SBATCH --qos=high
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=8
+#SBATCH --gpus-per-node=0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=12
 #SBATCH --time=4320
@@ -153,7 +152,8 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --output={nfs_dir}_cp_checkpoint_%j.stdout
 #SBATCH --error={nfs_dir}_cp_checkpoint_%j.stderr
 
-srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} {num_files} {nfs_dir} {num_update}
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} \
+{num_files} {nfs_dir} {num_update}
 """
 
 

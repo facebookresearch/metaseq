@@ -24,4 +24,4 @@ echo -e "Found ${NUM_COMPLETE} files on $(hostname)! \n\t Proceeding to copy... 
 # TODO: use rsync?
 cp "${LOCAL_CHECKPOINT_DIR}/checkpoint_${NUM_UPDATE}"* "${NFS_CHECKPOINT_DIR}${NUM_UPDATE}/"
 echo -e "Done copying to NFS...cleaning up on $(hostname). \n\t Removing... ${LOCAL_CHECKPOINT_DIR}/*checkpoint_${NUM_UPDATE}*"
-rm "${LOCAL_CHECKPOINT_DIR}/*checkpoint_${NUM_UPDATE}"*
+rm "${LOCAL_CHECKPOINT_DIR}/"*"checkpoint_${NUM_UPDATE}"*
