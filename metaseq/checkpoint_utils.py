@@ -60,12 +60,9 @@ def save_checkpoint(
 
     epoch = epoch_itr.epoch
     end_of_epoch = epoch_itr.end_of_epoch()
-    updates = trainer.get_num_updates()
+    num_update = trainer.get_num_updates()
 
-    logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")
-
-    def is_better(a, b):
-        return a >= b if cfg.maximize_best_checkpoint_metric else a <= b
+    logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {num_update} updates")
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
@@ -79,11 +76,11 @@ def save_checkpoint(
     save_for_updates = (
         not end_of_epoch
         and cfg.save_interval_updates > 0
-        and updates % cfg.save_interval_updates == 0
+        and num_update % cfg.save_interval_updates == 0
     )
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
-    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
+    checkpoint_conds[f"checkpoint_{num_update}{suffix}.pt"] = save_for_updates
     checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
         training_finished and cfg.save_last_checkpoint
     )
@@ -121,14 +118,14 @@ def save_checkpoint(
         write_timer.stop()
         logger.info(
             "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-                checkpoints[0], epoch, updates, val_loss, write_timer.sum
+                checkpoints[0], epoch, num_update, val_loss, write_timer.sum
             )
         )
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
         if copy_to_nfs and distributed_utils.get_global_rank() == 0:
             _launch_sbatch_for_checkpoint_copy(
-                cfg, os.environ.get("METASEQ_OSS_DESTINATION")
+                cfg, os.environ.get("METASEQ_OSS_DESTINATION"), num_files_per_host=8, num_update=num_update
             )
 
         _delete_old_checkpoint_files(
@@ -150,12 +147,12 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --output={nfs_dir}cp_checkpoint_%j.stdout
 #SBATCH --error={nfs_dir}cp_checkpoint_%j.stderr
 
-srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} {num_files} {nfs_dir}
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} {num_files} {nfs_dir} {num_update}
 """
 
 
 def _launch_sbatch_for_checkpoint_copy(
-    cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8
+    cfg: CheckpointConfig, oss_dir: str, num_files_per_host: int = 8, num_update: int = 0,
 ):
     nfs_upload_path = (
         cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
@@ -171,6 +168,7 @@ def _launch_sbatch_for_checkpoint_copy(
                     local_dir=cfg.save_dir,
                     num_files=num_files_per_host,
                     nfs_dir=nfs_upload_path[4:],
+                    num_update=num_update,
                 )
             )
         subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
