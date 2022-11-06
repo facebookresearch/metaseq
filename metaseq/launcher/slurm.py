@@ -98,7 +98,7 @@ def copy_all_python_files(
         shutil.copytree(
             os.path.join(source, d),
             os.path.join(destination, d),
-            ignore=include_patterns("*.py", "*.so", "*.yaml"),
+            ignore=include_patterns("*.py", "*.so", "*.yaml", "*.sh"),
         )
     return destination
 
