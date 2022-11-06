@@ -120,6 +120,11 @@ def save_checkpoint(
                 checkpoints[0], epoch, updates, val_loss, write_timer.sum
             )
         )
+        # TODO: gate this for nfs
+        # Launch sbatch job to copy to nfs
+        #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
+        if trainer.data_parallel_rank == 0:
+            pass
 
         _delete_old_checkpoint_files(
             cfg,

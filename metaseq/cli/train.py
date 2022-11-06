@@ -455,6 +455,7 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
+# filename is absolute filepath on local disk
 def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
@@ -485,8 +486,10 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             )
             os.remove(filename)
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            pass
-            # path, basename = os.path.split(filename)
+            file_parentpath, file_basename = os.path.split(filename)
+            done_file = os.path.join(file_parentpath, "_done_" + file_basename)
+            os.close(os.open(done_file, os.O_CREAT))
+
             # checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             # destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
             # temporary_checkpoint_dir = f"_{checkpoint_dir}"
