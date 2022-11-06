@@ -1,4 +1,5 @@
 #!/bin/bash
+
 OSS_DEST=$1
 LOCAL_CHECKPOINT_DIR=$2
 TOTAL_FILES=$3

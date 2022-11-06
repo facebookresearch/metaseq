@@ -41,7 +41,7 @@ def save_checkpoint(
     from metaseq import meters
 
     # only one worker should attempt to create the required dir
-    if trainer.data_parallel_rank == 0:
+    if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
     prev_best = getattr(save_checkpoint, "best", val_loss)
@@ -125,7 +125,7 @@ def save_checkpoint(
         # TODO: gate this for nfs
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
-        if trainer.data_parallel_rank == 0:
+        if distributed_utils.get_global_rank() == 0:
             _launch_sbatch_for_checkpoint_copy(cfg, os.environ.get("METASEQ_OSS_DESTINATION"))
 
         _delete_old_checkpoint_files(
@@ -135,8 +135,7 @@ def save_checkpoint(
         )
 
 
-SBATCH_CHECKPOINT_COPY_CMD = """
-#!/bin/bash
+SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --job-name=cp_checkpoint
 #SBATCH --qos=high
 #SBATCH --ntasks-per-node=1
