@@ -128,7 +128,7 @@ def save_checkpoint(
             _launch_sbatch_for_checkpoint_copy(
                 cfg,
                 os.environ.get("METASEQ_OSS_DESTINATION"),
-                num_files_per_host=8,
+                num_files_per_host=8,  # Assume 1 file per GPU, and we always run with 8 GPUs per host.
                 num_update=num_update,
             )
 
