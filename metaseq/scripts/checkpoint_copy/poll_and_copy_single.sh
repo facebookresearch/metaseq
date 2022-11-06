@@ -5,13 +5,13 @@ TOTAL_FILES=$2
 NFS_CHECKPOINT_DIR=$3
 NUM_UPDATE=$4
 
-# shellcheck disable=SC2012
-NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}"/_done_checkpoint_"${NUM_UPDATE}"* | wc -l)
+# shellcheck disable=SC2010
+NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}"/ | grep -c "_done_checkpoint_${NUM_UPDATE}*")
 while [ "$NUM_COMPLETE" -le "$TOTAL_FILES" ]
 do
 sleep 10
-# shellcheck disable=SC2012
-NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}"/_done_checkpoint_"${NUM_UPDATE}"* | wc -l)
+# shellcheck disable=SC2010
+NUM_COMPLETE=$(ls "${LOCAL_CHECKPOINT_DIR}"/ | grep -c "_done_checkpoint_${NUM_UPDATE}*")
 done
 
 # TODO: use rsync?

@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import traceback
-import uuid
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
@@ -135,11 +134,12 @@ def save_checkpoint(
         )
 
 
+# Squatting on 8 GPUs to get mutually exclusive hosts. TODO: remove this?
 SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
-#SBATCH --job-name=cp_checkpoint
+#SBATCH --job-name=cp_{num_update}
 #SBATCH --qos=high
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=0
+#SBATCH --gpus-per-node=8
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=12
 #SBATCH --time=4320
@@ -158,7 +158,7 @@ def _launch_sbatch_for_checkpoint_copy(
         cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
     )
     if nfs_upload_path is not None:
-        sbatch_run_file = os.path.join(nfs_upload_path[4:], f"{str(uuid.uuid4())}.sh")
+        sbatch_run_file = os.path.join(nfs_upload_path[4:], f"cp_sbatch_script_{num_update}.sh")
         slurm_nodes = os.environ["SLURM_NODELIST"]
         with open(sbatch_run_file, "w") as f:
             f.write(
