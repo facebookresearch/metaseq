@@ -17,7 +17,7 @@ MICHI = False
 
 caption = "A man riding a wave on a"
 if MICHI:
-    prompt1 = f'<img alt=\"{caption}\"'
+    prompt1 = f'<img alt="{caption}"'
 else:
     prompt1 = caption
 
@@ -30,23 +30,23 @@ parser = options.get_generation_parser()
 args = options.parse_args_and_arch(
     parser,
     input_args=[
-        '--task',
-        'cm3_language_modeling_inference_for_models_trained_with_streaming',
-        '--spm-path',
+        "--task",
+        "cm3_language_modeling_inference_for_models_trained_with_streaming",
+        "--spm-path",
         (
-            '/shared/home/roller/V65536_I8192_S512_M512_R1024.json'
+            "/shared/home/roller/V65536_I8192_S512_M512_R1024.json"
             if MICHI
-            else '/shared/home/roller/V262144_I8192_S512_M512_R1024.json'
+            else "/shared/home/roller/V262144_I8192_S512_M512_R1024.json"
         ),
-        '--path',
+        "--path",
         (
-            '/shared/home/roller/michi.pt'
+            "/shared/home/roller/michi.pt"
             if MICHI
-            else '/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt'
+            else "/shared/home/roller/checkpoint_47_40000_consolidated_inference.pt"
         ),
-        '--bpe',
-        'hf_cm3_unigram',
-        '/tmp',
+        "--bpe",
+        "hf_cm3_unigram",
+        "/tmp",
     ],
 )
 cfg = convert_namespace_to_omegaconf(args)
@@ -70,15 +70,15 @@ response = gi.generate(
 )
 # print(json.dumps(response, indent=2))
 output_text, output_tokens = (
-    response[0][0]['text']
+    response[0][0]["text"]
     .replace("<sentinel:0>", "")
-    .replace('">', '')
-    .replace('  ', ' ')
+    .replace('">', "")
+    .replace("  ", " ")
     .split('src="' if MICHI else ".")
 )
-print(response[0][0]['text'][:60])
-if ')' in output_tokens:
-    output_tokens = output_tokens[output_tokens.rindex(')') + 1 :]
+print(response[0][0]["text"][:60])
+if ")" in output_tokens:
+    output_tokens = output_tokens[output_tokens.rindex(")") + 1 :]
 output_image_tokens = output_tokens.split()
 print(len(output_image_tokens))
 while len(output_image_tokens) < 1024:

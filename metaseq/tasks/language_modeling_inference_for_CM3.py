@@ -93,7 +93,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         return tokenizer
 
     def _initialize_unigram_tokenizer(self, args):
-        if "1.4" not in args.spm_path: # tokenizers for 1.3 and previous
+        if "1.4" not in args.spm_path:  # tokenizers for 1.3 and previous
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
@@ -119,7 +119,6 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
             return tokenizer
         else:
             return Tokenizer(models.BPE()).from_file(args.spm_path)
-
 
     def _initialize_metaseq_dictionary(self, args):
         dictionary = Dictionary()
@@ -224,7 +223,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         self.args = args
         self.datasets = {}
         self.dataset_to_epoch_iter = {}
-        
+
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
@@ -260,6 +259,5 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
             self.criterion_weights[token_index] = 0.0
 
         self.sentinel_end_ind = self.dictionary.index(self.sentinel_end)
-
 
         self.output_dictionary = self.dictionary
