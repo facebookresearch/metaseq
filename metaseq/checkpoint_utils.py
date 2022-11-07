@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import traceback
+import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
 
@@ -35,11 +36,12 @@ def save_checkpoint(
     val_loss,
     training_finished=False,
     async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     from metaseq import meters
 
     # only one worker should attempt to create the required dir
-    if trainer.data_parallel_rank == 0:
+    if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
     prev_best = getattr(save_checkpoint, "best", val_loss)
@@ -57,12 +59,11 @@ def save_checkpoint(
 
     epoch = epoch_itr.epoch
     end_of_epoch = epoch_itr.end_of_epoch()
-    updates = trainer.get_num_updates()
+    num_update = trainer.get_num_updates()
 
-    logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")
-
-    def is_better(a, b):
-        return a >= b if cfg.maximize_best_checkpoint_metric else a <= b
+    logger.info(
+        f"Preparing to save checkpoint for epoch {epoch} @ {num_update} updates"
+    )
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
@@ -76,11 +77,11 @@ def save_checkpoint(
     save_for_updates = (
         not end_of_epoch
         and cfg.save_interval_updates > 0
-        and updates % cfg.save_interval_updates == 0
+        and num_update % cfg.save_interval_updates == 0
     )
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
-    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
+    checkpoint_conds[f"checkpoint_{num_update}{suffix}.pt"] = save_for_updates
     checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
         training_finished and cfg.save_last_checkpoint
     )
@@ -101,6 +102,7 @@ def save_checkpoint(
             extra_state,
             training_finished=training_finished,
             async_callback_fn=async_callback_fn,
+            copy_to_nfs=copy_to_nfs,
         )
 
         def _copy_if_not_async(src, dest):
@@ -117,15 +119,77 @@ def save_checkpoint(
         write_timer.stop()
         logger.info(
             "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-                checkpoints[0], epoch, updates, val_loss, write_timer.sum
+                checkpoints[0], epoch, num_update, val_loss, write_timer.sum
             )
         )
+        # Launch sbatch job to copy to nfs
+        #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
+        if copy_to_nfs and distributed_utils.get_global_rank() == 0:
+            _launch_sbatch_for_checkpoint_copy(
+                num_update,
+                cfg,
+                os.environ.get("METASEQ_OSS_DESTINATION"),
+            )
 
         _delete_old_checkpoint_files(
             cfg,
             end_of_epoch,
             suffix,
         )
+
+
+# nfs_dir contains trailing backslash
+SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
+#SBATCH --job-name=cp_{num_update}
+#SBATCH --qos=high
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --time=4320
+#SBATCH --mem=0
+#SBATCH --output={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stdout
+#SBATCH --error={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stderr
+
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} \
+{num_files} {nfs_dir} {num_update}
+"""
+
+
+def _launch_sbatch_for_checkpoint_copy(
+    num_update: int,
+    cfg: CheckpointConfig,
+    oss_dir: str,
+    num_files_per_host: int = 8,  # Assume 1 file per GPU, and we always run with 8 GPUs per host.
+):
+    nfs_upload_path = (
+        cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
+    )
+    if nfs_upload_path is not None:
+        nfs_dir = nfs_upload_path[4:]
+        cp_script_dir = "_cp_scripts"
+        if not nfs_dir.endswith("/"):
+            nfs_dir += "/"
+        copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
+        os.makedirs(copy_script_dir, exist_ok=True)
+        sbatch_run_file = os.path.join(
+            copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
+        )
+        slurm_nodes = os.environ["SLURM_NODELIST"]
+        with open(sbatch_run_file, "w") as f:
+            f.write(
+                SBATCH_CHECKPOINT_COPY_CMD.format(
+                    oss_dir=oss_dir,
+                    slurm_nodes=slurm_nodes,
+                    local_dir=cfg.save_dir,
+                    num_files=num_files_per_host,
+                    nfs_dir=nfs_upload_path[4:],
+                    cp_script_dir=cp_script_dir,
+                    num_update=num_update,
+                )
+            )
+        subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
+    pass
 
 
 def _delete_old_checkpoint_files(
@@ -242,7 +306,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             restart_from_latest = slurm_was_restarted or (
                 cfg.finetune_from_model is None and not specific_restore_file_provided
             )
-            if restart_from_latest:
+            if restart_from_latest and os.path.exists(nfs_path):
                 max_checkpoint = None
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
@@ -257,7 +321,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                         )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")
-            if filename is not None:
+            if filename is not None and os.path.exists(checkpoint_path_to_load):
                 logger.info(
                     f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
                 )
@@ -592,7 +656,11 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 
 
 def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
+    obj,
+    filename: str,
+    async_write: bool = False,
+    async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     assert (
         async_callback_fn is None or async_write
@@ -602,8 +670,17 @@ def torch_persistent_save(
     else:
         callback = None
     if async_write:
-        with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
-            _torch_persistent_save(obj, f)
+        if not copy_to_nfs:
+            with PathManager.opena(
+                filename, "wb", callback_after_file_close=callback
+            ) as f:
+                _torch_persistent_save(obj, f)
+        else:
+            # TODO[susanz] Clean this up - this is a workaround for when file is being written to local dir first
+            #  and we have decoupled nfs sync via an sbatch call.  Async callback here writes a _done_* file.
+            with PathManager.open(filename, "wb") as f:
+                _torch_persistent_save(obj, f)
+            async_callback_fn(filename)
     else:
         if PathManager.supports_rename(filename):
             # do atomic save

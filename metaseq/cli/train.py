@@ -17,7 +17,6 @@ import subprocess
 import sys
 import time
 import socket
-import shutil
 import re
 from datetime import timedelta
 from typing import Dict, Optional, Any, List, Tuple, Callable
@@ -442,6 +441,7 @@ def validate_and_save(
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
+            copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
@@ -455,6 +455,7 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
+# filename is absolute filepath on local disk
 def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
@@ -485,36 +486,10 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             )
             os.remove(filename)
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            path, basename = os.path.split(filename)
-            checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
-            destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
-            temporary_checkpoint_dir = f"_{checkpoint_dir}"
-            try:
-                os.mkdir(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
-                )
-            except FileExistsError:
-                pass  # another worker got here first
-            # copy the checkpoint from local storage to nfs in the background
-            shutil.copyfile(
-                filename,
-                os.path.join(
-                    destination_checkpoints_dir,
-                    temporary_checkpoint_dir,
-                    checkpoint_file,
-                ),
-            )
-            torch.distributed.monitored_barrier(
-                group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
-            )
-            if distributed_utils.get_global_rank() == 0:
-                # atomic rename of the final checkpoint directory, now that all workers have completed
-                # their copies
-                os.rename(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
-                    os.path.join(destination_checkpoints_dir, checkpoint_dir),
-                )
-            os.remove(filename)
+            # TODO[susanz]: Add cleanup logic.
+            file_parentpath, file_basename = os.path.split(filename)
+            done_file = os.path.join(file_parentpath, "_done_" + file_basename)
+            os.close(os.open(done_file, os.O_CREAT))
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
