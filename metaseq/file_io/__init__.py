@@ -57,7 +57,7 @@ def recursively_dietgpu_find(obj, toplevel=True, tensors=None, locations=None, p
     if isinstance(obj, list):
         for i,x in enumerate(obj):
             recursively_dietgpu_find(x, toplevel=False, tensors=tensors, locations = locations, path = path + [i])
-    if isinstance(obj, torch.Tensor) and obj.dtype in [torch.float16, torch.bfloat16, torch.float32]:
+    if isinstance(obj, torch.Tensor) and obj.dtype in [torch.float16, torch.bfloat16, torch.float32, torch.int8]:
         tensors[obj.dtype].append(obj)
         locations[obj.dtype].append(path)
     if toplevel:
@@ -71,7 +71,12 @@ def recursively_dietgpu_find(obj, toplevel=True, tensors=None, locations=None, p
 def dietgpu_compress(obj):
     assert isinstance(obj, collections.abc.Mapping)
     tensors, locations = recursively_dietgpu_find(obj)
-    smaller_tensors = {d: torch.ops.dietgpu.compress_data_simple(True, tensors) for d,tensors in tensors.iteritems()}
+    smaller_tensors = {}
+    for dtype, ts in tensors.iteritems():
+        if dtype == torch.int8:
+            smaller_tensors[dtype] = torch.ops.dietgpu.compress_data_simple(False, tensors)
+        else:
+            smaller_tensors[dtype] = torch.ops.dietgpu.compress_data_simple(True, tensors)
     # TODO this should probably be immutably zipping
     for dtype in tensors:
         for loc, tensor in zip(locations[dtype], tensors[dtype]):
@@ -101,7 +106,10 @@ def dietgpu_decompress(obj):
                 tensor_container = tensor_container[loc[i]]
                 i += 1
             compressed_tensors.append(tensor_container[loc[-1]])
-        tensors = torch.ops.dietgpu.decompress_data_simple(True, compressed_tensors)
+        if dtype == torch.int8:
+            tensors = torch.ops.dietgpu.decompress_data_simple(False, compressed_tensors)
+        else:
+            tensors = torch.ops.dietgpu.decompress_data_simple(True, compressed_tensors)
         for loc, tensor in zip(locations[dtype], tensors):
             # let's find the parent container for the compressed tensor
             tensor_container = obj
