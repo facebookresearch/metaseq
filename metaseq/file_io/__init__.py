@@ -46,39 +46,42 @@ except Exception as e:
 torch.ops.load_library("dietgpu")
 
 # finds compressible tensors
-def recursively_dietgpu_compress(obj, toplevel=True, tensors=None, locations=None, path=[]):
+def recursively_dietgpu_find(obj, toplevel=True, tensors=None, locations=None, path=[]):
     if toplevel:
-        tensors = []
-        locations = []
+        # These are lists of tensors and their paths in the datastructure, keyed by dtype
+        tensors = defaultdict(lambda: [])
+        locations = defaultdict(lambda: [])
     if isinstance(obj, collections.abc.Mapping):
         for k,v in obj.iteritems():
-            recursively_dietgpu_compress(v, toplevel=False, tensors=tensors, locations = locations, path = path + [k])
+            recursively_dietgpu_find(v, toplevel=False, tensors=tensors, locations = locations, path = path + [k])
     if isinstance(obj, list):
         for i,x in enumerate(obj):
-            recursively_dietgpu_compress(x, toplevel=False, tensors=tensors, locations = locations, path = path + [i])
+            recursively_dietgpu_find(x, toplevel=False, tensors=tensors, locations = locations, path = path + [i])
     if isinstance(obj, torch.Tensor) and obj.dtype in [torch.float16, torch.bfloat16, torch.float32]:
-        tensors.append(obj)
-        locations.append(path)
+        tensors[obj.dtype].append(obj)
+        locations[obj.dtype].append(path)
     if toplevel:
         return tensors, locations
 
 
-# First, uses recursively_dietgpu_compress to find eligible tensors and their "paths" in the overall dict
+# First, uses recursively_dietgpu_find to find eligible tensors and their "paths" in the overall dict
 # After compressing, uses the paths to mutate the given object to use the compressed tensors
 # Includes the compressed paths to guide decompression
 # TODO this doesn't compress int8 tensors, which would use False for the dietgpu float mode fwiw
 def dietgpu_compress(obj):
     assert isinstance(obj, collections.abc.Mapping)
-    tensors, locations = recursively_dietgpu_compress(obj)
-    smaller_tensors = torch.ops.dietgpu.compress_data_simple(True, tensors)
-    for loc, tensor in zip(locations, tensors):
-        # let's find the parent container for the compressed tensor
-        tensor_container = obj
-        i = 0
-        while i != len(loc) - 1:
-            tensor_container = tensor_container[loc[i]]
-            i += 1
-        tensor_container[loc[-1]] = tensor
+    tensors, locations = recursively_dietgpu_find(obj)
+    smaller_tensors = {d: torch.ops.dietgpu.compress_data_simple(True, tensors) for d,tensors in tensors.iteritems()}
+    # TODO this should probably be immutably zipping
+    for dtype in tensors:
+        for loc, tensor in zip(locations[dtype], tensors[dtype]):
+            # let's find the parent container for the compressed tensor
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            tensor_container[loc[-1]] = tensor
     obj["dietgpu_locs"] = locations
 
 
@@ -88,24 +91,25 @@ def dietgpu_compress(obj):
 def dietgpu_decompress(obj):
     if "dietgpu_locs" not in obj:
         return obj
-    compressed_tensors = []
     locations = obj["dietgpu_locs"]
-    for loc in locations:
-        tensor_container = obj
-        i = 0
-        while i != len(loc) - 1:
-            tensor_container = tensor_container[loc[i]]
-            i += 1
-        compressed_tensors.append(tensor_container[loc[-1]])
-    tensors = torch.ops.dietgpu.decompress_data_simple(True, compressed_tensors)
-    for loc, tensor in zip(locations, tensors):
-        # let's find the parent container for the compressed tensor
-        tensor_container = obj
-        i = 0
-        while i != len(loc) - 1:
-            tensor_container = tensor_container[loc[i]]
-            i += 1
-        tensor_container[loc[-1]] = tensor
+    for dtype in locations:
+        compressed_tensors = []
+        for loc in locations[dtype]:
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            compressed_tensors.append(tensor_container[loc[-1]])
+        tensors = torch.ops.dietgpu.decompress_data_simple(True, compressed_tensors)
+        for loc, tensor in zip(locations[dtype], tensors):
+            # let's find the parent container for the compressed tensor
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            tensor_container[loc[-1]] = tensor
     del obj["dietgpu_locs"]
 
 
