@@ -126,10 +126,9 @@ def save_checkpoint(
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
         if copy_to_nfs and distributed_utils.get_global_rank() == 0:
             _launch_sbatch_for_checkpoint_copy(
+                num_update,
                 cfg,
                 os.environ.get("METASEQ_OSS_DESTINATION"),
-                num_files_per_host=8,  # Assume 1 file per GPU, and we always run with 8 GPUs per host.
-                num_update=num_update,
             )
 
         _delete_old_checkpoint_files(
@@ -158,10 +157,10 @@ srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes}
 
 
 def _launch_sbatch_for_checkpoint_copy(
+    num_update: int,
     cfg: CheckpointConfig,
     oss_dir: str,
-    num_files_per_host: int = 8,
-    num_update: int = 0,
+    num_files_per_host: int = 8,  # Assume 1 file per GPU, and we always run with 8 GPUs per host.
 ):
     nfs_upload_path = (
         cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
@@ -172,8 +171,7 @@ def _launch_sbatch_for_checkpoint_copy(
         if not nfs_dir.endswith("/"):
             nfs_dir += "/"
         copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
-        if not os.path.exists(copy_script_dir):
-            os.makedirs(copy_script_dir, exist_ok=True)
+        os.makedirs(copy_script_dir, exist_ok=True)
         sbatch_run_file = os.path.join(
             copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
         )
