@@ -110,7 +110,8 @@ def save_checkpoint(
 
         write_timer.stop()
         logger.info(
-            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {num_update} updates) (writing took {write_timer.sum} seconds)"
+            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {num_update} updates) "
+            f"(writing took {write_timer.sum} seconds)"
         )
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...

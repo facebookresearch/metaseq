@@ -605,9 +605,7 @@ def validate(
     return valid_losses
 
 
-def add_num_updates_to_stats(
-    trainer: Trainer, stats: Dict[str, Any]
-) -> Dict[str, Any]:
+def add_num_updates_to_stats(trainer: Trainer, stats: Dict[str, Any]) -> Dict[str, Any]:
     stats["num_updates"] = trainer.get_num_updates()
     return stats
 
