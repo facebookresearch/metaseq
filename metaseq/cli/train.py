@@ -10,13 +10,18 @@ Train a new model on one or across multiple GPUs.
 import argparse
 import functools
 import logging
+import importlib
 import math
 import os
 import subprocess
 import sys
 import time
+import socket
+import re
+from datetime import timedelta
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
+import torch.distributed as dist
 import numpy as np
 import torch
 import torch.profiler as profiler
@@ -49,6 +54,11 @@ logger = logging.getLogger("metaseq.cli.train")
 
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
+
+    # replace with actual job id
+    slurm_jobid = os.environ.get("SLURM_JOBID", None)
+    if "%jobid" in cfg.checkpoint.save_dir and slurm_jobid is not None:
+        cfg.checkpoint.save_dir = cfg.checkpoint.save_dir.replace("%jobid", slurm_jobid)
 
     checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
@@ -395,8 +405,7 @@ def validate_and_save(
         or should_stop
     )
     do_validate = (
-        (not end_of_epoch and do_save)  # validate during mid-epoch saves
-        or should_stop
+        should_stop
         or (
             cfg.dataset.validate_interval_updates > 0
             and num_updates > 0
@@ -404,6 +413,12 @@ def validate_and_save(
             and was_successful_step
         )
     ) and not cfg.dataset.disable_validation
+    do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
+        cfg.checkpoint.evaluate_interval_updates > 0
+        and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
+    )
+    assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
+
     valid_losses = [None]
     if do_validate:
         valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
@@ -412,22 +427,37 @@ def validate_and_save(
 
     # Save checkpoint
     if do_save:
+        eval_kwargs = {
+            "checkpoint_suffix": trainer.checkpoint_suffix,
+            "gloo_pg": dist.new_group(backend="gloo"),
+        }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
             epoch_itr,
             valid_losses[0],
             training_finished=should_stop,
-            async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
+            async_callback_fn=functools.partial(
+                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
+            )
             if cfg.checkpoint.cloud_upload_path
             else None,
+            copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
 
 
-def post_checkpoint_callback(cfg, filename):
+def _checkpoint_add_directory(basename):
+    pattern = r"(checkpoint(\d+|_\d+|_last))(.*)"
+    m = re.match(pattern, basename)
+    assert m, f"checkpoint file doesn't follow pattern {pattern}"
+    return m[1], f"checkpoint{m[3]}"
+
+
+# filename is absolute filepath on local disk
+def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -456,6 +486,11 @@ def post_checkpoint_callback(cfg, filename):
                 f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
             )
             os.remove(filename)
+        elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
+            # TODO[susanz]: Add cleanup logic.
+            file_parentpath, file_basename = os.path.split(filename)
+            done_file = os.path.join(file_parentpath, "_done_" + file_basename)
+            os.close(os.open(done_file, os.O_CREAT))
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
@@ -469,6 +504,38 @@ def post_checkpoint_callback(cfg, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
+
+        if do_evaluate:
+            _run_evaluations(
+                cfg.checkpoint.eval_module,
+                cfg.checkpoint.cloud_upload_path,
+                filename,
+                **eval_kwargs,
+            )
+
+
+def _run_evaluations(
+    eval_module, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg
+):
+    # Make sure all ranks have finished uploading checkpoints.
+    # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
+    # not run evals. Error doesn't stop training run.
+    dist.monitored_barrier(group=gloo_pg, timeout=timedelta(minutes=5))
+    # Run evals on rank 0
+    if distributed_utils.get_global_rank() != 0:
+        return
+    assert eval_module is not None, "--eval-module needs to be set."
+    module = importlib.import_module(eval_module)
+    if not hasattr(module, "eval_fn"):
+        raise RuntimeError(
+            f"{eval_module} must have a function called eval_fn to utilize for evaluations. "
+            "It expects the following signature:\n"
+            "def eval_fn(cloud_upload_path: str, checkpoint_name: str)"
+        )
+    checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
+    logger.info(f"Kicking off eval_fn from: {module}")
+    module.eval_fn(cloud_upload_path, checkpoint_name)
+    logger.info(f"Successfully ran evaluation")
 
 
 def _run_azcopy(cmd, stdout, stderr):
@@ -585,9 +652,31 @@ def get_valid_stats(
     return stats
 
 
+def set_local_per_worker_env_variables():
+    savedir = os.environ.get("METASEQ_SAVE_DIR")
+    if savedir is not None:
+        hostname = socket.gethostname()
+
+        restart = int(os.environ.get("SLURM_RESTART_COUNT", "0"))
+        nccl_dir = os.path.join(savedir, "nccl", f"restart_{restart:03d}")
+        os.makedirs(nccl_dir, exist_ok=True)
+        rank = int(os.environ.get("SLURM_PROCID", "0"))
+        os.environ["NCCL_DEBUG_FILE"] = os.path.join(
+            nccl_dir, f"rank_{rank:04d}_{hostname}"
+        )
+
+        # save a copy of all our environmental variables
+        env_dir = os.path.join(savedir, "envs", f"restart_{restart:03d}")
+        os.makedirs(env_dir, exist_ok=True)
+        with open(os.path.join(env_dir, f"rank_{rank:04d}_{hostname}"), "w") as f:
+            for key in sorted(os.environ.keys()):
+                f.write(f"{key}={os.environ[key]}\n")
+
+
 def cli_main(
     modify_parser: Optional[Callable[[argparse.ArgumentParser], None]] = None
 ) -> None:
+    set_local_per_worker_env_variables()
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
 

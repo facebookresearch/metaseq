@@ -10,8 +10,9 @@ import logging
 import os
 import re
 import traceback
-from glob import glob
-from typing import Any, Dict, List, Optional
+import subprocess
+from typing import Any, Dict, List, Optional, Tuple
+import shutil
 
 import torch
 from omegaconf import OmegaConf
@@ -35,11 +36,12 @@ def save_checkpoint(
     val_loss,
     training_finished=False,
     async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     from metaseq import meters
 
     # only one worker should attempt to create the required dir
-    if trainer.data_parallel_rank == 0:
+    if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
     prev_best = getattr(save_checkpoint, "best", val_loss)
@@ -57,12 +59,11 @@ def save_checkpoint(
 
     epoch = epoch_itr.epoch
     end_of_epoch = epoch_itr.end_of_epoch()
-    updates = trainer.get_num_updates()
+    num_update = trainer.get_num_updates()
 
-    logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")
-
-    def is_better(a, b):
-        return a >= b if cfg.maximize_best_checkpoint_metric else a <= b
+    logger.info(
+        f"Preparing to save checkpoint for epoch {epoch} @ {num_update} updates"
+    )
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
@@ -76,11 +77,11 @@ def save_checkpoint(
     save_for_updates = (
         not end_of_epoch
         and cfg.save_interval_updates > 0
-        and updates % cfg.save_interval_updates == 0
+        and num_update % cfg.save_interval_updates == 0
     )
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
-    checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
+    checkpoint_conds[f"checkpoint_{num_update}{suffix}.pt"] = save_for_updates
     checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
         training_finished and cfg.save_last_checkpoint
     )
@@ -101,6 +102,7 @@ def save_checkpoint(
             extra_state,
             training_finished=training_finished,
             async_callback_fn=async_callback_fn,
+            copy_to_nfs=copy_to_nfs,
         )
 
         def _copy_if_not_async(src, dest):
@@ -117,15 +119,77 @@ def save_checkpoint(
         write_timer.stop()
         logger.info(
             "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-                checkpoints[0], epoch, updates, val_loss, write_timer.sum
+                checkpoints[0], epoch, num_update, val_loss, write_timer.sum
             )
         )
+        # Launch sbatch job to copy to nfs
+        #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
+        if copy_to_nfs and distributed_utils.get_global_rank() == 0:
+            _launch_sbatch_for_checkpoint_copy(
+                num_update,
+                cfg,
+                os.environ.get("METASEQ_OSS_DESTINATION"),
+            )
 
         _delete_old_checkpoint_files(
             cfg,
             end_of_epoch,
             suffix,
         )
+
+
+# nfs_dir contains trailing backslash
+SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
+#SBATCH --job-name=cp_{num_update}
+#SBATCH --qos=high
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --time=4320
+#SBATCH --mem=0
+#SBATCH --output={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stdout
+#SBATCH --error={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stderr
+
+srun {oss_dir}/metaseq/scripts/checkpoint_copy/ssh_and_copy_all.sh {slurm_nodes} {oss_dir} {local_dir} \
+{num_files} {nfs_dir} {num_update}
+"""
+
+
+def _launch_sbatch_for_checkpoint_copy(
+    num_update: int,
+    cfg: CheckpointConfig,
+    oss_dir: str,
+    num_files_per_host: int = 8,  # Assume 1 file per GPU, and we always run with 8 GPUs per host.
+):
+    nfs_upload_path = (
+        cfg.cloud_upload_path if cfg.cloud_upload_path.startswith("nfs:") else None
+    )
+    if nfs_upload_path is not None:
+        nfs_dir = nfs_upload_path[4:]
+        cp_script_dir = "_cp_scripts"
+        if not nfs_dir.endswith("/"):
+            nfs_dir += "/"
+        copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
+        os.makedirs(copy_script_dir, exist_ok=True)
+        sbatch_run_file = os.path.join(
+            copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
+        )
+        slurm_nodes = os.environ["SLURM_NODELIST"]
+        with open(sbatch_run_file, "w") as f:
+            f.write(
+                SBATCH_CHECKPOINT_COPY_CMD.format(
+                    oss_dir=oss_dir,
+                    slurm_nodes=slurm_nodes,
+                    local_dir=cfg.save_dir,
+                    num_files=num_files_per_host,
+                    nfs_dir=nfs_upload_path[4:],
+                    cp_script_dir=cp_script_dir,
+                    num_update=num_update,
+                )
+            )
+        subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
+    pass
 
 
 def _delete_old_checkpoint_files(
@@ -229,42 +293,75 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     # TODO(susanz): fix all of this spagetti, split out logic by env
     # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
-    if (
-        cfg.cloud_upload_path
-        and cfg.cluster_env == ComputeEnvs.AZURE.value
-        and has_metaseq_internal
-    ):
-        if (
-            # --restore-file was not passed, always download latest checkpoint
-            (
-                cfg.restore_file == default_restore_file
-                and cfg.finetune_from_model is None
-            )
-            # --restore-file was passed, but we requeued, so download latest checkpoint
-            or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
-        ):
-            # download checkpoint into local save_dir
+
+    if cfg.cloud_upload_path:
+        if cfg.cloud_upload_path.startswith("nfs:"):
             checkpoint_path_to_load = os.path.join(
                 cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
             )
-            azure_utils.download_recent_ckpt(
-                cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
+            nfs_path = cfg.cloud_upload_path[4:]
+            filename = None
+            specific_restore_file_provided = cfg.restore_file != default_restore_file
+            slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            restart_from_latest = slurm_was_restarted or (
+                cfg.finetune_from_model is None and not specific_restore_file_provided
             )
-        elif (
-            # --restore-file was passed and is a blob URL, download that checkpoint
-            cfg.restore_file != default_restore_file
-            and "windows.net" in cfg.restore_file
-        ):
-            blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
-            # download checkpoint into local save_dir
-            checkpoint_path_to_load = os.path.join(
-                cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
-            )
-            azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
-        else:
-            logger.info(
-                f"Using checkpoint {checkpoint_path_to_load} even while on Azure"
-            )
+            if restart_from_latest and os.path.exists(nfs_path):
+                max_checkpoint = None
+                for candidate in os.listdir(nfs_path):
+                    if candidate == "checkpoint_last":
+                        raise RuntimeError(
+                            "trying to restart a job that already wrote checkpoint_last"
+                        )
+                    m = re.match(r"checkpoint_(\d+)", candidate)
+                    if m and (max_checkpoint is None or int(m[1]) > max_checkpoint):
+                        max_checkpoint = int(m[1])
+                        filename = os.path.join(
+                            nfs_path, candidate, f"checkpoint{suffix}.pt"
+                        )
+            else:
+                filename = cfg.restore_file.replace(".pt", suffix + ".pt")
+            if filename is not None and os.path.exists(checkpoint_path_to_load):
+                logger.info(
+                    f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
+                )
+                shutil.copyfile(filename, checkpoint_path_to_load)
+            else:
+                logger.info(f"No NFS checkpoints found")
+
+        elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
+            if (
+                # --restore-file was not passed, always download latest checkpoint
+                (
+                    cfg.restore_file == default_restore_file
+                    and cfg.finetune_from_model is None
+                )
+                # --restore-file was passed, but we requeued, so download latest checkpoint
+                or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            ):
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_recent_ckpt(
+                    cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
+                )
+            elif (
+                # --restore-file was passed and is a blob URL, download that checkpoint
+                cfg.restore_file != default_restore_file
+                and "windows.net" in cfg.restore_file
+            ):
+                blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
+            else:
+                logger.info(
+                    f"Using checkpoint {checkpoint_path_to_load} even while on Azure"
+                )
+
     # RSC logic: --restore-file was passed, and we requeued
     elif (
         cfg.restore_file != default_restore_file
@@ -327,31 +424,85 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
     return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
-def get_paths_to_load(local_path, suffix="rank-"):
-    checkpoint_files = glob(re.sub(f"{suffix}[0-9]+", f"{suffix}*", local_path))
+def _cache_checkpoint_files(path: str, suffix: str) -> Tuple[str, List[str]]:
+    """
+    Given a checkpoint path, first try to expand it according to
+    a specified filename pattern. If `path` doesn't match the pattern
+    we search the remote for it as-is. Then cache all matching files
+    and return the local paths.
+
+    Ex. 1:
+        Remote: [path://checkpoint_last-shard0.pt, path://checkpoint_last-shard1.pt]
+        Input: path=remote://path/checkpoint_last-shard0.pt, suffix=shard
+        Output: [/local/checkpoint_last-shard0.pt, /local/checkpoint_last-shard1.pt]
+
+    Ex. 2:
+        Remote: [path://checkpoint_last-model_part-0.pt, path://checkpoint_last-model_part-1.pt]
+        Input: path=remote://path/checkpoint_last-model_part-0.pt, suffix=shard
+        Output: [/local/checkpoint_last-model_part-0.pt]
+
+    Ex. 3:
+        Remote: [path://checkpoint_last.pt]
+        Input: path=remote://path/checkpoint_last-shard0.pt, suffix=shard
+        Output: []
+    """
+
+    local_path = PathManager.get_local_path(path, force=True)
+    local_name = os.path.basename(local_path)
+
+    # Ex. 2: if `path` doesn't match the pattern suggested by suffix
+    # just return the path itself without expansion
+    path_prefix = re.sub(rf"{suffix}[0-9]+\.pt$", f"{suffix}*", path)
+    if path == path_prefix:
+        return local_path, [local_path]
+
+    local_paths = []
+    for filepath in PathManager.ls(path_prefix):
+        # Ignore non-checkpoint files
+        if not filepath.endswith(".pt"):
+            continue
+        src_name = os.path.basename(filepath)
+        if src_name == local_name:
+            # Target path is already cached
+            local_paths.append(local_path)
+        else:
+            src_path = os.path.join(os.path.dirname(path), src_name)
+            tgt_path = PathManager.get_local_path(src_path, force=True)
+            local_paths.append(tgt_path)
+
+    return local_path, local_paths
+
+
+def get_paths_to_load(path, suffix="rank-"):
+    local_path, checkpoint_files = _cache_checkpoint_files(path, suffix)
+    checkpoint_files_count = len(checkpoint_files)
+
+    # Check if this looks like a sharded checkpoint
     if not _is_checkpoint_sharded(checkpoint_files):
         return [local_path]
-    checkpoint_files_count = len(checkpoint_files)
+
+    # Check if we need to merge shards
     world_size = distributed_utils.get_data_parallel_world_size()
-    fnames = []
     if world_size >= checkpoint_files_count:
         return [local_path]
 
+    # Assign an equal number of shards
     assert checkpoint_files_count % world_size == 0
-
     n_local_files = int(checkpoint_files_count / world_size)
     rank = distributed_utils.get_data_parallel_rank()
-    start_rank = n_local_files * rank  #
+    start_rank = n_local_files * rank
+    fnames = []
     for rank_to_load in range(start_rank, start_rank + n_local_files):
         fname = re.sub(
             f"{suffix}[0-9]+",
             f"{suffix}{rank_to_load}",
-            local_path,
+            checkpoint_files[0],
         )
         fnames.append(fname)
     logger.info(
-        f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker. "
+        f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker."
     )
+
     return fnames
 
 
@@ -371,30 +522,15 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     There's currently no support for > 1 but < all processes loading the
     checkpoint on each node.
     """
-    local_path = PathManager.get_local_path(path)
-    # The locally cached file returned by get_local_path() may be stale for
-    # remote files that are periodically updated/overwritten (ex:
-    # checkpoint_last.pt) - so we remove the local copy, sync across processes
-    # (if needed), and then download a fresh copy.
-    if local_path != path and PathManager.path_requires_pathmanager(path):
-        try:
-            os.remove(local_path)
-        except FileNotFoundError:
-            # With potentially multiple processes removing the same file, the
-            # file being missing is benign (missing_ok isn't available until
-            # Python 3.8).
-            pass
-        if load_on_all_ranks:
-            torch.distributed.barrier()
-        local_path = PathManager.get_local_path(path)
 
-    # path to checkpoint...-shared.pt
-    paths_to_load = get_paths_to_load(local_path, suffix="shard")
+    # Expand multi-part checkpoints like "checkpoint_last-shard0.pt"
+    paths_to_load = get_paths_to_load(path, suffix="shard")
+
     try:
         if len(paths_to_load) > 1:
             state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
         else:
-            state = torch_load_cpu(local_path)
+            state = torch_load_cpu(paths_to_load[0])
     except Exception as error:
         logger.error(
             f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."
@@ -520,7 +656,11 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 
 
 def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
+    obj,
+    filename: str,
+    async_write: bool = False,
+    async_callback_fn=None,
+    copy_to_nfs=False,
 ):
     assert (
         async_callback_fn is None or async_write
@@ -530,8 +670,17 @@ def torch_persistent_save(
     else:
         callback = None
     if async_write:
-        with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
-            _torch_persistent_save(obj, f)
+        if not copy_to_nfs:
+            with PathManager.opena(
+                filename, "wb", callback_after_file_close=callback
+            ) as f:
+                _torch_persistent_save(obj, f)
+        else:
+            # TODO[susanz] Clean this up - this is a workaround for when file is being written to local dir first
+            #  and we have decoupled nfs sync via an sbatch call.  Async callback here writes a _done_* file.
+            with PathManager.open(filename, "wb") as f:
+                _torch_persistent_save(obj, f)
+            async_callback_fn(filename)
     else:
         if PathManager.supports_rename(filename):
             # do atomic save

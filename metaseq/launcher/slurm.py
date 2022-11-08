@@ -17,8 +17,17 @@ from collections import OrderedDict
 from pathlib import Path
 
 import metaseq
-from metaseq.launcher.sweep import get_env_from_args
 from metaseq.utils import get_random_port
+from metaseq.launcher.tombyard import tombstones
+from metaseq.launcher.sweep import get_env_from_args
+
+try:
+    import metaseq_internal
+    import metaseq_internal.fb_sweep.internal as internal
+
+    has_internal = True
+except ImportError:
+    has_internal = False
 
 
 def main(get_grid, postprocess_hyperparams, args):
@@ -89,7 +98,7 @@ def copy_all_python_files(
         shutil.copytree(
             os.path.join(source, d),
             os.path.join(destination, d),
-            ignore=include_patterns("*.py", "*.so", "*.yaml"),
+            ignore=include_patterns("*.py", "*.so", "*.yaml", "*.sh"),
         )
     return destination
 
@@ -138,6 +147,7 @@ DEFAULT_NCCL_DEBUG_LOCAL = os.getenv("NCCL_DEBUG", "")
 def set_env(args, env, dry_run):
     if "OMP_NUM_THREADS" not in env:
         env["OMP_NUM_THREADS"] = "2"
+    env["NCCL_ASYNC_ERROR_HANDLING"] = "1"
     if args.local:
         if not dry_run("start training locally"):
             if "CUDA_VISIBLE_DEVICES" not in env:
@@ -149,7 +159,9 @@ def set_env(args, env, dry_run):
             env["NCCL_DEBUG"] = DEFAULT_NCCL_DEBUG
 
 
-def gen_train_command(args, env, config, oss_destination, save_dir, save_dir_key):
+def gen_train_command(
+    args, env, config, oss_destination, internal_destination, save_dir, save_dir_key
+):
     # generate train command
     train_cmd = [args.python, os.path.join(oss_destination, args.script)]
     train_cmd.extend(["--distributed-world-size", str(args.num_nodes * args.num_gpus)])
@@ -262,7 +274,13 @@ def gen_srun_command_and_str(args, save_dir_key, train_log, train_stderr, train_
 
 
 def gen_sbatch_command_and_str(
-    args, job_name, train_log, train_stderr, oss_destination, srun_cmd_str
+    args,
+    job_name,
+    train_log,
+    train_stderr,
+    oss_destination,
+    internal_destination,
+    srun_cmd_str,
 ):
     excluded_hosts = os.environ.get("EXCLUDED_HOSTS", None)
     included_hosts = os.environ.get("INCLUDED_HOSTS", None)
@@ -288,46 +306,35 @@ def gen_sbatch_command_and_str(
         "--signal",
         "B:USR1@180",
     ]
-
     if args.constraint:
         sbatch_cmd += ["--constraint", args.constraint]
 
     if args.partition:
         sbatch_cmd += ["--partition", args.partition]
-
     if args.reservation:
         sbatch_cmd += ["--reservation", args.reservation]
-
     if args.exclusive:
         sbatch_cmd += ["--exclusive"]
-
-    comment = ""
-    if args.comment:
-        comment = args.comment
-
+    comment = args.comment if args.comment else ""
     if args.snapshot_code:
-        comment += (
-            f", OSS Code Location: {oss_destination}"
-            if comment
-            else f"OSS Code Location: {oss_destination}"
-        )
+        comment += f"- OSS Code Location: {oss_destination} Internal Code Location: {internal_destination}"
+    if len(comment) > 0:
         sbatch_cmd += ["--comment", comment]
-
     if args.time is not None:
         sbatch_cmd.extend(["--time", args.time])
-
     if args.mem is not None:
         sbatch_cmd += ["--mem", args.mem]
     else:
         sbatch_cmd += ["--mem", "0"]
 
+    if args.rsc:
+        sbatch_cmd += ["--qos", "high"]
     sbatch_cmd += ["-x", excluded_hosts] if excluded_hosts is not None else []
     sbatch_cmd += ["-w", included_hosts] if included_hosts is not None else []
 
     wrapped_cmd = requeue_support()
     if args.azure:
         wrapped_cmd += "\n" + azure_support()
-
     wrapped_cmd += "\n" + srun_cmd_str + " \n wait $! \n sleep 610 & \n wait $!"
 
     sbatch_cmd += ["--wrap", wrapped_cmd]
@@ -378,22 +385,32 @@ def dry_run_batch(env, train_log, train_stderr, sbatch_cmd_str, sbatch_cmd, dry_
 
 
 def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
-    oss_destination = ""
+    oss_destination = str(Path(metaseq.__file__).parents[1])
+    internal_destination = (
+        str(Path(metaseq_internal.__file__).parents[1]) if has_internal else ""
+    )
     if args.snapshot_code:
         # Currently hash is just the current time in ISO format.
         # Remove colons since they cannot be escaped in POSIX PATH env vars.
         code_snapshot_hash = datetime.datetime.now().isoformat().replace(":", "_")
-        # Copy metaseq OSS code
-        metaseq_oss_path = str(Path(metaseq.__file__).parents[1])
+        if has_internal:
+            internal_destination = copy_all_python_files(
+                internal_destination,
+                os.path.join(args.snapshot_root, "slurm_snapshot_code_internal"),
+                code_snapshot_hash,
+                args.snapshot_recurse_dirs_internal,
+            )
+        # Need to copy MetaSeq OSS code as well
         oss_destination = copy_all_python_files(
-            metaseq_oss_path,
+            oss_destination,
             os.path.join(args.snapshot_root, "slurm_snapshot_code_oss"),
             code_snapshot_hash,
             args.snapshot_recurse_dirs_oss,
         )
-        os.environ["PYTHONPATH"] = (
-            oss_destination + ":" + os.environ.get("PYTHONPATH", "")
-        )
+        pythonpath_added = oss_destination + ":"
+        if has_internal:
+            pythonpath_added += internal_destination + ":"
+        os.environ["PYTHONPATH"] = pythonpath_added + os.environ.get("PYTHONPATH", "")
 
     # set environment
     base_env = os.environ.copy()
@@ -417,13 +434,32 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
         if not is_job_valid(args, save_dir, dry_run):
             continue
 
+        # symlink the snapshots over
+        if args.snapshot_code:
+            if has_internal:
+                abs_int = os.path.abspath(internal_destination)
+                subprocess.check_output(
+                    f"ln -fs {abs_int} {save_dir}/snapshot_internal", shell=True
+                )
+            abs_oss = os.path.abspath(oss_destination)
+            subprocess.check_output(
+                f"ln -fs {abs_oss} {save_dir}/snapshot_public", shell=True
+            )
         # clone base env and update for this job, e.g., we set WANDB_RUN_ID
         # based on the save_dir, which is based on the current hyperparam values
         env = base_env.copy()
+        env["METASEQ_SAVE_DIR"] = save_dir
+        env["METASEQ_OSS_DESTINATION"] = os.path.abspath(oss_destination)
 
         # generate train command
         train_cmd = gen_train_command(
-            args, env, config, oss_destination, save_dir, save_dir_key
+            args,
+            env,
+            config,
+            oss_destination,
+            internal_destination,
+            save_dir,
+            save_dir_key,
         )
 
         train_log = os.path.join(save_dir, "train.log")
@@ -436,7 +472,6 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
         if args.dry_run:
             train_cmd_str = " ".join(train_cmd)
             dry_run(f"train command: {train_cmd_str}")
-
         if args.local:
             local_run(args, env, train_cmd, dry_run)
         else:
@@ -450,6 +485,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
                     train_log,
                     train_stderr,
                     oss_destination,
+                    internal_destination,
                     srun_cmd_str,
                 )
             else:
@@ -461,11 +497,16 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
                 )
             else:
                 write_git_commit(train_log)
+                if args.rsc:
+                    internal.klist(train_log)
                 with open(train_log, "a") as train_log_h:
                     job_id, stdout = run_batch(env, sbatch_cmd_str, sbatch_cmd)
                     print(stdout, file=train_log_h)
         if job_id is not None:
             print("Launched {}".format(job_id))
+        if hasattr(args, "tombstonable"):
+            if args.tombstonable:
+                tombstones(job_id=job_id, base_dir=args.base_directory)
 
 
 def has_finished(save_dir):
