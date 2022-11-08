@@ -3,10 +3,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import importlib
 import math
 import torch
 
-import fused_layer_norm_cuda
+fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
 
 from metaseq.modules.activation_functions import gelu, gelu_back
 
