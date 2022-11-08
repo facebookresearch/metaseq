@@ -52,6 +52,17 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             args, "use_sharded_state", False
         ), "Use sharded state must be True for tensor parallel, otherwise model saving and loaded might be broken"
 
+        if getattr(args, "sequence_parallel", False):
+            assert (
+                getattr(args, "model_parallel_size", 1) > 1
+            ), "--sequence-parallel only works when --model-parallel-size is greater than 1"
+            assert (
+                getattr(args, "dropout", 0.0) == 0.0
+            ), "havent yet tested if rng states are correct for dropout with seq_parallel"
+            assert (
+                getattr(args, "activation_fn", "gelu") == "gelu"
+            ), "For now only supports gelu"
+
         decoder = ModelParallelTransformerDecoder(
             args,
             task.target_dictionary,

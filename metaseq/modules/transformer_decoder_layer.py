@@ -196,6 +196,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
+        recompute_fc1: bool = False,
     ):
         """
         Args:
@@ -204,6 +205,19 @@ class TransformerDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
+        if getattr(self.args, "sequence_parallel", False):
+            from metaseq.model_parallel.modules import SequeuceParallelTransformerBlock
+
+            x = SequeuceParallelTransformerBlock.apply(
+                x,
+                self.self_attn.qkv_proj.weight,
+                self.self_attn.out_proj.weight,
+                self.fc1.weight,
+                self.fc2.weight,
+                self.self_attn.head_dim,
+                recompute_fc1,
+            )
+            return x
 
         residual = x
         x = self.self_attn_layer_norm(x)

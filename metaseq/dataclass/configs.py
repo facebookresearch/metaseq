@@ -584,6 +584,13 @@ class CheckpointConfig(MetaseqDataclass):
         metadata={"help": "cluster we are running on: azure/aws/fair/rsc"},
     )
     model_parallel_size: int = II("common.model_parallel_size")
+    sequence_parallel: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use sequeunce level parallelism as over tensor parallel gpus."
+            " only use this option when --model-parallel-size > 1"
+        },
+    )
 
 
 @dataclass
