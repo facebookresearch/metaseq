@@ -3,13 +3,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from metaseq.modules.activation_functions import gelu, gelu_back
+
 import importlib
 import math
 import torch
 
-fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
-
-from metaseq.modules.activation_functions import gelu, gelu_back
+# Not importing here cause cpu tests don't like it
+global fused_layer_norm_cuda
+fused_layer_norm_cuda = None
 
 try:
     from megatron.mpu.mappings import (
@@ -99,6 +101,11 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         head_dim,
         recompute_fc1,
     ):
+        # import from apex
+        global fused_layer_norm_cuda
+        if fused_layer_norm_cuda is None:
+            fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
+
         ctx.recompute_fc1 = recompute_fc1
 
         input = input.contiguous()

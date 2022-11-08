@@ -15,7 +15,6 @@ from metaseq.models.transformer_encoder import TransformerEncoder
 try:
     from megatron import mpu
     from megatron.mpu import (
-        copy_to_tensor_model_parallel_region,
         gather_from_tensor_model_parallel_region,
     )
 
