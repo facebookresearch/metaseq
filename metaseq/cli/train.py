@@ -195,34 +195,6 @@ def main(cfg: DictConfig) -> None:
         logger.info("PathManager finished waiting.")
 
 
-def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
-    # skip check if no validation was done in the current epoch
-    if valid_loss is None:
-        return False
-    if cfg.checkpoint.patience <= 0:
-        return False
-
-    def is_better(a, b):
-        return a > b if cfg.checkpoint.maximize_best_checkpoint_metric else a < b
-
-    prev_best = getattr(should_stop_early, "best", None)
-    if prev_best is None or is_better(valid_loss, prev_best):
-        should_stop_early.best = valid_loss
-        should_stop_early.num_runs = 0
-        return False
-    else:
-        should_stop_early.num_runs += 1
-        if should_stop_early.num_runs >= cfg.checkpoint.patience:
-            logger.info(
-                "early stop since valid performance hasn't improved for last {} runs".format(
-                    cfg.checkpoint.patience
-                )
-            )
-            return True
-        else:
-            return False
-
-
 @metrics.aggregate("train")
 def train(
     cfg: DictConfig, trainer: Trainer, task: tasks.BaseTask, epoch_itr
@@ -441,7 +413,6 @@ def validate_and_save(
     if do_validate:
         valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
-    should_stop |= should_stop_early(cfg, valid_losses[0])
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
 
@@ -627,25 +598,17 @@ def validate(
                         break
                     trainer.valid_step(sample)
             # log validation stats
-            stats = get_valid_stats(cfg, trainer, agg.get_smoothed_values())
+            stats = add_num_updates_to_stats(trainer, agg.get_smoothed_values())
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
-            valid_losses.append(stats[cfg.checkpoint.best_checkpoint_metric])
-    stats = get_valid_stats(cfg, trainer, combined_agg.get_smoothed_values())
+    stats = add_num_updates_to_stats(trainer, combined_agg.get_smoothed_values())
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 
 
-def get_valid_stats(
-    cfg: DictConfig, trainer: Trainer, stats: Dict[str, Any]
+def add_num_updates_to_stats(
+    trainer: Trainer, stats: Dict[str, Any]
 ) -> Dict[str, Any]:
     stats["num_updates"] = trainer.get_num_updates()
-    if hasattr(checkpoint_utils.save_checkpoint, "best"):
-        key = "best_{0}".format(cfg.checkpoint.best_checkpoint_metric)
-        best_function = max if cfg.checkpoint.maximize_best_checkpoint_metric else min
-        stats[key] = best_function(
-            checkpoint_utils.save_checkpoint.best,
-            stats[cfg.checkpoint.best_checkpoint_metric],
-        )
     return stats
 
 

@@ -81,8 +81,6 @@ def save_checkpoint(
     )
 
     extra_state = {"train_iterator": epoch_itr.state_dict()}
-    if hasattr(save_checkpoint, "best"):
-        extra_state.update({"best": save_checkpoint.best})
 
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
@@ -378,14 +376,6 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         optimizer_overrides,
         reset_meters=reset_meters,
     )
-
-    if (
-        extra_state is not None
-        and "best" in extra_state
-        and not reset_optimizer
-        and not reset_meters
-    ):
-        save_checkpoint.best = extra_state["best"]
 
     if extra_state is not None and not reset_dataloader:
         # restore iterator from checkpoint
