@@ -11,8 +11,16 @@ import torch
 from torch import Tensor, nn
 
 from metaseq import utils
+from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
+
+try:
+    import xformers.ops as xops
+
+    has_xformers = True
+except (ImportError, ModuleNotFoundError):
+    has_xformers = False
 
 try:
     from megatron.mpu import (
@@ -56,9 +64,12 @@ class ModelParallelMultiheadAttention(nn.Module):
         self_attention=False,
         use_cpu_initialization=True,
         full_megatron_init=False,
+        full_megatron_init_scalar=1.0,
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
+        attn_variant=False,
+        xf_attn_op=None,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -87,6 +98,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             not self.self_attention or self.qkv_same_dim
         ), "Self-attention requires query, key and value to be of the same size"
 
+        # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
         self.combine_qkv_proj = True
         if self.combine_qkv_proj:
 
@@ -166,6 +178,7 @@ class ModelParallelMultiheadAttention(nn.Module):
 
             if full_megatron_init:
                 assert megatron_init_sigma is not None
+                # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
                 init_method_weights = megatron_utils.init_method_normal(
                     megatron_init_sigma
                 )
@@ -245,7 +258,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             assert megatron_init_sigma is not None
             assert num_layers is not None
             init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+                megatron_init_sigma * full_megatron_init_scalar, num_layers
             )
         self.out_proj = RowParallelLinear(
             embed_dim,
@@ -257,6 +270,17 @@ class ModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
+        self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        self.xf_op = None
+        if self.xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+        if self.xf_eff_attn and xf_attn_op is not None:
+            try:
+                self.xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
 
     def forward(
         self,
@@ -315,7 +339,28 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if CHANGES:
+        if self.xf_eff_attn:
+            q = q.view(
+                tgt_len, bsz * self.num_heads_partition, self.head_dim
+            ).transpose(0, 1)
+            if k is not None:
+                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim).transpose(
+                    0, 1
+                )
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            attn = xops.memory_efficient_attention(
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                op=self.xf_op,
+            )
+        elif CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
@@ -500,8 +545,11 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
-        # logger.info("attn:" + str(attn.float().norm().item()))
+
+        if not self.xf_eff_attn:
+            attn = torch.bmm(attn_probs, v)
+            # logger.info("attn:" + str(attn.float().norm().item()))
+
         assert list(attn.size()) == [
             bsz * self.num_heads_partition,
             tgt_len,

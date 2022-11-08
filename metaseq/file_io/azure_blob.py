@@ -427,7 +427,7 @@ class AzureBlobPathHandler(PathHandler):
         """
         self._check_kwargs(kwargs)
 
-        assert self._exists(path)
+        assert self._exists(path), f"File not found: {path}"
         account, container, _ = self._parse_uri(path)
         result_path = self._local_cache_path(path)
 
