@@ -173,7 +173,10 @@ def distributed_init(cfg: MetaseqConfig):
 
             # Following initializes memory buffer in Megatron code which uses
             # buffered memory for tensor parallel GPU comms protocols
-            from megatron.global_vars import _GLOBAL_MEMORY_BUFFER, _set_global_memory_buffer
+            from megatron.global_vars import (
+                _GLOBAL_MEMORY_BUFFER,
+                _set_global_memory_buffer,
+            )
         except ImportError:
             raise ImportError(
                 "\n\nPlease install megatron using the setup instructions!"
