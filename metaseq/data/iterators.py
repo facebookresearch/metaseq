@@ -705,6 +705,43 @@ class GroupedIterator(CountingIterator):
             iterable.take(total_num_itrs * chunk_size)
 
 
+class SkipBatchesIterator(CountingIterator):
+    """Wrapper around an iterable that allows skipping specific batches.
+
+    Args:
+        iterable (iterable): iterable to wrap
+        trainer (Trainer): trainer instance
+        skip_batches (str): ranges of batches to skip, e.g., "1-10,20-30"
+    """
+
+    def __init__(self, iterable, trainer, skip_batches):
+        super().__init__(iterable)
+        self.trainer = trainer
+        self.skip_batches = {}
+        skip_ranges = skip_batches.split(",")
+        for skip_range in skip_ranges:
+            if "-" in skip_range:
+                start, end = skip_range.split("-")
+                self.skip_batches[int(start)] = int(end) - int(start) + 1
+            else:
+                self.skip_batches[int(skip_range)] = 1
+
+    def __iter__(self):
+        for x in self.iterable:
+            current_step = self.trainer.get_num_updates() + 1
+            if (
+                current_step in self.skip_batches
+                and self.skip_batches[current_step] > 0
+            ):
+                self.skip_batches[current_step] -= 1
+                logger.info(
+                    f"Skipping batches starting from step {current_step} with "
+                    f"{self.skip_batches[current_step]} batches left to skip"
+                )
+                continue
+            yield x
+
+
 def _chunk_iterator(itr, chunk_size, skip_remainder_batch=False):
     chunk = []
     for x in itr:
