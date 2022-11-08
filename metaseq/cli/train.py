@@ -418,13 +418,7 @@ def validate_and_save(
     )
     assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
-    valid_losses = [None]
-    if do_validate:
-        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
-
-    should_stop |= should_stop_early(cfg, valid_losses[0])
-
-    # Save checkpoint
+    # Save checkpoint before validating.
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
@@ -434,7 +428,6 @@ def validate_and_save(
             cfg.checkpoint,
             trainer,
             epoch_itr,
-            valid_losses[0],
             training_finished=should_stop,
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
@@ -444,6 +437,11 @@ def validate_and_save(
             copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
 
+    valid_losses = [None]
+    if do_validate:
+        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+
+    should_stop |= should_stop_early(cfg, valid_losses[0])
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
 
