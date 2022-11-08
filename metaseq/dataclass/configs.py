@@ -770,6 +770,7 @@ class DynamicConfig:
     """
 
     default_state = {"force_profile": False}
+    valid_keys = ["force_profile"]
 
     def __init__(self, json_file_path=None, timeout=30):  # timeout in sec
         self.data = DynamicConfig.default_state
@@ -777,6 +778,11 @@ class DynamicConfig:
         self.timer_start = 0
         self.json_file_path = json_file_path
         self.refresh()
+
+    def validate(self):
+        for k, v in self.data.items():
+            if k not in DynamicConfig.valid_keys:
+                logging.warning(f"Encounterd unknown dynamic config option: {k} {v}")
 
     def refresh(self):
         if self.json_file_path is not None:
@@ -787,6 +793,7 @@ class DynamicConfig:
                 try:
                     with open(self.json_file_path, "r") as json_file:
                         self.data = json.load(json_file)
+                    self.validate()
                     self.timer_start = time.time()
                 except json.JSONDecodeError as jsonerror:
                     logging.warning(
