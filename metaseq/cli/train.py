@@ -408,7 +408,7 @@ def validate_and_save(
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": None,  # dist.new_group(backend="gloo"),
+            "gloo_pg": None,
         }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
@@ -470,32 +470,39 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             path, basename = os.path.split(filename)
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
-            temporary_checkpoint_dir = f"_{checkpoint_dir}"
+            temporary_checkpoint_file = f"_{checkpoint_file}"
             try:
-                os.mkdir(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir)
-                )
+                os.mkdir(os.path.join(destination_checkpoints_dir, checkpoint_dir))
             except FileExistsError:
                 pass  # another worker got here first
+            logger.info(f"Beginning copy of {filename} to NFS")
+
             # copy the checkpoint from local storage to nfs in the background
-            shutil.copyfile(
-                filename,
+            subprocess.run(
+                [
+                    "cp",
+                    filename,
+                    os.path.join(
+                        destination_checkpoints_dir,
+                        checkpoint_dir,
+                        temporary_checkpoint_file,
+                    ),
+                ]
+            )
+
+            logger.info(f"Renaming {temporary_checkpoint_file} -> {checkpoint_file}")
+            # atomic rename _checkpointfile -> checkpointfile
+            # this way we know that if present the checkpoint file is complete
+            os.rename(
                 os.path.join(
                     destination_checkpoints_dir,
-                    temporary_checkpoint_dir,
-                    checkpoint_file,
+                    checkpoint_dir,
+                    temporary_checkpoint_file,
+                ),
+                os.path.join(
+                    destination_checkpoints_dir, checkpoint_dir, checkpoint_file
                 ),
             )
-            torch.distributed.monitored_barrier(
-                group=eval_kwargs["gloo_pg"], timeout=timedelta(minutes=5)
-            )
-            if distributed_utils.get_global_rank() == 0:
-                # atomic rename of the final checkpoint directory, now that all workers have completed
-                # their copies
-                os.rename(
-                    os.path.join(destination_checkpoints_dir, temporary_checkpoint_dir),
-                    os.path.join(destination_checkpoints_dir, checkpoint_dir),
-                )
             os.remove(filename)
         else:
             try:

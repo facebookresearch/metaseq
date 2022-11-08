@@ -234,18 +234,32 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                 cfg.finetune_from_model is None and not specific_restore_file_provided
             )
             if restart_from_latest:
-                max_checkpoint = None
+                checkpoints = []
+                expected_file_count = distributed_utils.get_global_world_size()
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
                         raise RuntimeError(
                             "trying to restart a job that already wrote checkpoint_last"
                         )
                     m = re.match(r"checkpoint_(\d+)", candidate)
-                    if m and (max_checkpoint is None or int(m[1]) > max_checkpoint):
-                        max_checkpoint = int(m[1])
+                    if m:
+                        checkpoints.append((int(m[1]), candidate))
+                for _, candidate in sorted(checkpoints, reverse=True):
+                    present_files = len(
+                        [
+                            f
+                            for f in os.listdir(os.path.join(nfs_path, candidate))
+                            if not f.startswith("_")
+                        ]
+                    )
+                    if present_files == expected_file_count:
                         filename = os.path.join(
                             nfs_path, candidate, f"checkpoint{suffix}.pt"
                         )
+                        break
+                    logger.info(
+                        f"skipping checkpoint {candidate} because it only has {present_files} files (expected {expected_file_count})"
+                    )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")
             if filename is not None:
