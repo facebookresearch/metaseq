@@ -60,9 +60,8 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
                 getattr(args, "dropout", 0.0) == 0.0
             ), "havent yet tested if rng states are correct for dropout with seq_parallel"
             assert (
-                getattr(args, "activation_fn", 'gelu') == 'gelu'
+                getattr(args, "activation_fn", "gelu") == "gelu"
             ), "For now only supports gelu"
-
 
         decoder = ModelParallelTransformerDecoder(
             args,

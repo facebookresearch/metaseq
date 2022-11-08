@@ -70,9 +70,9 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
             input_parallel,
             self.output_projection.weight,
             None,
-            False, # gradient_accumulation_fusion
-            False, # async_grad_allreduce
-            is_sequence_parallel, #sequence_parallel
+            False,  # gradient_accumulation_fusion
+            False,  # async_grad_allreduce
+            is_sequence_parallel,  # sequence_parallel
         )
         # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings

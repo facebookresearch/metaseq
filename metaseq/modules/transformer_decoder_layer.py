@@ -196,7 +196,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
-        recompute_fc1: bool=False,
+        recompute_fc1: bool = False,
     ):
         """
         Args:
@@ -207,6 +207,7 @@ class TransformerDecoderLayer(nn.Module):
         """
         if getattr(self.args, "sequence_parallel", False):
             from metaseq.model_parallel.modules import SequeuceParallelTransformerBlock
+
             x = SequeuceParallelTransformerBlock.apply(
                 x,
                 self.self_attn.qkv_proj.weight,

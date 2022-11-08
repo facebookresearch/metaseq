@@ -159,10 +159,11 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         },
     )
     recompute_fc1_num_layers: Optional[int] = field(
-        default=0,  metadata={
+        default=0,
+        metadata={
             "help": "Num layers for which to recompute FC1 in backwards, "
             "only applicable when --sequence-parallel option is set"
-        }
+        },
     )
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
