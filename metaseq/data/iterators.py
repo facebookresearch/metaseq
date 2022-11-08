@@ -711,15 +711,14 @@ class SkipBatchesIterator(CountingIterator):
     Args:
         iterable (iterable): iterable to wrap
         trainer (Trainer): trainer instance
-        skip_batches (str): ranges of batches to skip, e.g., "1-10,20-30"
+        to_skip (str): ranges of batches to skip, e.g., "1-10,20-30"
     """
 
-    def __init__(self, iterable, trainer, skip_batches):
+    def __init__(self, iterable, trainer, to_skip):
         super().__init__(iterable)
         self.trainer = trainer
         self.skip_batches = {}
-        skip_ranges = skip_batches.split(",")
-        for skip_range in skip_ranges:
+        for skip_range in to_skip.split(","):
             if "-" in skip_range:
                 start, end = skip_range.split("-")
                 self.skip_batches[int(start)] = int(end) - int(start) + 1
