@@ -33,7 +33,6 @@ def save_checkpoint(
     cfg: CheckpointConfig,
     trainer,
     epoch_itr,
-    val_loss,
     training_finished=False,
     async_callback_fn=None,
     copy_to_nfs=False,
@@ -43,11 +42,6 @@ def save_checkpoint(
     # only one worker should attempt to create the required dir
     if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
-
-    prev_best = getattr(save_checkpoint, "best", val_loss)
-    if val_loss is not None:
-        best_function = max if cfg.maximize_best_checkpoint_metric else min
-        save_checkpoint.best = best_function(val_loss, prev_best)
 
     trainer.consolidate_optimizer()
 
@@ -86,9 +80,7 @@ def save_checkpoint(
         training_finished and cfg.save_last_checkpoint
     )
 
-    extra_state = {"train_iterator": epoch_itr.state_dict(), "val_loss": val_loss}
-    if hasattr(save_checkpoint, "best"):
-        extra_state.update({"best": save_checkpoint.best})
+    extra_state = {"train_iterator": epoch_itr.state_dict()}
 
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
@@ -118,9 +110,8 @@ def save_checkpoint(
 
         write_timer.stop()
         logger.info(
-            "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-                checkpoints[0], epoch, num_update, val_loss, write_timer.sum
-            )
+            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {num_update} updates) "
+            f"(writing took {write_timer.sum} seconds)"
         )
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
@@ -386,14 +377,6 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         optimizer_overrides,
         reset_meters=reset_meters,
     )
-
-    if (
-        extra_state is not None
-        and "best" in extra_state
-        and not reset_optimizer
-        and not reset_meters
-    ):
-        save_checkpoint.best = extra_state["best"]
 
     if extra_state is not None and not reset_dataloader:
         # restore iterator from checkpoint

@@ -519,25 +519,6 @@ class CheckpointConfig(MetaseqDataclass):
     keep_last_updates: int = field(
         default=-1, metadata={"help": "keep only the last N updates checkpoints"}
     )
-    best_checkpoint_metric: str = field(
-        default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}
-    )
-    maximize_best_checkpoint_metric: bool = field(
-        default=False,
-        metadata={
-            "help": 'select the largest metric value for saving "best" checkpoints'
-        },
-    )
-    patience: int = field(
-        default=-1,
-        metadata={
-            "help": (
-                "early stop training if valid performance doesn't "
-                "improve for N consecutive validation runs; note "
-                "that this is influenced by --validate-interval"
-            )
-        },
-    )
     checkpoint_suffix: str = field(
         default="", metadata={"help": "suffix to add to the checkpoint file name"}
     )
