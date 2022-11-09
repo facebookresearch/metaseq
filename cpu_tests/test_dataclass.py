@@ -9,27 +9,22 @@ import os
 
 from metaseq.dataclass.configs import DynamicConfig
 
+
 class TestDynamicConfig(unittest.TestCase):
     def test_malformed_config_load(self):
         metaseq_dir = pathlib.Path(__file__).parent.parent.resolve()
         malformed_config = os.path.join(metaseq_dir, "metaseq/config/malformed.json")
-        DynamicConfig(
-            json_file_path=malformed_config
-        )
+        DynamicConfig(json_file_path=malformed_config)
 
     def test_empty_config_load(self):
         metaseq_dir = pathlib.Path(__file__).parent.parent.resolve()
         empty_config = os.path.join(metaseq_dir, "metaseq/config/empty.json")
-        DynamicConfig(
-            json_file_path=empty_config
-        )
+        DynamicConfig(json_file_path=empty_config)
 
     def test_nonexistent_config_load(self):
         nonexistent_config = "404.json"
-        DynamicConfig(
-            json_file_path=nonexistent_config
-        )
-        
+        DynamicConfig(json_file_path=nonexistent_config)
+
 
 if __name__ == "__main__":
     unittest.main()
