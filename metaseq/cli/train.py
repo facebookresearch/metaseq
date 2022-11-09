@@ -409,7 +409,7 @@ def validate_and_save(
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": dist.new_group(backend="gloo"),
+            "gloo_pg": None  # dist.new_group(backend="gloo"),
         }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
@@ -488,13 +488,13 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
 
-        if do_evaluate:
-            _run_evaluations(
-                cfg.checkpoint.eval_module,
-                cfg.checkpoint.cloud_upload_path,
-                filename,
-                **eval_kwargs,
-            )
+        # if do_evaluate:
+        #     _run_evaluations(
+        #         cfg.checkpoint.eval_module,
+        #         cfg.checkpoint.cloud_upload_path,
+        #         filename,
+        #         **eval_kwargs,
+        #     )
 
 
 def _run_evaluations(
@@ -503,7 +503,7 @@ def _run_evaluations(
     # Make sure all ranks have finished uploading checkpoints.
     # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
     # not run evals. Error doesn't stop training run.
-    dist.monitored_barrier(group=gloo_pg, timeout=timedelta(minutes=5))
+    # dist.monitored_barrier(group=gloo_pg, timeout=timedelta(minutes=5))
     # Run evals on rank 0
     if distributed_utils.get_global_rank() != 0:
         return
