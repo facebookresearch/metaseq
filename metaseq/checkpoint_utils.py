@@ -33,7 +33,6 @@ def save_checkpoint(
     cfg: CheckpointConfig,
     trainer,
     epoch_itr,
-    val_loss,
     training_finished=False,
     async_callback_fn=None,
     copy_to_nfs=False,
@@ -43,11 +42,6 @@ def save_checkpoint(
     # only one worker should attempt to create the required dir
     if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
-
-    prev_best = getattr(save_checkpoint, "best", val_loss)
-    if val_loss is not None:
-        best_function = max if cfg.maximize_best_checkpoint_metric else min
-        save_checkpoint.best = best_function(val_loss, prev_best)
 
     trainer.consolidate_optimizer()
 
@@ -86,9 +80,7 @@ def save_checkpoint(
         training_finished and cfg.save_last_checkpoint
     )
 
-    extra_state = {"train_iterator": epoch_itr.state_dict(), "val_loss": val_loss}
-    if hasattr(save_checkpoint, "best"):
-        extra_state.update({"best": save_checkpoint.best})
+    extra_state = {"train_iterator": epoch_itr.state_dict()}
 
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
@@ -118,9 +110,8 @@ def save_checkpoint(
 
         write_timer.stop()
         logger.info(
-            "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
-                checkpoints[0], epoch, num_update, val_loss, write_timer.sum
-            )
+            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {num_update} updates) "
+            f"(writing took {write_timer.sum} seconds)"
         )
         # Launch sbatch job to copy to nfs
         #   Is distributed_utils.global_barrier() needed? We add polling & sleep to sbatch...
@@ -145,7 +136,7 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=0
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=4
 #SBATCH --time=4320
 #SBATCH --mem=0
 #SBATCH --output={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stdout
@@ -172,23 +163,44 @@ def _launch_sbatch_for_checkpoint_copy(
             nfs_dir += "/"
         copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
         os.makedirs(copy_script_dir, exist_ok=True)
-        sbatch_run_file = os.path.join(
-            copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
-        )
-        slurm_nodes = os.environ["SLURM_NODELIST"]
-        with open(sbatch_run_file, "w") as f:
-            f.write(
-                SBATCH_CHECKPOINT_COPY_CMD.format(
-                    oss_dir=oss_dir,
-                    slurm_nodes=slurm_nodes,
-                    local_dir=cfg.save_dir,
-                    num_files=num_files_per_host,
-                    nfs_dir=nfs_upload_path[4:],
-                    cp_script_dir=cp_script_dir,
-                    num_update=num_update,
-                )
+
+        all_slurm_nodes = os.environ["SLURM_NODELIST"]
+        slurm_node_list = (
+            subprocess.check_output(
+                f"scontrol show hostnames {all_slurm_nodes}", shell=True
             )
-        subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
+            .decode()
+            .strip()
+            .split("\n")
+        )
+        num_hosts_per_chunk = 8
+        for idx in range(
+            0, len(slurm_node_list), num_hosts_per_chunk
+        ):  # each job ssh's to 8 hosts
+            node_list = ",".join(slurm_node_list[idx : idx + num_hosts_per_chunk])
+            host_list = (
+                subprocess.check_output(
+                    f"scontrol show hostlist {node_list}", shell=True
+                )
+                .decode()
+                .strip()
+            )
+            sbatch_run_file = os.path.join(
+                copy_script_dir, f"_cp_sbatch_script_{num_update}_{host_list}.sh"
+            )
+            with open(sbatch_run_file, "w") as f:
+                f.write(
+                    SBATCH_CHECKPOINT_COPY_CMD.format(
+                        oss_dir=oss_dir,
+                        slurm_nodes=host_list,
+                        local_dir=cfg.save_dir,
+                        num_files=num_files_per_host,
+                        nfs_dir=nfs_upload_path[4:],
+                        cp_script_dir=cp_script_dir,
+                        num_update=num_update,
+                    )
+                )
+            subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
     pass
 
 
@@ -386,14 +398,6 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         optimizer_overrides,
         reset_meters=reset_meters,
     )
-
-    if (
-        extra_state is not None
-        and "best" in extra_state
-        and not reset_optimizer
-        and not reset_meters
-    ):
-        save_checkpoint.best = extra_state["best"]
 
     if extra_state is not None and not reset_dataloader:
         # restore iterator from checkpoint

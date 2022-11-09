@@ -10,8 +10,11 @@ from .transformer_layer import (
     ModelParallelTransformerDecoderLayer,
 )
 
+from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBlock
+
 __all__ = [
     "ModelParallelMultiheadAttention",
     "ModelParallelTransformerEncoderLayer",
     "ModelParallelTransformerDecoderLayer",
+    "SequeuceParallelTransformerBlock",
 ]
