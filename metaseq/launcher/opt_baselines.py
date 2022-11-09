@@ -74,6 +74,7 @@ def add_extra_options_func(parser):
     parser.add_argument(
         "--circleci", action="store_true", help="running a baseline test on circleci"
     )
+    parser.add_argument("--run-id", type=str, default=None)
 
 
 def get_grid(args):
@@ -166,6 +167,9 @@ def get_grid(args):
 
     if args.profile:
         grid += [hyperparam("--profile")]
+
+    if args.run_id is not None:
+        grid += [hyperparam("--run-id", args.run_id)]
 
     no_save_params = args.no_save_dir
     args.snapshot_code = True
