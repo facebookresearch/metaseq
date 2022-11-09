@@ -409,7 +409,7 @@ def validate_and_save(
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": None  # dist.new_group(backend="gloo"),
+            "gloo_pg": None,  # dist.new_group(backend="gloo"),
         }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
