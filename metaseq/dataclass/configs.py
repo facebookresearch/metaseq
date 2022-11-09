@@ -797,12 +797,12 @@ class DynamicConfig:
                     self.timer_start = time.time()
                 except json.JSONDecodeError as jsonerror:
                     logging.warning(
-                        f"""Error refreshing dynamic config: reading file {json_file}
+                        f"""Error refreshing dynamic config: reading file {self.json_file_path}
                     resulted in JSONDecodeError {jsonerror}"""
                     )
                 except IOError as ioerror:
                     logging.warning(
-                        f"""Error refreshing dynamic config: reading file {json_file}
+                        f"""Error refreshing dynamic config: reading file {self.json_file_path}
                     resulted in IOError {ioerror}"""
                     )
 
