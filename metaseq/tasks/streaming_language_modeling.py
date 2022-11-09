@@ -102,6 +102,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
         },
     )
+    equalize_cluster_probs: bool = field(
+        default=False,
+        metadata={"help": "For each benchmark, sample equally from each cluster"}
+        )
 
     # TODO common vars below add to parent
     seed: int = II("common.seed")
@@ -214,14 +218,24 @@ class StreamingLanguageModelingTask(LegacyTask):
         )
         sample_probs = self._get_sample_prob(dataset_lengths)
         logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
-        per_benchmark_prob = {}
-        for i, s in enumerate(corpora):
-            benchmark = s.split('__')[0]
-            if benchmark not in per_benchmark_prob:
-                per_benchmark_prob[benchmark] = 0.0
-            per_benchmark_prob[benchmark] += sample_probs[i]
-        logger.info('Initial data proportions:')
-        logger.info(json.dumps(per_benchmark_prob))
+
+        def compute_benchmark_prob(sample_probs):
+            per_benchmark_prob = {}
+            for i, s in enumerate(corpora):
+                benchmark = s.split('__')[0]
+                if self.args.equalize_cluster_probs:
+                    cluster = s.split('__')[1]
+                    per_benchmark_prob.setdefault(benchmark, {})
+                    per_benchmark_prob[benchmark].setdefault(cluster, 0.0)
+                    per_benchmark_prob[benchmark][cluster] += sample_probs[i]
+                else:
+                    if benchmark not in per_benchmark_prob:
+                        per_benchmark_prob[benchmark] = 0.0
+                    per_benchmark_prob[benchmark] += sample_probs[i]
+            return per_benchmark_prob
+
+        per_benchmark_prob = compute_benchmark_prob(sample_probs)
+        logger.info(f'Initial data proportions: {json.dumps(per_benchmark_prob)}')
 
         data_sampling_prob = json.loads(self.args.data_sampling_prob)
 
@@ -230,23 +244,32 @@ class StreamingLanguageModelingTask(LegacyTask):
         total_benchmarks = len(per_benchmark_prob)
         total_assigned_prob = sum(data_sampling_prob.values())
         total_assigned_benchmarks = len(data_sampling_prob)
+
+        # Assign probs for the benchmarks not present in the dictionary
         for benchmark in per_benchmark_prob:
             if benchmark not in data_sampling_prob:
-                data_sampling_prob[benchmark] = per_benchmark_prob[benchmark] * (1.0 - total_assigned_prob)
+                benchmark_prob = per_benchmark_prob[benchmark] if not self.args.equalize_cluster_probs else sum(per_benchmark_prob[benchmark].values())
+                data_sampling_prob[benchmark] = benchmark_prob * (1.0 - total_assigned_prob)
 
+        # Scale prob for tasks in each benchmark
         for i, s in enumerate(corpora):
             benchmark = s.split('__')[0]
-            sample_probs[i] = sample_probs[i] * data_sampling_prob[benchmark] / per_benchmark_prob[benchmark]
+            current_benchmark_prob = sum(per_benchmark_prob[benchmark].values()) if self.args.equalize_cluster_probs else per_benchmark_prob[benchmark]
+            sample_probs[i] = sample_probs[i] * data_sampling_prob[benchmark] / current_benchmark_prob
+            if self.args.equalize_cluster_probs:
+                cluster = s.split('__')[1]
+                total_clusters = len(per_benchmark_prob[benchmark])
+                current_cluster_prob = per_benchmark_prob[benchmark][cluster] / sum(per_benchmark_prob[benchmark].values())
+                new_cluster_prob = (1 / total_clusters)
+                sample_probs[i] = sample_probs[i] * new_cluster_prob / current_cluster_prob
 
-        new_per_benchmark_prob = {}
-        for i, s in enumerate(corpora):
-            benchmark = s.split('__')[0]
-            if benchmark not in new_per_benchmark_prob:
-                new_per_benchmark_prob[benchmark] = 0.0
-            new_per_benchmark_prob[benchmark] += sample_probs[i]
-        logger.info('Final data proportions:')
-        logger.info(json.dumps(new_per_benchmark_prob))
-        assert(sum(new_per_benchmark_prob.values()) == 1.0, "Data Proportion probabilities do not sum to 1")
+        new_per_benchmark_prob = compute_benchmark_prob(sample_probs)
+        logger.info(f'Final data proportions: {json.dumps(new_per_benchmark_prob)}')
+
+        if not self.args.equalize_cluster_probs:
+            assert(sum(new_per_benchmark_prob.values()) == 1.0, "Data Proportion probabilities do not sum to 1")
+        else:
+            assert(sum([sum(new_per_benchmark_prob[b].values()) for b in new_per_benchmark_prob]) == 1.0, "Data Proportion probabilities do not sum to 1")
 
         logger.info(
             "Sample probability by corpus: %s",
