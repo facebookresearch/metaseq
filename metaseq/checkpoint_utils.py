@@ -136,7 +136,7 @@ SBATCH_CHECKPOINT_COPY_CMD = """#!/bin/bash
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=0
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=12
 #SBATCH --time=4320
 #SBATCH --mem=0
 #SBATCH --output={nfs_dir}{cp_script_dir}/_cp_checkpoint_%j.stdout
@@ -163,44 +163,23 @@ def _launch_sbatch_for_checkpoint_copy(
             nfs_dir += "/"
         copy_script_dir = os.path.join(nfs_dir, cp_script_dir)
         os.makedirs(copy_script_dir, exist_ok=True)
-
-        all_slurm_nodes = os.environ["SLURM_NODELIST"]
-        slurm_node_list = (
-            subprocess.check_output(
-                f"scontrol show hostnames {all_slurm_nodes}", shell=True
-            )
-            .decode()
-            .strip()
-            .split("\n")
+        sbatch_run_file = os.path.join(
+            copy_script_dir, f"_cp_sbatch_script_{num_update}.sh"
         )
-        num_hosts_per_chunk = 8
-        for idx in range(
-            0, len(slurm_node_list), num_hosts_per_chunk
-        ):  # each job ssh's to 8 hosts
-            node_list = ",".join(slurm_node_list[idx : idx + num_hosts_per_chunk])
-            host_list = (
-                subprocess.check_output(
-                    f"scontrol show hostlist {node_list}", shell=True
+        slurm_nodes = os.environ["SLURM_NODELIST"]
+        with open(sbatch_run_file, "w") as f:
+            f.write(
+                SBATCH_CHECKPOINT_COPY_CMD.format(
+                    oss_dir=oss_dir,
+                    slurm_nodes=slurm_nodes,
+                    local_dir=cfg.save_dir,
+                    num_files=num_files_per_host,
+                    nfs_dir=nfs_upload_path[4:],
+                    cp_script_dir=cp_script_dir,
+                    num_update=num_update,
                 )
-                .decode()
-                .strip()
             )
-            sbatch_run_file = os.path.join(
-                copy_script_dir, f"_cp_sbatch_script_{num_update}_{host_list}.sh"
-            )
-            with open(sbatch_run_file, "w") as f:
-                f.write(
-                    SBATCH_CHECKPOINT_COPY_CMD.format(
-                        oss_dir=oss_dir,
-                        slurm_nodes=host_list,
-                        local_dir=cfg.save_dir,
-                        num_files=num_files_per_host,
-                        nfs_dir=nfs_upload_path[4:],
-                        cp_script_dir=cp_script_dir,
-                        num_update=num_update,
-                    )
-                )
-            subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
+        subprocess.call([f"sbatch {sbatch_run_file}"], shell=True)
     pass
 
 

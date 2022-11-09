@@ -15,8 +15,7 @@ echo $(klist)
 echo "RUNNING ssh_and_copy_all for update $NUM_UPDATE...."
 
 # Create checkpoint dir on NFS for this update
-# TODO: pass this dir through instead of reconstructing each time.
-mkdir -p "${NFS_CHECKPOINT_DIR}checkpoint_${NUM_UPDATE}"
+mkdir -p "${NFS_CHECKPOINT_DIR}${NUM_UPDATE}"
 
 for HOST in $(scontrol show hostnames "$MAIN_SLURM_NODELIST") ; do
     ssh $HOST "$OSS_DEST/metaseq/scripts/checkpoint_copy/poll_and_copy_single.sh $LOCAL_CHECKPOINT_DIR $TOTAL_FILES $NFS_CHECKPOINT_DIR $NUM_UPDATE"
