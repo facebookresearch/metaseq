@@ -85,7 +85,7 @@ class CommonConfig(MetaseqDataclass):
     # different jobs. Please append your params to other dataclasses if they
     # were used for a particular purpose or task, such as those dedicated for
     # `distributed training`, `optimization`, etc.
-    
+
     log_interval: int = field(
         default=100,
         metadata={
