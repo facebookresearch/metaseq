@@ -93,7 +93,7 @@ class CM3LanguageModelingInferenceForModelsTrainedWithStreamingTask(
         return tokenizer
 
     def _initialize_unigram_tokenizer(self, args):
-        if "1.4" not in args.spm_path:  # tokenizers for 1.3 and previous
+        if "1.3" in args.spm_path:  # tokenizers for 1.3 and previous
             tokenizer = Tokenizer(models.Unigram()).from_file(args.spm_path)
             tokenizer.normalizer = normalizers.NFKC()
             tokenizer.pre_tokenizer = pre_tokenizers.Sequence(

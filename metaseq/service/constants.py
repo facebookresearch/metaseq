@@ -13,7 +13,7 @@ MODEL_PARALLEL = 2
 TOTAL_WORLD_SIZE = 2
 MAX_BEAM = 32
 
-CHECKPOINT_FOLDER = "/shared/home/liliyu/data/text-speech-models/en_speech_focused_350m_v1/consolidated_mp2"
+CHECKPOINT_FOLDER = "/shared/home/liliyu/data/text-speech-models/en_speech_text_c4_2_7B_v3/consolidated_mp2"
 # where to store them on SSD for faster loading
 CHECKPOINT_LOCAL = os.path.join("/mnt/scratch/", "13B", "resharded", "reshard.pt")
 
@@ -26,18 +26,12 @@ LAUNCH_ARGS = [
     f"--path {CHECKPOINT_FOLDER}/consolidated.pt",
     "--beam 1 --nbest 1",
     "--bpe hf_cm3_unigram",
-    # "--final-vocab-size 65536",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",
-    # "--use-sharded-state",
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
     "--image-tokens 8192",
     "--speech-tokens 512",
-    # "--decoder-layers 40",
-    # "--decoder-embed-dim 5120",
-    # f"--decoder-ffn-embed-dim {5120*4}",
-    # "--decoder-attention-heads 40",
     "/tmp",  # required "data" argument.
 ]
