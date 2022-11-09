@@ -39,6 +39,7 @@ from .causal_masked_dataset import (
     CausalMaskedDataset,
     CausalMaskedDocumentToSequenceDataset,
 )
+from .repeat_dataset import RepeatDataset
 from .iterators import (
     CountingIterator,
     EpochBatchIterator,
@@ -73,6 +74,7 @@ __all__ = [
     "PadDataset",
     "PartitionedStreamingDataset",
     "PrependTokenDataset",
+    "RepeatDataset",
     "ResamplingDataset",
     "RightPadDataset",
     "ShardedIterator",

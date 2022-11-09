@@ -99,3 +99,31 @@ class HuggingFaceCM3Unigram(object):
 
     def is_beginning_of_word(self, x: str) -> bool:
         return self.decode(x).startswith(" ")
+
+
+@register_bpe("hf_cm3_bpe", dataclass=HuggingFaceCM3UnigramConfig)
+class HuggingFaceByteLevelBPE(object):
+    def __init__(self, cfg):
+        from tokenizers import (
+            ByteLevelBPETokenizer,
+            Tokenizer,
+            decoders,
+            models,
+            normalizers,
+            pre_tokenizers,
+            Regex,
+        )
+
+        self.bpe = Tokenizer(models.BPE()).from_file(cfg.spm_path)
+
+    def encode(self, x: str) -> str:
+        return " ".join(map(str, self.bpe.encode(x).ids))
+
+    def decode(self, x) -> str:
+        return self.bpe.decode(
+            [int(tok) if tok not in {"<unk>", "<mask>"} else tok for tok in x],
+            skip_special_tokens=False,
+        )
+
+    def is_beginning_of_word(self, x: str) -> bool:
+        return self.decode(x).startswith(" ")

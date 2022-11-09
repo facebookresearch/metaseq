@@ -18,7 +18,7 @@ from metaseq.data import (
     Dictionary,
     JsonlDataset,
     PartitionedStreamingDataset,
-    StreamingShuffleDataset,
+    RepeatDataset,
     iterators,
 )
 from metaseq.tasks import register_task
@@ -78,6 +78,7 @@ class StreamingCM3LanguageModelingConfig(StreamingLanguageModelingConfig):
     causal_only: bool = field(
         default=False, metadata={"help": "do only causal modeling"}
     )
+    replicate_valid_by: int = field(default=4, metadata={"help": ""})
     # TODO: Armen: make this structured enum instead of using strings
     dataset_type: str = field(
         default="all",
@@ -406,10 +407,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
-
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
+        if split != "train":
+            dataset = RepeatDataset(dataset, self.args.replicate_valid_by)
         # chunk into blocks of tokens
         self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
             self.args.lambda_sentinel_tokens,
@@ -495,6 +494,7 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.set_num_workers(num_workers)
 
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
@@ -506,6 +506,8 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
+        logger.info(f"setting batch size to {max_sentences}")
+
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,
@@ -513,4 +515,5 @@ class StreamingCM3LanguageModelingTask(StreamingLanguageModelingTask):
             drop_last=skip_remainder_batch,
             num_workers=num_workers,
             epoch=epoch,
+            num_shards=num_shards,
         )
