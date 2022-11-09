@@ -371,12 +371,7 @@ class Trainer(object):
         return state_dicts
 
     def save_checkpoint(
-        self,
-        filename,
-        extra_state,
-        training_finished=False,
-        async_callback_fn=None,
-        copy_to_nfs=False,
+        self, filename, extra_state, training_finished=False, async_callback_fn=None
     ):
         """Save all training state in a checkpoint file."""
         # call state_dict on all ranks in case it needs internal communication
@@ -395,7 +390,6 @@ class Trainer(object):
                     filename,
                     async_write=self.cfg.checkpoint.write_checkpoints_asynchronously,
                     async_callback_fn=async_callback_fn,
-                    copy_to_nfs=copy_to_nfs,
                 )
             logger.info(f"Finished saving checkpoint to {filename}")
 
