@@ -84,9 +84,9 @@ def _infer_slurm_init(cfg: DistributedTrainingConfig):
             host = os.environ.get("MASTER_ADDR", None)
         if host is None:
             return
-        cfg.distributed_init_method = "tcp://{host}:{port}".format(
-            host=host, port=cfg.distributed_port
-        )
+        os.environ["MASTER_ADDR"] = host
+        os.environ["MASTER_PORT"] = str(cfg.distributed_port)
+        cfg.distributed_init_method = "env://"
         nnodes = int(os.environ.get("SLURM_NNODES"))
         ntasks_per_node = os.environ.get("SLURM_NTASKS_PER_NODE")
         if ntasks_per_node is not None:
