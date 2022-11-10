@@ -62,6 +62,12 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             assert (
                 getattr(args, "activation_fn", "gelu") == "gelu"
             ), "For now only supports gelu"
+            assert not getattr(
+                args, "checkpoint_activations", False
+            ), "Cannot set --checkpoint-activations with sequence parallel."
+            assert not getattr(
+                args, "distribute_checkpointed_activations", False
+            ), "Cannot set --distribute-checkpointed-activations with sequence parallel."
 
         decoder = ModelParallelTransformerDecoder(
             args,
