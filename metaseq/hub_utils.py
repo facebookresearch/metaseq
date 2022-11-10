@@ -320,13 +320,13 @@ class GeneratorInterface:
                     tokens_no_eos = tokens[1:] if echo else tokens
                     scores_with_eos = [None] + scores[1:] if echo else scores
                     # turn it into a string
-                    text = self.bpe.bpe.decode(tokens_no_eos)
+                    text = self.bpe.decode(tokens_no_eos)
                     # re-encode it so we get offsets
                     token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
 
                     result = {
                         "text": text,
-                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
+                        "tokens": [self.bpe.decode([t]) for t in tokens],
                         # text offset is useful for cutting off prompts or prefixes
                         # or evaluating PPL on just a subset of tokens
                         "text_offset": token_offsets,
@@ -343,7 +343,7 @@ class GeneratorInterface:
                         )
                         for top_scores, top_toks in zip(all_top_toks, all_top_scores):
                             lp = {
-                                self.bpe.bpe.decode([t.item()]): s.item()
+                                self.bpe.decode([t.item()]): s.item()
                                 for t, s in zip(top_toks, top_scores)
                             }
                             out_logprobs.append(lp)
