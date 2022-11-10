@@ -108,7 +108,7 @@ def save_checkpoint(
 
         write_timer.stop()
         logger.info(
-            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {num_update} updates) "
+            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
 
@@ -258,7 +258,8 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                         )
                         break
                     logger.info(
-                        f"skipping checkpoint {candidate} because it only has {present_files} files (expected {expected_file_count})"
+                        f"skipping checkpoint {candidate} because it only has"
+                        f" {present_files} files (expected {expected_file_count})"
                     )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")

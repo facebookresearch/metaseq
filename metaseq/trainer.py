@@ -401,7 +401,7 @@ class Trainer(object):
                             logger.info(
                                 f"Asynchronous torch.save to {filename} complete."
                             )
-                        except:
+                        except Exception:
                             logger.exception(f"Asyncronous save failed")
 
                     self.async_checkpoint.submit(perform_save)

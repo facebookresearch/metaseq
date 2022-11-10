@@ -17,7 +17,6 @@ import subprocess
 import sys
 import time
 import socket
-import shutil
 import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
