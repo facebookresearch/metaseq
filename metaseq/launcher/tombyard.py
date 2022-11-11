@@ -6,10 +6,8 @@
 import argparse
 import multiprocessing as mp
 import datetime
-import signal
 import os
 import time
-from pathlib import Path
 import logging
 
 JOB_STATE_CODES = [
