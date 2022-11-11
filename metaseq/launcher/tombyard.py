@@ -117,6 +117,7 @@ def tombstones(job_id, base_dir, period=datetime.timedelta(seconds=60), dirstone
     )
     heartbeat_proc.start()
 
+
 if __name__ == "__main__":
     logger = logging.getLogger(f"touchstoning process: PID {os.getpid()}")
     logger.setLevel(logging.DEBUG)
