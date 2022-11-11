@@ -11,7 +11,7 @@ from typing import Optional
 
 from omegaconf import II
 
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
@@ -126,6 +126,12 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "Exact same init as Megatron"},
     )
+    full_megatron_init_scalar: float = field(
+        default=1.0,
+        metadata={
+            "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
+        },
+    )
     megatron_init_sigma: float = field(
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
@@ -143,7 +149,22 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
-
+    attn_variant: ATTN_CHOICES = field(
+        default="default", metadata={"help": "variant to use for attention"}
+    )
+    xf_attn_op: str = field(
+        default="None",
+        metadata={
+            "help": "which memory efficient attention operation to use from xFormers."
+        },
+    )
+    recompute_fc1_num_layers: Optional[int] = field(
+        default=0,
+        metadata={
+            "help": "Num layers for which to recompute FC1 in backwards, "
+            "only applicable when --sequence-parallel option is set"
+        },
+    )
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
     tokens_per_sample: int = II("task.tokens_per_sample")

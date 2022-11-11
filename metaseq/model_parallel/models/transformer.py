@@ -15,7 +15,6 @@ from metaseq.models.transformer_encoder import TransformerEncoder
 try:
     from megatron import mpu
     from megatron.mpu import (
-        copy_to_tensor_model_parallel_region,
         gather_from_tensor_model_parallel_region,
     )
 
@@ -59,16 +58,20 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
                 "Model parallel training currently requires --share-decoder-input-output-embed"
             )
 
-        features = copy_to_tensor_model_parallel_region(features)
+        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
+        if is_sequence_parallel:
+            input_parallel = features
+        else:
+            input_parallel = mpu.copy_to_tensor_model_parallel_region(features)
 
         # project back to size of vocabulary
         x = mpu.LinearWithGradAccumulationAndAsyncCommunication.apply(
-            features,
+            input_parallel,
             self.output_projection.weight,
             None,
-            False,
-            False,
-            False,
+            False,  # gradient_accumulation_fusion
+            False,  # async_grad_allreduce
+            is_sequence_parallel,  # sequence_parallel
         )
         # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings
@@ -82,3 +85,13 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
         self.inference = True
+
+    def forward_embedding(
+        self,
+        *args,
+    ):
+        x, embed, positions = super().forward_embedding(*args)
+        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
+        if is_sequence_parallel:
+            x = mpu.scatter_to_sequence_parallel_region(x)
+        return x, embed, positions

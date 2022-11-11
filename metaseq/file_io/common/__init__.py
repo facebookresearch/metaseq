@@ -741,6 +741,18 @@ class PathManager:
                 return True
         return False
 
+    def supports_rename(self, path: str) -> bool:
+        # PathManager doesn't yet support renames
+        return not self.path_requires_pathmanager(path)
+
+    def rename(self, src: str, dst: str) -> None:
+        if self.supports_rename(src):
+            os.rename(src, dst)
+        else:
+            raise ValueError(
+                f"Path {src} requires PathHandler, and so doesn't support renaming."
+            )
+
     # pyre-fixme[24]: Generic type `os.PathLike` expects 1 type parameter.
     def __get_path_handler(self, path: Union[str, os.PathLike]) -> PathHandler:
         """
@@ -1050,6 +1062,15 @@ class PathManager:
         Returns:
             List[str]: list of contents in given path
         """
+        # Support trailing wildcard
+        if path.endswith("*"):
+            parent = os.path.dirname(path)
+            pattern = os.path.basename(path)[:-1]
+            return [
+                p
+                for p in self.ls(parent, **kwargs)
+                if os.path.basename(p).startswith(pattern)
+            ]
         return self.__get_path_handler(path)._ls(path, **kwargs)
 
     def mkdirs(self, path: str, **kwargs: Any) -> None:

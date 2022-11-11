@@ -70,6 +70,7 @@ class TransformerDecoderLayer(nn.Module):
         activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
         self.skip_bias_add = (activation_fn_name == "gelu") and has_fused_bias_gelu
 
+        # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
             "initialize_params_on_gpu": initialize_params_on_gpu,
             "full_megatron_init": getattr(args, "full_megatron_init", False),
@@ -77,6 +78,8 @@ class TransformerDecoderLayer(nn.Module):
             "dtype": utils.get_model_init_dtype(args),
             "disable_bias": getattr(args, "disable_bias", False),
         }
+
+        # Note: ModelParallelTransformerDecoderLayer overrides build_fc1.
         self.fc1 = self.build_fc1(
             self.embed_dim,
             ffn_dim,
@@ -91,11 +94,13 @@ class TransformerDecoderLayer(nn.Module):
             **fc1_kwargs,
         )
 
+        # Note: ModelParallelTransformerDecoderLayer overrides build_fc2.
         self.fc2 = self.build_fc2(
             ffn_dim,
             self.embed_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
@@ -191,6 +196,7 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
+        recompute_fc1: bool = False,
     ):
         """
         Args:
@@ -199,6 +205,19 @@ class TransformerDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
+        if getattr(self.args, "sequence_parallel", False):
+            from metaseq.model_parallel.modules import SequeuceParallelTransformerBlock
+
+            x = SequeuceParallelTransformerBlock.apply(
+                x,
+                self.self_attn.qkv_proj.weight,
+                self.self_attn.out_proj.weight,
+                self.fc1.weight,
+                self.fc2.weight,
+                self.self_attn.head_dim,
+                recompute_fc1,
+            )
+            return x
 
         residual = x
         x = self.self_attn_layer_norm(x)

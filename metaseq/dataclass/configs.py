@@ -505,30 +505,31 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
+    eval_module: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Python module that is dinamically imported to run evaluations. It must have an eval_fn method."
+                "Required args for eval_fn:"
+                "1. First one contains the cloud upload path."
+                "2. Second one contains the filename of the checkpoints in the cloud"
+            )
+        },
+    )
+    evaluate_interval_updates: int = field(
+        default=0, metadata={"help": "run eval_fn from eval_module every N updates"}
+    )
+    evaluate_last_checkpoint: bool = field(
+        default=False,
+        metadata={
+            "help": "run the eval_fn from eval_module at the end of the training run"
+        },
+    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
     keep_last_updates: int = field(
         default=-1, metadata={"help": "keep only the last N updates checkpoints"}
-    )
-    best_checkpoint_metric: str = field(
-        default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}
-    )
-    maximize_best_checkpoint_metric: bool = field(
-        default=False,
-        metadata={
-            "help": 'select the largest metric value for saving "best" checkpoints'
-        },
-    )
-    patience: int = field(
-        default=-1,
-        metadata={
-            "help": (
-                "early stop training if valid performance doesn't "
-                "improve for N consecutive validation runs; note "
-                "that this is influenced by --validate-interval"
-            )
-        },
     )
     checkpoint_suffix: str = field(
         default="", metadata={"help": "suffix to add to the checkpoint file name"}
@@ -576,6 +577,13 @@ class CheckpointConfig(MetaseqDataclass):
         metadata={"help": "cluster we are running on: azure/aws/fair/rsc"},
     )
     model_parallel_size: int = II("common.model_parallel_size")
+    sequence_parallel: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use sequeunce level parallelism as over tensor parallel gpus."
+            " only use this option when --model-parallel-size > 1"
+        },
+    )
 
 
 @dataclass

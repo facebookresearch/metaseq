@@ -422,6 +422,7 @@ class TransformerDecoder(IncrementalDecoder):
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
+                recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
             )
         inner_states.append(x)
 
