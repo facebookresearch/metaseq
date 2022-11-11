@@ -18,6 +18,7 @@ import sys
 import time
 import socket
 import re
+from datetime import datetime, timedelta
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
 import numpy as np
@@ -40,8 +41,11 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
+rank = int(os.environ.get('SLURM_PROCID', 0))
+hostname = socket.gethostname()
+fmtstr = f"%(asctime)s {rank:04d} {hostname} | %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=fmtstr,
     datefmt="%Y-%m-%d %H:%M:%S",
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
@@ -51,6 +55,9 @@ logger = logging.getLogger("metaseq.cli.train")
 
 
 def main(cfg: DictConfig) -> None:
+    if distributed_utils.is_master(cfg.distributed_training):
+        sys.stdout.write(f"SENTINEL: Beginning run at {datetime.now()}")
+        sys.stderr.write(f"SENTINEL: Beginning run at {datetime.now()}")
     utils.import_user_module(cfg.common)
 
     # replace with actual job id
