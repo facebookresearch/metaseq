@@ -209,6 +209,26 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "this can be a file with the steps, or a string. some placeholders such as "
         "{job_dir} will be replaced",
     )
+    parser.add_argument(
+        "-ts",
+        "--tombstonable",
+        type=bool,
+        default=True,
+        help="make the job killable by writing a "
+        "tombstone 'tombstone_<job_id>' file in any subdir of the checkpoint default"
+        "(/shared/home/$USER for azure)",
+    )
+    parser.add_argument(
+        "--dynamic-config",
+        default=True,
+        type=bool,
+        help="flag to signal if dynamic configuration is being used (does not propagate into metaseq)",
+    )
+    parser.add_argument(
+        "--dynamic-config-path",
+        default=None,  # None means that <save_dir>/dcfg.json will be used (<save_dir> from slurm.py)
+        help="a file to load dynamic configurations from (it is being checked periodically)",
+    )
 
     # Env flags
     parser.add_argument("--azure", action="store_true", help="running on azure")
@@ -250,17 +270,6 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "--tensorboard-logdir",
         default=None,  # None will default to save_dir/tb
         help="save tensorboard logs in <tensorboard-logdir>/<prefix>.<save_dir_key>",
-    )
-    parser.add_argument(
-        "-ts",
-        "--tombstonable",
-        type=bool,
-        default=False,
-        help=(
-            "make the job killable by writing a "
-            "tombstone 'tombstone_<job_id>' file to user's home directory "
-            "(/shared/home/$USER)"
-        ),
     )
 
     if add_extra_options_func is not None:  # mutates parser
@@ -367,8 +376,8 @@ def _modify_arg_defaults_based_on_env(env, args):
     if args.local_checkpoints_dir is None:
         args.local_checkpoints_dir = default_local_checkpoints_dir
 
-    # assign base directory
-    args.base_directory = default_prefix
+    # assign tombstoning dir
+    args.tombstoning_superdir = default_prefix
 
 
 def main(
