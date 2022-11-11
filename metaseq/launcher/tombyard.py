@@ -55,7 +55,9 @@ def tombstones_procedure(
         sacct_result = os.popen(f"squeue -j {job_id} -O State -h ").read()
         status = sacct_result.strip()
         if tombstone_detected:
-            logger.info(f".. scanceling the job and its current squeue.state is {status}")
+            logger.info(
+                f".. scanceling the job and its current squeue.state is {status}"
+            )
         if status not in JOB_STATE_CODES:
             logger.info(f"Done scanceling the job. Its squeue.state now is: {status}")
             return
@@ -116,8 +118,6 @@ def tombstones(job_id, base_dir, period=datetime.timedelta(seconds=60), dirstone
         target=tombstones_procedure, args=(job_id, dirstones, period), daemon=False
     )
     heartbeat_proc.start()
-
-
 
 if __name__ == "__main__":
     logger = logging.getLogger(f"touchstoning process: PID {os.getpid()}")
