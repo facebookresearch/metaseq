@@ -20,7 +20,6 @@ from pathlib import Path
 import metaseq
 from metaseq.utils import get_random_port
 from metaseq.dataclass.configs import DynamicConfig
-from metaseq.launcher.tombyard import tombstones
 from metaseq.launcher.sweep import get_env_from_args
 
 try:
@@ -539,7 +538,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
                         "nohup",
                         "python",
                         "-m",
-                        "metaseq_internal.fb_sweep.tombyard",
+                        "metaseq.launcher.tombyard",
                         "--job-id",
                         str(job_id),
                         "--base-dir",
