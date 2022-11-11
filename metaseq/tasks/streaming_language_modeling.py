@@ -95,6 +95,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default='{}',
         metadata={"help": "Proportion of each finetuning benchmark to use. Use only during finetuning"}
     )
+    caps: Optional[str] = field(
+        default='{}',
+        metadata={"help": "Proportion of each finetuning benchmark to use. Use only during finetuning"}
+    )
     data_subshard_count: int = field(
         default=1,
         metadata={
@@ -193,19 +197,14 @@ class StreamingLanguageModelingTask(LegacyTask):
             + [self.eod]
         )
 
-    def _get_sample_prob(self, dataset_lens):
+    def _get_sample_prob(self, dataset_caps):
         """
         Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
         """
-        if self.args.multicorpus_sampling_maximum == DEFAULT_MULTICORPUS_MAX:
-            prob = dataset_lens / dataset_lens.sum()
-            smoothed_prob = prob**self.args.multicorpus_sampling_alpha
-            smoothed_prob = smoothed_prob / smoothed_prob.sum()
-        else:
-            dataset_lens = np.array(
-                [min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens]
-            )
-            smoothed_prob = dataset_lens / sum(dataset_lens)
+        prob = dataset_caps / sum(dataset_caps)
+
+        smoothed_prob = prob**self.args.multicorpus_sampling_alpha
+        smoothed_prob = smoothed_prob / smoothed_prob.sum()
         return smoothed_prob
 
     def _alpha_sampling(self, datasets, corpora, epoch=1):
@@ -216,8 +215,21 @@ class StreamingLanguageModelingTask(LegacyTask):
             [len(d) for d in datasets],
             dtype=float,
         )
-        sample_probs = self._get_sample_prob(dataset_lengths)
-        logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
+        caps = json.loads(self.args.caps)
+        def get_cap(b, l):
+            eps = [l]
+            if b in caps:
+                eps.append(caps[b])
+            elif self.args.multicorpus_sampling_maximum != DEFAULT_MULTICORPUS_MAX:
+                eps.append(self.args.multicorpus_sampling_maximum)
+            return min(eps)
+
+        # If the cap for the benchmark exists in caps, then use that. Otherwise, if multicorpus_sampling_maximum is specified, then use that.
+        # Otherwise, just use the dataset length
+        dataset_caps = [
+            get_cap(c.split('__')[0], dataset_lengths[i]) for i, c in enumerate(corpora)] 
+        sample_probs = self._get_sample_prob(dataset_caps)
+        logger.info(f"loaded total {sum(dataset_caps)} blocks for all corpora")
 
         def compute_benchmark_prob(sample_probs):
             per_benchmark_prob = {}
