@@ -92,7 +92,13 @@ def tombstones_procedure(
         time.sleep(period.total_seconds())
 
 
-def tombstones(job_id, base_dir, period=datetime.timedelta(seconds=60), dirstones=None):
+def tombstones(
+    job_id,
+    base_dir,
+    period=datetime.timedelta(seconds=60),
+    dirstones=None,
+    logger=logging.getLogger(),
+):
     if dirstones is None:
         dirstones = {"scancel": [], "requeuehold": [], "release": []}
         for userdir in os.listdir(base_dir):
