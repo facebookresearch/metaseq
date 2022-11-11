@@ -1,18 +1,12 @@
 # 1/usr/bin/env python3
 
-try:
-    from urllib.parse import urlparse, urlunparse
-except ImportError:
-    raise ImportError(
-        "urllib cannot be found, urlparse from python2 is no longer supported."
-    )
-
 import time
 import logging
 from typing import Dict
+from urllib.parse import urlparse
+
 from torch.distributed.constants import default_pg_timeout
-from torch.distributed import register_rendezvous_handler
-from torch.distributed import Store, TCPStore
+from torch.distributed import register_rendezvous_handler, Store, TCPStore
 
 
 RETRIES = 5
@@ -60,6 +54,9 @@ def _tcp_retry_rendezvous_handler(url: str, timeout=default_pg_timeout, **kwargs
         try:
             store = _create_c10d_store(
                 result.hostname, result.port, rank, world_size, timeout
+            )
+            logger.warning(
+                f"Successfully connected to primary node on attempt {tries}/{RETRIES}"
             )
             yield (store, rank, world_size)
             break
