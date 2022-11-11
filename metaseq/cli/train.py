@@ -56,8 +56,8 @@ logger = logging.getLogger("metaseq.cli.train")
 
 def main(cfg: DictConfig) -> None:
     if distributed_utils.is_master(cfg.distributed_training):
-        sys.stdout.write(f"SENTINEL: Beginning run at {datetime.now()}\n")
-        sys.stderr.write(f"SENTINEL: Beginning run at {datetime.now()}\n")
+        sys.stdout.write(f"START: Beginning run at {datetime.now()}\n")
+        sys.stderr.write(f"START: Beginning run at {datetime.now()}\n")
     utils.import_user_module(cfg.common)
 
     # replace with actual job id
