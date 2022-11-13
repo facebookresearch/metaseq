@@ -329,6 +329,14 @@ class DatasetConfig(MetaseqDataclass):
     data_buffer_size: int = field(
         default=10, metadata={"help": "Number of batches to preload"}
     )
+    skip_batches: str = field(
+        default="",
+        metadata={
+            "help": "comma separated list of batch ranges to skip in this order "
+            "(e.g. '100-200,150-180,160,300-310'), "
+            "ranges correspond to the actual num_updates in a run"
+        },
+    )
     train_subset: str = field(
         default="train",
         metadata={"help": "data subset to use for training (e.g. train, valid, test)"},
