@@ -37,8 +37,7 @@ def relu(x):
 
 @torch.jit.script
 def relu_back(g, x):
-    if x <= 0:
-        return 0
+    g[x <= 0] = 0
     return g
 
 
