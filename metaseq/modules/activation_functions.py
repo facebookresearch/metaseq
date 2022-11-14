@@ -31,6 +31,18 @@ def gelu_back(g, x):
 
 
 @torch.jit.script
+def relu(x):
+    return F.relu(x)
+
+
+@torch.jit.script
+def relu_back(g, x):
+    if x <= 0:
+        return 0
+    return g
+
+
+@torch.jit.script
 def swiglu(x: torch.Tensor, gate: torch.Tensor):
     return F.silu(x) * gate
 

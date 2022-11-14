@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from metaseq.modules.activation_functions import gelu, gelu_back
+from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
 
 import importlib
 import math
@@ -100,7 +100,11 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         fc2_weight,
         head_dim,
         recompute_fc1,
+        activation_fn_name,  # "relu" or "gelu" for now
     ):
+        assert (
+            activation_fn_name == "relu" or activation_fn_name == "gelu"
+        ), "Only relu/gelu is supported!"
         # import from apex
         global fused_layer_norm_cuda
         if fused_layer_norm_cuda is None:
@@ -162,12 +166,13 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         # apply fc1, output is (seq_len, bsz, 4 * embed_dim // #tp_size)
         fc1_out = torch.matmul(ffn_layer_norm_output, fc1_weight.t())
-        # apply gelu
 
-        gelu_out = gelu(fc1_out)
+        # apply activation
+        actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
+
         # apply fc2, output (seq_len, bsz, embed_dim) but needs to be
         # summed across tp for real output
-        fc2_out = torch.matmul(gelu_out, fc2_weight.t())
+        fc2_out = torch.matmul(actv_out, fc2_weight.t())
 
         if ctx.recompute_fc1:
             fc1_out = None
@@ -183,11 +188,18 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             fc1_weight,
             fc2_weight,
         )
-        ctx.bsz, ctx.seq_len, ctx.head_dim, ctx.embed_dim_per_partition = (
+        (
+            ctx.bsz,
+            ctx.seq_len,
+            ctx.head_dim,
+            ctx.embed_dim_per_partition,
+            ctx.activation_fn_name,
+        ) = (
             bsz,
             seq_len,
             head_dim,
             embed_dim_per_partition,
+            activation_fn_name,
         )
 
         # apply scatter gather,
@@ -211,11 +223,12 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             fc1_weight,
             fc2_weight,
         ) = ctx.saved_tensors
-        bsz, seq_len, head_dim, embed_dim_per_partition = (
+        bsz, seq_len, head_dim, embed_dim_per_partition, activation_fn_name = (
             ctx.bsz,
             ctx.seq_len,
             ctx.head_dim,
             ctx.embed_dim_per_partition,
+            ctx.activation_fn_name,
         )
         dtype = grad_output.dtype
 
@@ -237,7 +250,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         # note, remember "gelu_out = fc2_in"
         if not ctx.recompute_fc1:
             assert fc1_out is not None
-            gelu_out = gelu(fc1_out)
+            actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
 
         # Now wait for reduce scatter
         handle.wait()
@@ -252,23 +265,27 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             handle.wait()
             assert fc1_out is None
             fc1_out = torch.matmul(ffn_layer_norm_output, fc1_weight.t())
-            gelu_out = gelu(fc1_out)
+            actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
 
-        # calculate gelu backward
-        grad_gelu_input = gelu_back(grad_fc2_input, fc1_out)
+        # calculate gelu/relu backward
+        grad_actv_input = (
+            gelu_back(grad_fc2_input, fc1_out)
+            if activation_fn_name == "gelu"
+            else relu_back(grad_fc2_input, fc1_out)
+        )
 
         # Reshape matrix and calculate gradient with respect to fc2 weight
         grad_output = SequeuceParallelTransformerBlock._collapse_first_dimensions(
             grad_output
         )
-        gelu_out = SequeuceParallelTransformerBlock._collapse_first_dimensions(gelu_out)
-        grad_fc2_weight = grad_output.t().matmul(gelu_out)
+        actv_out = SequeuceParallelTransformerBlock._collapse_first_dimensions(actv_out)
+        grad_fc2_weight = grad_output.t().matmul(actv_out)
 
-        grad_fc1_input = grad_gelu_input.matmul(fc1_weight)
+        grad_fc1_input = grad_actv_input.matmul(fc1_weight)
         handle.wait()
 
-        grad_gelu_input = SequeuceParallelTransformerBlock._collapse_first_dimensions(
-            grad_gelu_input
+        grad_actv_input = SequeuceParallelTransformerBlock._collapse_first_dimensions(
+            grad_actv_input
         )
         ffn_layer_norm_output = (
             SequeuceParallelTransformerBlock._collapse_first_dimensions(
@@ -280,7 +297,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_fc1_input, async_op=True
         )
 
-        grad_fc1_weight = grad_gelu_input.t().matmul(ffn_layer_norm_output)
+        grad_fc1_weight = grad_actv_input.t().matmul(ffn_layer_norm_output)
 
         handle.wait()
 
