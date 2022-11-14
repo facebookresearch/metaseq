@@ -384,6 +384,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_fc2_weight,
             None,
             None,
+            None,
         )
 
     @staticmethod
