@@ -168,6 +168,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         fc1_out = torch.matmul(ffn_layer_norm_output, fc1_weight.t())
 
         # apply activation
+        # TODO: split out to explicit if/else instead of defaulting to relu when not gelu
         actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
 
         # apply fc2, output (seq_len, bsz, embed_dim) but needs to be

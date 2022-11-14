@@ -37,8 +37,7 @@ def relu(x):
 
 @torch.jit.script
 def relu_back(g, x):
-    g[x <= 0] = 0
-    return g
+    return g.masked_fill_(x <= 0, 0)
 
 
 @torch.jit.script
