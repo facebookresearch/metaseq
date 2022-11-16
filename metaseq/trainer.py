@@ -12,8 +12,10 @@ import logging
 import re
 import sys
 import time
+import math
 from itertools import chain
 from typing import Any, Dict, List
+import random
 
 import torch
 from omegaconf import OmegaConf
@@ -764,7 +766,8 @@ class Trainer(object):
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
-            self.skip_spike(logging_outputs)
+            # skip optimizer step if there is a loss spike
+            self.skip_spike(logging_outputs, max_loss_to_skip_batch=100)
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates()
@@ -796,9 +799,7 @@ class Trainer(object):
             self.zero_grad()
         except SpikeError as e:
             overflow = True
-            logger.info(
-                f"Skipped Spike: {str(e)}"
-            )
+            logger.info(str(e))
             self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
@@ -957,9 +958,24 @@ class Trainer(object):
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
-    def skip_spike(self):
-        logger.info(str(logging_outputs))
-        raise SpikeError(f"Skip because spike, in num_update {self.get_num_updates()}")
+    def skip_spike(self, logging_outputs, max_loss_to_skip_batch):
+        if max_loss_to_skip_batch == -1:
+            return
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+
+        loss = float(loss_sum / sample_size / math.log(2))
+
+        if random.randint(0, 15) == 10:
+            loss = loss * 100
+            logger.info("increased loss")
+            logger.info(str(loss))
+        logger.info(str(loss))
+        if loss > max_loss_to_skip_batch:
+            logger.info("doing skip")
+            raise SpikeError(f"Skip batch as we encountered a loss spike. In "
+            f"num_update: {self.get_num_updates()} the loss is {loss:.2f}, "
+            f"which is higher than max_loss_to_skip_batch: {max_loss_to_skip_batch:.2f}")
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
