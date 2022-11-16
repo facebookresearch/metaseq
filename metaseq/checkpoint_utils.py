@@ -5,7 +5,6 @@
 
 import ast
 import collections
-import functools
 import logging
 import os
 import re
@@ -38,7 +37,7 @@ def save_checkpoint(
     from metaseq import meters
 
     # only one worker should attempt to create the required dir
-    if trainer.data_parallel_rank == 0:
+    if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
     trainer.consolidate_optimizer()
@@ -54,9 +53,6 @@ def save_checkpoint(
     updates = trainer.get_num_updates()
 
     logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")
-
-    def is_better(a, b):
-        return a >= b if cfg.maximize_best_checkpoint_metric else a <= b
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
@@ -111,36 +107,6 @@ def save_checkpoint(
             f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
-
-        _delete_old_checkpoint_files(
-            cfg,
-            end_of_epoch,
-            suffix,
-        )
-
-
-def _delete_old_checkpoint_files(
-    cfg: CheckpointConfig, end_of_epoch: bool, suffix: str
-):
-    if not end_of_epoch and cfg.keep_last_updates > 0:
-        suffixes = [suffix]
-
-        # remove old checkpoints; checkpoints are sorted in descending order
-        for one_suffix in suffixes:
-            checkpoints = _checkpoint_paths(
-                cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
-            )
-            for old_chk in checkpoints[cfg.keep_last_updates :]:
-                if os.path.lexists(old_chk):
-                    os.remove(old_chk)
-    if cfg.keep_last_epochs > 0:
-        # remove old epoch checkpoints; checkpoints are sorted in descending order
-        checkpoints = _checkpoint_paths(
-            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
-        )
-        for old_chk in checkpoints[cfg.keep_last_epochs :]:
-            if os.path.lexists(old_chk):
-                os.remove(old_chk)
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
@@ -589,29 +555,16 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
     return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
-def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
-):
-    assert (
-        async_callback_fn is None or async_write
-    ), "async_callback_fn requires async_write=True (--save-async)"
-    if async_write and async_callback_fn is not None:
-        callback = functools.partial(async_callback_fn, filename)
-    else:
-        callback = None
-    if async_write:
-        with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
+def torch_persistent_save(obj, filename: str):
+    if PathManager.supports_rename(filename):
+        # do atomic save
+        with PathManager.open(filename + ".tmp", "wb") as f:
             _torch_persistent_save(obj, f)
+        PathManager.rename(filename + ".tmp", filename)
     else:
-        if PathManager.supports_rename(filename):
-            # do atomic save
-            with PathManager.open(filename + ".tmp", "wb") as f:
-                _torch_persistent_save(obj, f)
-            PathManager.rename(filename + ".tmp", filename)
-        else:
-            # fallback to non-atomic save
-            with PathManager.open(filename, "wb") as f:
-                _torch_persistent_save(obj, f)
+        # fallback to non-atomic save
+        with PathManager.open(filename, "wb") as f:
+            _torch_persistent_save(obj, f)
 
 
 def _torch_persistent_save(obj, f, num_retries=3):
