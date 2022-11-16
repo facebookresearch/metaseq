@@ -759,13 +759,12 @@ class Trainer(object):
                 self.cfg.optimization.clip_norm_type,
                 self.cfg.optimization.skip_gradient_update_on_clip_norm,
             )
-
             # check that grad norms are consistent across workers
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
-
+            self.skip_spike(logging_outputs)
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates()
@@ -794,6 +793,12 @@ class Trainer(object):
                 f"NOTE: gradient overflow detected, ignoring gradient, {str(e)}"
             )
             grad_norm = torch.tensor(0.0).cuda()
+            self.zero_grad()
+        except SpikeError as e:
+            overflow = True
+            logger.info(
+                f"Skipped Spike: {str(e)}"
+            )
             self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
@@ -951,6 +956,10 @@ class Trainer(object):
             aggregate_norm_fn=None,
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
+
+    def skip_spike(self):
+        logger.info(str(logging_outputs))
+        raise SpikeError(f"Skip because spike, in num_update {self.get_num_updates()}")
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1231,3 +1240,6 @@ def _set_module_by_path(module, path, value):
     for name in path[:-1]:
         module = getattr(module, name)
     setattr(module, path[-1], value)
+
+class SpikeError(Exception):
+    pass
