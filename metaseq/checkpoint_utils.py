@@ -270,7 +270,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             if PathManager.exists(cfg.finetune_from_model):
                 checkpoint_path_to_load = cfg.finetune_from_model
             elif suffix is not None:  # check for sharded version
-                sharded_path = cfg.finetune_from_model.replace(".pt", suffix + ".pt")
+                sharded_path = re.sub(r".pt$", suffix + ".pt", cfg.finetune_from_model)
                 if PathManager.exists(sharded_path):
                     checkpoint_path_to_load = sharded_path
             if checkpoint_path_to_load is None:
@@ -288,7 +288,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         dir = cfg.restore_file.replace("/" + checkpoint_name, "")
         if verify_shards(cfg, dir=dir, checkpoint_name=checkpoint_name):
             # when the checkpoint passed by the user is not corrupted
-            checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
+            checkpoint_path_to_load = re.sub(r".pt$", suffix + ".pt", cfg.restore_file)
         else:
             logger.warning(
                 "Passed checkpoint is either corrupted or does not exist. Loading last good checkpoint"
@@ -314,13 +314,13 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             first_launch = True
             checkpoint_path_to_load = cfg.restore_file
 
-    # Commenting this because it fails when checkpoint_last isnt saved i.e. 
+    # Commenting this because it fails when checkpoint_last isnt saved i.e.
     # when we save per-interval checkpoints
     # if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
-        # raise ValueError(
-            # "--finetune-from-model and --restore-file (non-default value) "
-            # "can not be specified together: " + str(cfg)
-        # )
+    # raise ValueError(
+    # "--finetune-from-model and --restore-file (non-default value) "
+    # "can not be specified together: " + str(cfg)
+    # )
 
     # Azure logic
     try:

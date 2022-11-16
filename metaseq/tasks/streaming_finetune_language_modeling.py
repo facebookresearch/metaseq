@@ -65,6 +65,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         src = json["src"].rstrip(" ")
         src_tokens_len = len(self.tokenizer.encode(src).ids)
         tgt = json["tgt"].rstrip()
+        tgt_tokens_len = len(self.tokenizer.encode(tgt).ids)
         pos = None
         neg = []
         cands = json["candidates"]
@@ -75,6 +76,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             full_tokens = torch.LongTensor(
                 self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
             )
+            assert len(full_tokens) == src_tokens_len + tgt_tokens_len + 1
             cand_tokens = torch.clone(full_tokens)
             cand_tokens[:src_tokens_len] = self.dictionary.pad_index
             if cand == tgt:
