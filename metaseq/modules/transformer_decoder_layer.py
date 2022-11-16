@@ -67,8 +67,8 @@ class TransformerDecoderLayer(nn.Module):
 
         ffn_dim = args.decoder_ffn_embed_dim
 
-        activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
-        self.skip_bias_add = (activation_fn_name == "gelu") and has_fused_bias_gelu
+        self.activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
+        self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
 
         # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
@@ -87,7 +87,7 @@ class TransformerDecoderLayer(nn.Module):
         )
 
         self.activation_fn = ActivationFn(
-            activation_fn_name,
+            self.activation_fn_name,
             self.build_fc1,
             self.embed_dim,
             ffn_dim,
@@ -216,6 +216,7 @@ class TransformerDecoderLayer(nn.Module):
                 self.fc2.weight,
                 self.self_attn.head_dim,
                 recompute_fc1,
+                self.activation_fn_name,
             )
             return x
 
