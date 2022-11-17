@@ -77,6 +77,7 @@ class TransformerDecoderLayer(nn.Module):
             "megatron_init_sigma": getattr(args, "megatron_init_sigma", 0.006),
             "dtype": utils.get_model_init_dtype(args),
             "disable_bias": getattr(args, "disable_bias", False),
+            "truncate_init": getattr(args, "truncate_init", False),
         }
 
         # Note: ModelParallelTransformerDecoderLayer overrides build_fc1.
@@ -105,6 +106,7 @@ class TransformerDecoderLayer(nn.Module):
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
+            truncate_init=getattr(args, "truncate_init", False),
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
