@@ -69,6 +69,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         dtype=torch.float32,
         attn_variant=False,
         xf_attn_op=None,
+        truncate_init=False,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -178,7 +179,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             if full_megatron_init:
                 assert megatron_init_sigma is not None
                 # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
-                init_method_weights = utils.init_method_normal(megatron_init_sigma)
+                init_method_weights = utils.init_method_normal(megatron_init_sigma, truncate_init=truncate_init)
                 init_method_bias = None
             else:
                 init_method_weights = (
@@ -255,7 +256,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             assert megatron_init_sigma is not None
             assert num_layers is not None
             init_method_weights = utils.scaled_init_method_normal(
-                megatron_init_sigma * full_megatron_init_scalar, num_layers
+                megatron_init_sigma * full_megatron_init_scalar, num_layers, truncate_init=truncate_init
             )
         self.out_proj = RowParallelLinear(
             embed_dim,

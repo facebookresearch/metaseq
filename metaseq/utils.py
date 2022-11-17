@@ -499,11 +499,11 @@ def tokenize_line(line):
     return line.split()
 
 
-def init_method_normal(sigma, truncate=False):
+def init_method_normal(sigma, truncate_init=False):
     """Init method based on N(0, sigma)."""
 
     def init_(tensor):
-        if truncate:
+        if truncate_init:
             return torch.nn.init.trunc_normal_(
                 tensor, mean=0.0, std=sigma, a=-3 * sigma, b=3 * sigma
             )
@@ -513,12 +513,12 @@ def init_method_normal(sigma, truncate=False):
     return init_
 
 
-def scaled_init_method_normal(sigma, num_layers, truncate=False):
+def scaled_init_method_normal(sigma, num_layers, truncate_init=False):
     """Init method based on N(0, sigma/sqrt(2*num_layers)."""
     std = sigma / math.sqrt(2.0 * num_layers)
 
     def init_(tensor):
-        if truncate:
+        if truncate_init:
             return torch.nn.init.trunc_normal_(
                 tensor, mean=0.0, std=std, a=-3 * std, b=3 * std
             )
