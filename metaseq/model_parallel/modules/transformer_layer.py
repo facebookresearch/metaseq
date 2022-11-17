@@ -77,7 +77,9 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
 
         if full_megatron_init:
             # Setting bias init method to None, initializes biases with zero.
-            init_method_weights = utils.init_method_normal(megatron_init_sigma, truncate_init=truncate_init)
+            init_method_weights = utils.init_method_normal(
+                megatron_init_sigma, truncate_init=truncate_init
+            )
             init_method_bias = None
         else:
             init_method_weights = _weight_init
@@ -113,7 +115,9 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = utils.scaled_init_method_normal(
-                megatron_init_sigma * full_megatron_init_scalar, num_layers, truncate_init=truncate_init
+                megatron_init_sigma * full_megatron_init_scalar,
+                num_layers,
+                truncate_init=truncate_init,
             )
         else:
             init_method_weights = _weight_init

@@ -31,7 +31,11 @@ def PositionalEmbedding(
         if full_megatron_init:
             if truncate_init:
                 nn.init.trunc_normal_(
-                    m.weight, mean=0.0, std=megatron_init_sigma, a=-3 * megatron_init_sigma, b=3 * megatron_init_sigma
+                    m.weight,
+                    mean=0.0,
+                    std=megatron_init_sigma,
+                    a=-3 * megatron_init_sigma,
+                    b=3 * megatron_init_sigma,
                 )
             else:
                 nn.init.normal_(m.weight, mean=0, std=megatron_init_sigma)
