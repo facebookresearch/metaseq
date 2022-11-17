@@ -978,9 +978,11 @@ class Trainer(object):
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
         loss = float(loss_sum / sample_size / math.log(2))
         if loss > max_loss_to_skip_batch:
-            raise SpikeError(f"Skip batch as we encountered a loss spike. In "
-            f"num_update: {self.get_num_updates()} the loss is {loss:.2f}, "
-            f"which is higher than max_loss_to_skip_batch: {max_loss_to_skip_batch:.2f}")
+            raise SpikeError(
+                f"Skip batch as we encountered a loss spike. In "
+                f"num_update: {self.get_num_updates()} the loss is {loss:.2f}, "
+                f"which is higher than max_loss_to_skip_batch: {max_loss_to_skip_batch:.2f}"
+            )
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1261,6 +1263,7 @@ def _set_module_by_path(module, path, value):
     for name in path[:-1]:
         module = getattr(module, name)
     setattr(module, path[-1], value)
+
 
 class SpikeError(Exception):
     pass
