@@ -153,6 +153,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             bias=not getattr(args, "disable_bias", False),
             attn_variant=getattr(args, "attn_variant", "default"),
             xf_attn_op=getattr(args, "xf_attn_op", None),
+            truncate_init=getattr(args, "truncate_init", None),
         )
 
     def forward_attention(

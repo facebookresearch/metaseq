@@ -18,6 +18,7 @@ def PositionalEmbedding(
     learned_sinusoidal: bool = False,
     full_megatron_init=False,
     megatron_init_sigma=None,
+    truncate_init=False,
 ):
     if learned:
         # if padding_idx is specified then offset the embedding ids by
@@ -28,9 +29,20 @@ def PositionalEmbedding(
             num_embeddings = num_embeddings + padding_idx + 1
         m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
         if full_megatron_init:
-            nn.init.normal_(m.weight, mean=0, std=megatron_init_sigma)
+            if truncate_init:
+                nn.init.trunc_normal_(
+                    m.weight, mean=0.0, std=megatron_init_sigma, a=-3 * megatron_init_sigma, b=3 * megatron_init_sigma
+                )
+            else:
+                nn.init.normal_(m.weight, mean=0, std=megatron_init_sigma)
         else:
-            nn.init.normal_(m.weight, mean=0, std=embedding_dim**-0.5)
+            std = embedding_dim**-0.5
+            if truncate_init:
+                nn.init.trunc_normal_(
+                    m.weight, mean=0.0, std=std, a=-3 * std, b=3 * std
+                )
+            else:
+                nn.init.normal_(m.weight, mean=0, std=std)
         if padding_idx is not None:
             nn.init.constant_(m.weight[padding_idx], 0)
     elif learned_sinusoidal:
