@@ -34,7 +34,6 @@ try:
         ScaledUpperTriangMaskedSoftmax,
         ScaledMaskedSoftmax,
     )
-    from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -179,7 +178,7 @@ class ModelParallelMultiheadAttention(nn.Module):
             if full_megatron_init:
                 assert megatron_init_sigma is not None
                 # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
-                init_method_weights = megatron_utils.init_method_normal(
+                init_method_weights = utils.init_method_normal(
                     megatron_init_sigma
                 )
                 init_method_bias = None
@@ -257,7 +256,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         if full_megatron_init:
             assert megatron_init_sigma is not None
             assert num_layers is not None
-            init_method_weights = megatron_utils.scaled_init_method_normal(
+            init_method_weights = utils.scaled_init_method_normal(
                 megatron_init_sigma * full_megatron_init_scalar, num_layers
             )
         self.out_proj = RowParallelLinear(
