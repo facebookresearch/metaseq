@@ -44,6 +44,8 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
         if has_pad:
             loss = loss * (target != self.padding_idx)
+        max_loss = loss.max()
+        min_loss = loss.min()
         loss = loss.sum()
         # When using target loss only, use num tokens in target only as the sample_size
         # See StreamingSrcTgtDataset
@@ -57,6 +59,8 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
+            "max_loss": max_loss.data,
+            "min_loss": min_loss.data,
         }
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
@@ -88,6 +92,8 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        max_loss = max(log.get("max_loss", 0) for log in logging_outputs)
+        min_loss = min(log.get("min_loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -108,6 +114,8 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         metrics.log_scalar(
             "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
         )
+        metrics.log_scalar("max_loss", max_loss / math.log(2), 0, round=3)
+        metrics.log_scalar("min_loss", min_loss / math.log(2), 0, round=3)
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
         )
