@@ -18,7 +18,11 @@ from omegaconf import OmegaConf
 from metaseq.dataclass.configs import CheckpointConfig
 from metaseq.dataclass.utils import overwrite_args_by_name
 from metaseq.distributed import utils as distributed_utils
-from metaseq.file_io import PathManager, torch_load_cpu
+from metaseq.file_io import (
+    PathManager,
+    torch_load_cpu,
+    load_and_pop_last_optimizer_state,
+)
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
 logger = logging.getLogger(__name__)
@@ -316,7 +320,8 @@ def _is_checkpoint_sharded(checkpoint_files) -> bool:
             "--model-parallel. If you are working on a new script, it may also mean "
             "you failed to fsdp_wrap or you have an unnecessary fsdp_wrap."
         )
-    sd = torch_load_cpu(checkpoint_files[0])
+    # We don't need the optimizer state here, since we're just loading the model for the config.
+    sd = load_and_pop_last_optimizer_state(checkpoint_files[0])
     return sd["cfg"]["distributed_training"]["use_sharded_state"]
 
 
