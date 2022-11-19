@@ -5,6 +5,7 @@
 
 from argparse import Namespace  # noqa: F401
 import logging
+import collections.abc
 
 import torch
 
@@ -42,6 +43,84 @@ except Exception as e:
     logger.exception(e)
 
 
+torch.ops.load_library("dietgpu")
+
+# finds compressible tensors
+def recursively_dietgpu_find(obj, toplevel=True, tensors=None, locations=None, path=[]):
+    if toplevel:
+        # These are lists of tensors and their paths in the datastructure, keyed by dtype
+        tensors = defaultdict(lambda: [])
+        locations = defaultdict(lambda: [])
+    if isinstance(obj, collections.abc.Mapping):
+        for k,v in obj.iteritems():
+            recursively_dietgpu_find(v, toplevel=False, tensors=tensors, locations = locations, path = path + [k])
+    if isinstance(obj, list):
+        for i,x in enumerate(obj):
+            recursively_dietgpu_find(x, toplevel=False, tensors=tensors, locations = locations, path = path + [i])
+    if isinstance(obj, torch.Tensor) and obj.dtype in [torch.float16, torch.bfloat16, torch.float32, torch.int8]:
+        tensors[obj.dtype].append(obj)
+        locations[obj.dtype].append(path)
+    if toplevel:
+        return tensors, locations
+
+
+# First, uses recursively_dietgpu_find to find eligible tensors and their "paths" in the overall dict
+# After compressing, uses the paths to mutate the given object to use the compressed tensors
+# Includes the compressed paths to guide decompression
+# TODO this doesn't compress int8 tensors, which would use False for the dietgpu float mode fwiw
+def dietgpu_compress(obj):
+    assert isinstance(obj, collections.abc.Mapping)
+    tensors, locations = recursively_dietgpu_find(obj)
+    smaller_tensors = {}
+    for dtype, ts in tensors.iteritems():
+        if dtype == torch.int8:
+            smaller_tensors[dtype] = torch.ops.dietgpu.compress_data_simple(False, tensors)
+        else:
+            smaller_tensors[dtype] = torch.ops.dietgpu.compress_data_simple(True, tensors)
+    # TODO this should probably be immutably zipping
+    for dtype in tensors:
+        for loc, tensor in zip(locations[dtype], tensors[dtype]):
+            # let's find the parent container for the compressed tensor
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            tensor_container[loc[-1]] = tensor
+    obj["dietgpu_locs"] = locations
+
+
+# If this contains dietgpu tensors, iterates through and grabs them all
+# Then decompresses
+# Finally, mutates the given object to have the decompressed tensors in place of the compressed ones
+def dietgpu_decompress(obj):
+    if "dietgpu_locs" not in obj:
+        return obj
+    locations = obj["dietgpu_locs"]
+    for dtype in locations:
+        compressed_tensors = []
+        for loc in locations[dtype]:
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            compressed_tensors.append(tensor_container[loc[-1]])
+        if dtype == torch.int8:
+            tensors = torch.ops.dietgpu.decompress_data_simple(False, compressed_tensors)
+        else:
+            tensors = torch.ops.dietgpu.decompress_data_simple(True, compressed_tensors)
+        for loc, tensor in zip(locations[dtype], tensors):
+            # let's find the parent container for the compressed tensor
+            tensor_container = obj
+            i = 0
+            while i != len(loc) - 1:
+                tensor_container = tensor_container[loc[i]]
+                i += 1
+            tensor_container[loc[-1]] = tensor
+    del obj["dietgpu_locs"]
+
+
 def recursively_cast_dictconfigs(cfg):
     if isinstance(cfg, DictConfig):
         cfg = eval(str(cfg))
@@ -55,6 +134,7 @@ def recursively_cast_dictconfigs(cfg):
 
 def torch_load_cpu(path):
     state = torch.load(path, map_location=torch.device("cpu"))
+    dietgpu_decompress(state)
     # If model was trained with fp16, model from loaded state_dict can be moved to fp16
     if not isinstance(state, dict):
         return state
