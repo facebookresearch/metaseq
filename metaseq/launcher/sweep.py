@@ -218,17 +218,6 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "tombstone 'tombstone_<job_id>' file in any subdir of the checkpoint default"
         "(/shared/home/$USER for azure)",
     )
-    parser.add_argument(
-        "--dynamic-config",
-        default=True,
-        type=bool,
-        help="flag to signal if dynamic configuration is being used (does not propagate into metaseq)",
-    )
-    parser.add_argument(
-        "--dynamic-config-path",
-        default=None,  # None means that <save_dir>/dcfg.json will be used (<save_dir> from slurm.py)
-        help="a file to load dynamic configurations from (it is being checked periodically)",
-    )
 
     # Env flags
     parser.add_argument("--azure", action="store_true", help="running on azure")
