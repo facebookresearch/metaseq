@@ -210,10 +210,9 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         "{job_dir} will be replaced",
     )
     parser.add_argument(
-        "-ts",
         "--tombstonable",
         type=bool,
-        default=True,
+        default=False,
         help="make the job killable by writing a "
         "tombstone 'tombstone_<job_id>' file in any subdir of the checkpoint default"
         "(/shared/home/$USER for azure)",

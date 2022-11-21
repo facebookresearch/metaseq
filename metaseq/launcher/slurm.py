@@ -20,6 +20,7 @@ from pathlib import Path
 import metaseq
 from metaseq.utils import get_random_port
 from metaseq.launcher.sweep import get_env_from_args
+from metaseq.launcher.tombyard import tombstones
 
 try:
     import metaseq_internal
@@ -515,26 +516,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             print("Launched {}".format(job_id))
         if hasattr(args, "tombstonable"):
             if args.tombstonable:
-                p = subprocess.Popen(
-                    [
-                        "nohup",
-                        "python",
-                        "-m",
-                        "metaseq.launcher.tombyard",
-                        "--job-id",
-                        str(job_id),
-                        "--base-dir",
-                        args.tombstoning_superdir,
-                    ],
-                    stdout=open(train_log, "a"),
-                    stderr=open(train_log, "a"),
-                    preexec_fn=os.setpgrp,
-                )
-                with open(train_log, "a") as train_log_h:
-                    print(
-                        f"tombstoning process for the job {job_id} got the PID {p.pid}",
-                        file=train_log_h,
-                    )
+                tombstones(job_id=job_id, base_dir=args.tombstoning_superdir)
 
 
 def has_finished(save_dir):
