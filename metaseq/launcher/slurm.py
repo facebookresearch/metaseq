@@ -19,7 +19,6 @@ from pathlib import Path
 
 import metaseq
 from metaseq.utils import get_random_port
-from metaseq.dataclass.configs import DynamicConfig
 from metaseq.launcher.sweep import get_env_from_args
 
 try:
@@ -177,14 +176,6 @@ def gen_train_command(
         )
     if args.data is not None:
         train_cmd.extend([args.data])
-    if args.dynamic_config_path is not None:
-        if not args.dynamic_config:
-            logger.warning(
-                f"""dynamic-config-path is {args.dynamic_config_path} (not None)
-            but dynamic-config option is set to {args.dynamic_config}.
-            Dynamic configuration option is enabled with {args.dynamic_config_path} to resolve the inconsistency"""
-            )
-        train_cmd.extend(["--dynamic-config-path", args.dynamic_config_path])
     if args.local_checkpoints_dir is None:
         train_cmd.extend(["--save-dir", save_dir])
     else:
@@ -461,15 +452,6 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             subprocess.check_output(
                 f"ln -fs {abs_oss} {save_dir}/snapshot_public", shell=True
             )
-
-        if args.dynamic_config:
-            if args.dynamic_config_path is None:
-                args.dynamic_config_path = os.path.join(save_dir, f"dcfg.json")
-            if not os.path.exists(args.dynamic_config_path):
-                import json
-
-                with open(args.dynamic_config_path, "w") as handle:
-                    json.dump(DynamicConfig.default_state, handle)
 
         # clone base env and update for this job, e.g., we set WANDB_RUN_ID
         # based on the save_dir, which is based on the current hyperparam values
