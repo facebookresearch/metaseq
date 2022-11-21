@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import traceback
+import socket
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
 
@@ -672,16 +673,18 @@ def _upgrade_state_dict(state):
 
 def verify_checkpoint_directory(save_dir: str) -> None:
     if not os.path.exists(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Unable to create dir {save_dir} on {socket.gethostname()}")
+            raise e
     rank = distributed_utils.get_global_rank()
     temp_file_path = os.path.join(save_dir, f"dummy{rank}")
     try:
         with open(temp_file_path, "w"):
             pass
     except OSError as e:
-        logger.warning(
-            "Unable to access checkpoint save directory: {}".format(save_dir)
-        )
+        logger.warning(f"Unable to access checkpoint save directory: {save_dir}")
         raise e
     else:
         try:

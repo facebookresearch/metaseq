@@ -1,7 +1,7 @@
 # Setup
 
 We rely on the following external repositories:
-* https://github.com/ngoyal2707/Megatron-LM/tree/fairseq_v2
+* https://github.com/ngoyal2707/Megatron-LM/tree/fairseq_v3
 * https://github.com/NVIDIA/apex
 * https://github.com/facebookresearch/fairscale.git
 
@@ -19,7 +19,7 @@ pip3 install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cu
 Depending on the hardware you're running on, you may need to comment out lines 101-107 in setup.py here.
 ## Install Megatron
 ```
-git clone --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
+git clone --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
 cd Megatron-LM
 pip3 install six regex
 pip3 install -e .
