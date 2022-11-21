@@ -50,9 +50,7 @@ def tombstones_procedure(
         sacct_result = os.popen(f"squeue -j {job_id} -O State -h ").read()
         status = sacct_result.strip()
         if tombstone_detected:
-            print(
-                f".. scanceling the job and its current squeue.state is {status}"
-            )
+            print(f".. scanceling the job and its current squeue.state is {status}")
         if status not in JOB_STATE_CODES:
             print(f"Done scanceling the job. Its squeue.state now is: {status}")
             return
