@@ -1,3 +1,8 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,6 +28,16 @@ def gelu_back(g, x):
         (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)
     ) + 0.5 * (1 + tanh_out)
     return ff * g
+
+
+@torch.jit.script
+def relu(x):
+    return F.relu(x)
+
+
+@torch.jit.script
+def relu_back(g, x):
+    return g.masked_fill_(x <= 0, 0)
 
 
 @torch.jit.script

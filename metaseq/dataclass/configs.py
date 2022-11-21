@@ -4,9 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import sys
-import time
-import json
-import logging
 from dataclasses import _MISSING_TYPE, dataclass, field
 from typing import Any, List, Optional
 
@@ -196,15 +193,6 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
-    )
-    dynamic_config_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "a path to place a file and load dynamic configuratinons from (it is being checked periodically)"
-        },
-    )
-    dynamic_config_timeout: float = field(
-        default=30.0, metadata={"help": "dynamic configuration state timeout"}
     )
 
 
@@ -757,63 +745,3 @@ class MetaseqConfig(MetaseqDataclass):
     lr_scheduler: Any = MISSING
     bpe: Any = MISSING
     tokenizer: Any = None
-
-
-class DynamicConfig:
-    """
-    can be used instead of redis to store updatable key-value
-
-    test:
-        data = {"a": 1}
-        with open('data.json', 'w') as fp:
-            json.dump(data, fp)
-        dcfg = DynoCfg(json_file_path = "data.json", timeout = 1)
-        print(dcfg["a"]) # > 1
-        data = {"a": 4}
-        with open('data.json', 'w') as fp:
-            json.dump(data, fp)
-        print(dcfg["a"]) # > 1
-        time.sleep(1)
-        print(dcfg["a"]) # > 4
-    """
-
-    default_state = {"force_profile": False}
-    valid_keys = ["force_profile"]
-
-    def __init__(self, json_file_path=None, timeout=30):  # timeout in sec
-        self.data = DynamicConfig.default_state
-        self.timeout = timeout
-        self.timer_start = 0
-        self.json_file_path = json_file_path
-        self.refresh()
-
-    def validate(self):
-        for k, v in self.data.items():
-            if k not in DynamicConfig.valid_keys:
-                logging.warning(f"Encounterd unknown dynamic config option: {k} {v}")
-
-    def refresh(self):
-        if self.json_file_path is not None:
-            # if data have not been updated in a while, reload from the file
-            # can speed up if were to calculate hash sum of the file to monitor updates
-            timer_value = time.time() - self.timer_start
-            if timer_value > self.timeout:
-                try:
-                    with open(self.json_file_path, "r") as json_file:
-                        self.data = json.load(json_file)
-                    self.validate()
-                    self.timer_start = time.time()
-                except json.JSONDecodeError as jsonerror:
-                    logging.warning(
-                        f"""Error refreshing dynamic config: reading file {self.json_file_path}
-                    resulted in JSONDecodeError {jsonerror}"""
-                    )
-                except IOError as ioerror:
-                    logging.warning(
-                        f"""Error refreshing dynamic config: reading file {self.json_file_path}
-                    resulted in IOError {ioerror}"""
-                    )
-
-    def __getitem__(self, key):
-        self.refresh()
-        return self.data[key]

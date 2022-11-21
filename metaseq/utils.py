@@ -11,6 +11,7 @@ import random
 import re
 import sys
 import warnings
+import math
 from typing import List, Optional
 
 import torch
@@ -496,3 +497,32 @@ def tokenize_line(line):
     line = re.compile(r"\s+").sub(" ", line)
     line = line.strip()
     return line.split()
+
+
+def init_method_normal(sigma, truncate_init=False):
+    """Init method based on N(0, sigma)."""
+
+    def init_(tensor):
+        if truncate_init:
+            return torch.nn.init.trunc_normal_(
+                tensor, mean=0.0, std=sigma, a=-3 * sigma, b=3 * sigma
+            )
+        else:
+            return torch.nn.init.normal_(tensor, mean=0.0, std=sigma)
+
+    return init_
+
+
+def scaled_init_method_normal(sigma, num_layers, truncate_init=False):
+    """Init method based on N(0, sigma/sqrt(2*num_layers)."""
+    std = sigma / math.sqrt(2.0 * num_layers)
+
+    def init_(tensor):
+        if truncate_init:
+            return torch.nn.init.trunc_normal_(
+                tensor, mean=0.0, std=std, a=-3 * std, b=3 * std
+            )
+        else:
+            return torch.nn.init.normal_(tensor, mean=0.0, std=std)
+
+    return init_
