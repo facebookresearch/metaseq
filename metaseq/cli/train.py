@@ -43,7 +43,7 @@ from metaseq.trainer import Trainer
 
 rank = int(os.environ.get('SLURM_PROCID', 0))
 hostname = socket.gethostname()
-fmtstr = f"%(asctime)s {rank:04d} {hostname} | %(levelname)s | %(name)s | %(message)s"
+fmtstr = f"%(asctime)s | {rank:04d} {hostname} %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
     format=fmtstr,
     datefmt="%Y-%m-%d %H:%M:%S",
