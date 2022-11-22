@@ -53,7 +53,7 @@ class TensorboardProgressBarWrapper(BaseProgressBar):
         if key not in _writers:
             # tensorboard doesn't play well when we clobber it with reruns
             # find an acceptable suffix
-            for suffix in [""] + list(string.ascii_uppercase):
+            for suffix in (f"{i:04d}" for i in range(10000)):
                 logdir = os.path.join(self.tensorboard_logdir + suffix, key)
                 if not os.path.exists(logdir):
                     logger.info(f"Setting tensorboard directory to {logdir}")

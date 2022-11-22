@@ -132,6 +132,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
         },
     )
+    truncate_init: bool = field(
+        default=False,
+        metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
+    )
     megatron_init_sigma: float = field(
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},

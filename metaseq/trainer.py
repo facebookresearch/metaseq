@@ -24,6 +24,7 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -371,12 +372,7 @@ class Trainer(object):
         return state_dicts
 
     def save_checkpoint(
-        self,
-        filename,
-        extra_state,
-        training_finished=False,
-        async_callback_fn=None,
-        copy_to_nfs=False,
+        self, filename, extra_state, training_finished=False, async_callback_fn=None
     ):
         """Save all training state in a checkpoint file."""
         # call state_dict on all ranks in case it needs internal communication
@@ -390,13 +386,32 @@ class Trainer(object):
             )
             state_dict["extra_state"].update(extra_state)
             if self.should_save_checkpoint_on_current_rank:
-                checkpoint_utils.torch_persistent_save(
-                    state_dict,
-                    filename,
-                    async_write=self.cfg.checkpoint.write_checkpoints_asynchronously,
-                    async_callback_fn=async_callback_fn,
-                    copy_to_nfs=copy_to_nfs,
-                )
+                if self.cfg.checkpoint.write_checkpoints_asynchronously:
+                    if not hasattr(self, "async_checkpoint"):
+                        self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+
+                    def perform_save():
+                        try:
+                            logger.info(
+                                f"Beginning asynchronous torch.save to {filename}"
+                            )
+                            torch.save(state_dict, filename)
+                            if async_callback_fn is not None:
+                                async_callback_fn(filename)
+                            logger.info(
+                                f"Asynchronous torch.save to {filename} complete."
+                            )
+                        except Exception:
+                            logger.exception(f"Asyncronous save failed")
+
+                    self.async_checkpoint.submit(perform_save)
+                else:
+                    checkpoint_utils.torch_persistent_save(
+                        state_dict,
+                        filename,
+                        async_write=False,
+                        async_callback_fn=None,
+                    )
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(

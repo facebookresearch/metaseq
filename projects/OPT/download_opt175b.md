@@ -32,15 +32,15 @@ md5sum *
 ```
 
 ## Reshard the shards
-To consolidate the 992 shards into 8 files model-parallel evaluation, run (assuming you have SLURM set up already):
+To consolidate the 992 shards into 8 files model-parallel evaluation, run the `metaseq.scripts.reshard_fsdp` script:
+```bash
+for j in {0..7}; do
+    python -m metaseq.scripts.reshard_fsdp
+    --input-glob-pattern "/path/to/raw/checkpoints/checkpoint_last-model_part-$j-shard*.pt" \
+    --output-shard-name "/path/to/resharded/checkpoints/reshard-model_part-$j.pt" \
+    --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
+done
 ```
-bash metaseq/scripts/reshard_mp_launch.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
-```
-If you don't have slurm on your machine, run:
-```
-bash metaseq/scripts/reshard_mp_launch_no_slurm.sh <directory_where_all_the_shards_are>/checkpoint_last <output_dir>/ 8 1
-```
-
 Note that most of our models expect to run with Model (Tensor) Parallelism. For smaller models, some
 users may find it easier to eliminate model parallelism. The checkpoints can be converted
 to eliminate use of MP with the `consolidate_fsdp_shards.py` script:

@@ -15,8 +15,25 @@ Currently, the API supports two endpoints:
 Complete all of the setup as mentioned in [the Setup doc](setup.md).
 
 **Prepare checkpoints**
-1) Reshard accordingly with `metaseq/scripts/reshard_mp.py` with `drop_optimizer_state=True`. Example usage: `bash metaseq/scripts/reshard_mp_launch.sh ${SHARDED_MODEL_PATH}/checkpoint_last $RESHARDED_PATH $MODEL_PARALLEL 1`. MODEL_PARALLEL is 8 for OPT_175B. Change it according for other model sizes.
-2) Modify ```metaseq/service/constants.py``` to update the model path, bpe file path, and MODEL_PARALLEL. 
+- Reshard the FSDP checkpoints using the script `metaseq/scripts/reshard_fsdp.py`. For example, we can merge all FSDP shards within each of the 8 model parallel parts of OPT-175B using the following command:
+  ```bash
+  for j in {0..7}; do
+      python -m metaseq.scripts.reshard_fsdp
+      --input-glob-pattern "/path/to/raw/checkpoints/checkpoint_last-model_part-$j-shard*.pt" \
+      --output-shard-name "/path/to/resharded/checkpoints/reshard-model_part-$j.pt" \
+      --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
+  done
+  ```
+
+- Update the paths `CHECKPOINT_FOLDER`, `MODEL_FILE`, `BPE_MERGES`, `BPE_VOCAB`  as well as the configs `MODEL_PARALLEL`, `TOTAL_WORLD_SIZE` defined in `metaseq/service/constants.py`. For example,
+  ```python
+  CHECKPOINT_FOLDER = "/path/to/resharded/checkpoints"
+  MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
+  BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
+  BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+  MODEL_PARALLEL = 8
+  TOTAL_WORLD_SIZE = 8
+  ```
 
 **Run locally on a worker**
 
