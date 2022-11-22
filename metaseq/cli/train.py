@@ -33,7 +33,6 @@ from metaseq import (
 )
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
-from metaseq.dataclass.configs import DynamicConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
@@ -41,12 +40,8 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
-if "SLURM_PROCID" in os.environ:
-    format_string = f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s"
-else:
-    format_string = f"%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
-    format=format_string,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
@@ -293,18 +288,9 @@ def train(
 
         return valid_losses, should_stop
 
-    dcfg = DynamicConfig(
-        json_file_path=cfg.common.dynamic_config_path,
-        timeout=cfg.common.dynamic_config_timeout,
-    )
-
     for i, samples in enumerate(progress):
-        force_profile = dcfg["force_profile"]
-        do_profile = (distributed_utils.get_global_rank() == 0) and (
-            (cfg.common.profile and i == 5) or force_profile
-        )
-        if do_profile:
-            logger.info(f"STARTING PROFILER: step {i}")
+        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
+            logger.info("STARTING PROFILER")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
             ) as prof:
@@ -320,9 +306,8 @@ def train(
                     file=sourceFile,
                 )
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, f"profiler_trace_step_{i}.json")
+                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
             )
-            logger.info(f"FINISHING PROFILER: step {i}")
         else:
             valid_losses, should_stop = train(i, samples)
         if should_stop:
@@ -407,7 +392,7 @@ def validate_and_save(
     if do_save:
         eval_kwargs = {
             "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": None,  # dist.new_group(backend="gloo"),
+            "gloo_pg": None,
         }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
@@ -419,7 +404,6 @@ def validate_and_save(
             )
             if cfg.checkpoint.cloud_upload_path
             else None,
-            copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
 
     valid_losses = [None]
@@ -437,7 +421,6 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-# filename is absolute filepath on local disk
 def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
@@ -468,10 +451,43 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
             )
             os.remove(filename)
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            # TODO[susanz]: Add cleanup logic.
-            file_parentpath, file_basename = os.path.split(filename)
-            done_file = os.path.join(file_parentpath, "_done_" + file_basename)
-            os.close(os.open(done_file, os.O_CREAT))
+            path, basename = os.path.split(filename)
+            checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
+            destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
+            temporary_checkpoint_file = f"_{checkpoint_file}"
+            try:
+                os.mkdir(os.path.join(destination_checkpoints_dir, checkpoint_dir))
+            except FileExistsError:
+                pass  # another worker got here first
+            logger.info(f"Beginning copy of {filename} to NFS")
+
+            # copy the checkpoint from local storage to nfs in the background
+            subprocess.run(
+                [
+                    "cp",
+                    filename,
+                    os.path.join(
+                        destination_checkpoints_dir,
+                        checkpoint_dir,
+                        temporary_checkpoint_file,
+                    ),
+                ]
+            )
+
+            logger.info(f"Renaming {temporary_checkpoint_file} -> {checkpoint_file}")
+            # atomic rename _checkpointfile -> checkpointfile
+            # this way we know that if present the checkpoint file is complete
+            os.rename(
+                os.path.join(
+                    destination_checkpoints_dir,
+                    checkpoint_dir,
+                    temporary_checkpoint_file,
+                ),
+                os.path.join(
+                    destination_checkpoints_dir, checkpoint_dir, checkpoint_file
+                ),
+            )
+            os.remove(filename)
         else:
             try:
                 # PathManager only supports writing to S3, but this function call

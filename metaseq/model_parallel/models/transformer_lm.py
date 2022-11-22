@@ -61,7 +61,8 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             ), "havent yet tested if rng states are correct for dropout with seq_parallel"
             assert (
                 getattr(args, "activation_fn", "gelu") == "gelu"
-            ), "For now only supports gelu"
+                or getattr(args, "activation_fn", "gelu") == "relu"
+            ), "For now only supports gelu and relu"
             assert not getattr(
                 args, "checkpoint_activations", False
             ), "Cannot set --checkpoint-activations with sequence parallel."

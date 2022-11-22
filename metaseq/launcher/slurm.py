@@ -98,7 +98,7 @@ def copy_all_python_files(
         shutil.copytree(
             os.path.join(source, d),
             os.path.join(destination, d),
-            ignore=include_patterns("*.py", "*.so", "*.yaml", "*.sh"),
+            ignore=include_patterns("*.py", "*.so", "*.yaml"),
         )
     return destination
 
@@ -449,7 +449,6 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
         # based on the save_dir, which is based on the current hyperparam values
         env = base_env.copy()
         env["METASEQ_SAVE_DIR"] = save_dir
-        env["METASEQ_OSS_DESTINATION"] = os.path.abspath(oss_destination)
 
         # generate train command
         train_cmd = gen_train_command(
