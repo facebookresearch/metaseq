@@ -15,7 +15,7 @@ MAX_BEAM = 16
 
 try:
     # internal logic denoting where checkpoints are in meta infrastructure
-    from metaseq_internal.constants import CHECKPOINT_FOLDER
+    from metaseq_internal.constants import CHECKPOINT_PATH
 except ImportError:
     # CHECKPOINT_FOLDER should point to a shared drive (e.g. NFS) where the
     # checkpoints from S3 are stored. As an example:
@@ -31,29 +31,29 @@ except ImportError:
     # reshard-model_part-7.pt
     CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
 
-TOK_FOLDER = "/data/gpt-z/opt/tokenizers/"
+TOK_FOLDER = os.getenv("TOK_FOLDER", "/data/gpt-z/opt/tokenizers/")
 # tokenizer files
 BPE_MERGES = os.path.join(TOK_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(TOK_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
 
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
     f"--distributed-world-size {TOTAL_WORLD_SIZE}",
+    "--ddp-backend fully_sharded",
     "--task language_modeling",
     f"--bpe-merges {BPE_MERGES}",
     f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
     f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--path {CHECKPOINT_FOLDER}/reshard.pt",
+    f"--path {CHECKPOINT_PATH}",
     "--beam 1 --nbest 1",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",
-    "--use-sharded-state",
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
     "/tmp",  # required "data" argument.
 ]
+print(LAUNCH_ARGS)
