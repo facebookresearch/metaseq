@@ -12,6 +12,7 @@ See docs/api.md for more information.
 """
 
 import os
+import ast
 import queue
 import pkg_resources
 import random
@@ -378,7 +379,10 @@ def cli_main():
     port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
-    cfg.common_eval.model_overrides.extend(ARG_OVERRIDES)
+
+    model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
+    model_overrides.update(ARG_OVERRIDES)
+    cfg.common_eval.model_overrides = str(model_overrides)
 
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
