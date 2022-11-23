@@ -50,6 +50,7 @@ MAX_BEAM = constants_module.MAX_BEAM
 DEFAULT_PORT = constants_module.DEFAULT_PORT
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
+ARG_OVERRIDES = constants_module.ARG_OVERRIDES
 
 app = Flask(__name__)
 
@@ -377,6 +378,8 @@ def cli_main():
     port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
+    cfg.common_eval.model_overrides.extend(ARG_OVERRIDES)
+
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 

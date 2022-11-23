@@ -115,7 +115,9 @@ class GeneratorInterface:
 
         suffix = self.cfg.checkpoint.checkpoint_suffix
 
-        sharded_files = PathManager.ls(re.sub(".pt$", f"{suffix}*", self.cfg.common_eval.path))
+        sharded_files = PathManager.ls(
+            re.sub(".pt$", f"{suffix}*", self.cfg.common_eval.path)
+        )
         if len(sharded_files) > 0 and "-shard" in sharded_files[0]:
             # We are loading a sharded checkpoint
             suffix += f"-shard{r}"
