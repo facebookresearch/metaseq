@@ -184,6 +184,7 @@ def get_grid(args):
         hyperparam("--num-workers", 8),
         hyperparam("--num-workers-valid", 1),
         hyperparam("--validate-interval-updates", 2000),
+        hyperparam("--skip-batches", ""),
         hyperparam(
             "--memory-efficient-fp16",
             save_dir_key=lambda val: "me_fp16" if not no_save_params else "",

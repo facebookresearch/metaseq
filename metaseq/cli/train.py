@@ -216,7 +216,8 @@ def train(
                 not cfg.optimization.train_with_epoch_remainder_batch
             ),
         )
-
+    if len(cfg.dataset.skip_batches) > 0:
+        itr = iterators.SkipBatchesIterator(itr, trainer, cfg.dataset.skip_batches)
     progress = progress_bar.get_progress_bar(
         itr,
         log_format=cfg.common.log_format,
