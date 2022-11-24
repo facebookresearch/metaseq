@@ -599,9 +599,7 @@ class Trainer(object):
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
             disable_iterator_cache=disable_iterator_cache,
-            skip_remainder_batch=(
-                not self.cfg.optimization.train_with_epoch_remainder_batch
-            ),
+            skip_remainder_batch=True,
         )
         logger.info("finished creating batch iterator")
         self.reset_dummy_batch(batch_iterator.first_batch)
