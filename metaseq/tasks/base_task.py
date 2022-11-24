@@ -212,7 +212,7 @@ class BaseTask(object):
         data_buffer_size=0,
         disable_iterator_cache=False,
         batch_by_size=True,
-        skip_remainder_batch=False,
+        skip_remainder_batch=True,
     ):
         """
         Get an iterator that yields batches of data from the given dataset.

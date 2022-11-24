@@ -426,13 +426,6 @@ class OptimizationConfig(MetaseqDataclass):
             " (note: this may be interpreted differently depending on --lr-scheduler)"
         },
     )
-    train_with_epoch_remainder_batch: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "if set, include the last (partial) batch of each epoch in training"
-            " (default is to skip it)."
-        },
-    )
 
 
 @dataclass

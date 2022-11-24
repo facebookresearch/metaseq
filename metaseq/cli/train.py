@@ -212,9 +212,7 @@ def train(
         itr = iterators.GroupedIterator(
             itr,
             update_freq,
-            skip_remainder_batch=(
-                not cfg.optimization.train_with_epoch_remainder_batch
-            ),
+            skip_remainder_batch=True,
         )
 
     progress = progress_bar.get_progress_bar(
