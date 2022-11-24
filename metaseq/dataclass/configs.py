@@ -531,8 +531,9 @@ class CheckpointConfig(MetaseqDataclass):
             "(default: only load on rank 0 and broadcast to other devices)"
         },
     )
+    # TODO: remove write_checkpoints_asynchronously flag; metaseq-internal has dependency here so keeping for now.
     write_checkpoints_asynchronously: bool = field(
-        default=False,
+        default=True,
         metadata={
             "help": (
                 "Write checkpoints asynchronously in a separate "

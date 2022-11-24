@@ -193,12 +193,11 @@ def main(cfg: DictConfig) -> None:
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
     # Wait for all asynchronous file writes to complete.
-    if cfg.checkpoint.write_checkpoints_asynchronously:
-        logger.info(
-            "PathManager waiting for all asynchronous checkpoint writes to finish."
-        )
-        PathManager.async_close()
-        logger.info("PathManager finished waiting.")
+    logger.info(
+        "PathManager waiting for all asynchronous checkpoint writes to finish."
+    )
+    PathManager.async_close()
+    logger.info("PathManager finished waiting.")
 
 
 @metrics.aggregate("train")

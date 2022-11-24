@@ -93,17 +93,6 @@ def save_checkpoint(
             async_callback_fn=async_callback_fn,
         )
 
-        def _copy_if_not_async(src, dest):
-            if cfg.write_checkpoints_asynchronously:
-                pass  # TODO[file_io]: Need to implement a delayed asynchronous file copying/moving feature.
-            else:
-                assert PathManager.copy(
-                    src, dest, overwrite=True
-                ), f"Failed to copy {src} to {dest}"
-
-        for cp in checkpoints[1:]:
-            _copy_if_not_async(src=checkpoints[0], dest=cp)
-
         write_timer.stop()
         logger.info(
             f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
