@@ -391,15 +391,11 @@ class Trainer(object):
 
                 def perform_save():
                     try:
-                        logger.info(
-                            f"Beginning asynchronous torch.save to {filename}"
-                        )
+                        logger.info(f"Beginning asynchronous torch.save to {filename}")
                         torch.save(state_dict, filename)
                         if async_callback_fn is not None:
                             async_callback_fn(filename)
-                        logger.info(
-                            f"Asynchronous torch.save to {filename} complete."
-                        )
+                        logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
 
