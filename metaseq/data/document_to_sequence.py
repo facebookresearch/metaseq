@@ -146,7 +146,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         break_mode (str, optional): Mode used for breaking tokens. Values can
             be one of:
             - 'none': break tokens into equally sized blocks (up to block_size)
-        drop_last (bool, optional): drop the last item (default: False)
+        drop_last (bool, optional): drop the last item (default: True)
         padding_idx (int, optional): index to use for padding symbols
             (required if *drop_last* is ``False``)
         shuffle_buffer_size (int, optional): buffer this many items and shuffle
@@ -164,7 +164,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         dataset: torch.utils.data.IterableDataset,
         block_size: int,
         break_mode: str = "none",
-        drop_last: Optional[bool] = False,
+        drop_last: Optional[bool] = True,
         padding_idx: Optional[int] = None,
         shuffle_buffer_size: int = 1,
         seed: Optional[int] = None,
