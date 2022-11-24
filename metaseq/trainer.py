@@ -406,12 +406,7 @@ class Trainer(object):
 
                     self.async_checkpoint.submit(perform_save)
                 else:
-                    checkpoint_utils.torch_persistent_save(
-                        state_dict,
-                        filename,
-                        async_write=False,
-                        async_callback_fn=None,
-                    )
+                    checkpoint_utils.torch_persistent_save(state_dict, filename)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(
