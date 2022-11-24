@@ -386,7 +386,7 @@ class Trainer(object):
             )
             state_dict["extra_state"].update(extra_state)
             if self.should_save_checkpoint_on_current_rank:
-                if self.cfg.checkpoint.write_checkpoints_asynchronously:
+                if self.cfg.checkpoint.save_async:
                     if not hasattr(self, "async_checkpoint"):
                         self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
 
