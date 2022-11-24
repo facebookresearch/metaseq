@@ -39,7 +39,7 @@ def save_checkpoint(
     from metaseq import meters
 
     # only one worker should attempt to create the required dir
-    if trainer.data_parallel_rank == 0:
+    if distributed_utils.get_global_rank() == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
     trainer.consolidate_optimizer()
@@ -55,9 +55,6 @@ def save_checkpoint(
     updates = trainer.get_num_updates()
 
     logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")
-
-    def is_better(a, b):
-        return a >= b if cfg.maximize_best_checkpoint_metric else a <= b
 
     suffix = trainer.checkpoint_suffix
     checkpoint_conds = collections.OrderedDict()
