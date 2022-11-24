@@ -551,44 +551,6 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
     return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
-def torch_persistent_save(
-    obj, filename: str, async_write: bool = False, async_callback_fn=None
-):
-    assert (
-        async_callback_fn is None or async_write
-    ), "async_callback_fn requires async_write=True (--save-async)"
-    if async_write and async_callback_fn is not None:
-        callback = functools.partial(async_callback_fn, filename)
-    else:
-        callback = None
-    if async_write:
-        with PathManager.opena(filename, "wb", callback_after_file_close=callback) as f:
-            _torch_persistent_save(obj, f)
-    else:
-        if PathManager.supports_rename(filename):
-            # do atomic save
-            with PathManager.open(filename + ".tmp", "wb") as f:
-                _torch_persistent_save(obj, f)
-            PathManager.rename(filename + ".tmp", filename)
-        else:
-            # fallback to non-atomic save
-            with PathManager.open(filename, "wb") as f:
-                _torch_persistent_save(obj, f)
-
-
-def _torch_persistent_save(obj, f, num_retries=3):
-    if isinstance(f, str):
-        with PathManager.open(f, "wb") as h:
-            torch_persistent_save(obj, h)
-        return
-    for i in range(num_retries):
-        try:
-            return torch.save(obj, f)
-        except Exception:
-            if i == num_retries - 1:
-                logger.error(traceback.format_exc())
-
-
 def _upgrade_state_dict(state):
     """Helper for upgrading old model checkpoints."""
     # add optimizer_history
