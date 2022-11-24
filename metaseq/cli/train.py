@@ -19,6 +19,7 @@ import time
 import socket
 import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
+import warnings
 
 import numpy as np
 import torch
@@ -52,7 +53,14 @@ logger = logging.getLogger("metaseq.cli.train")
 
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
-
+    warnings.filterwarnings(
+        "ignore",
+        message="torch.distributed._all_gather_base is a private function and will be deprecated",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message="torch.distributed._reduce_scatter_base is a private function and will be deprecated",
+    )
     # replace with actual job id
     slurm_jobid = os.environ.get("SLURM_JOBID", None)
     if "%jobid" in cfg.checkpoint.save_dir and slurm_jobid is not None:
