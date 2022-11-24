@@ -4,7 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import string
 import sys
 from numbers import Number
 import atexit
