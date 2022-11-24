@@ -437,7 +437,7 @@ class EpochBatchIterator(EpochBatchIterating):
             (default: ``False``).
         skip_remainder_batch (bool, optional): if set, discard the last batch in an epoch
             for the sake of training stability, as the last batch is usually smaller than
-                local_batch_size * distributed_word_size (default: ``False``).
+                local_batch_size * distributed_word_size (default: ``True``).
     """
 
     def __init__(
@@ -453,7 +453,7 @@ class EpochBatchIterator(EpochBatchIterating):
         buffer_size=0,
         timeout=0,
         disable_shuffling=False,
-        skip_remainder_batch=False,
+        skip_remainder_batch=True,
     ):
         assert isinstance(dataset, torch.utils.data.Dataset)
         self.dataset = dataset
@@ -674,12 +674,12 @@ class GroupedIterator(CountingIterator):
         chunk_size (int): size of each chunk
         skip_remainder_batch (bool, optional): if set, discard the last grouped batch in
           each training epoch, as the last grouped batch is usually smaller than
-                local_batch_size * distributed_word_size * chunk_size (default: ``False``).
+                local_batch_size * distributed_word_size * chunk_size (default: ``True``).
     Attributes:
         n (int): number of elements consumed from this iterator
     """
 
-    def __init__(self, iterable, chunk_size, skip_remainder_batch=False):
+    def __init__(self, iterable, chunk_size, skip_remainder_batch=True):
         if skip_remainder_batch:
             total_num_itrs = int(math.floor(len(iterable) / float(chunk_size)))
             logger.info(
@@ -705,7 +705,7 @@ class GroupedIterator(CountingIterator):
             iterable.take(total_num_itrs * chunk_size)
 
 
-def _chunk_iterator(itr, chunk_size, skip_remainder_batch=False):
+def _chunk_iterator(itr, chunk_size, skip_remainder_batch=True):
     chunk = []
     for x in itr:
         chunk.append(x)
