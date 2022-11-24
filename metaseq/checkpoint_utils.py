@@ -329,10 +329,11 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         reset_meters=reset_meters,
     )
 
-    # if we requeue, ignore any dataloader resets
-    reset_dataloader = reset_dataloader and (
-        os.environ.get("SLURM_RESTART_COUNT", "0") > 0
-    )
+    if reset_dataloader and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
+        logger.info(
+            f"Disregarding --reset-dataloader since we are continuing past a requeue"
+        )
+        reset_dataloader = False
     if extra_state is not None and not reset_dataloader:
         # restore iterator from checkpoint
         itr_state = extra_state["train_iterator"]
