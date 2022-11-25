@@ -5,11 +5,9 @@
 
 import ast
 import collections
-import functools
 import logging
 import os
 import re
-import traceback
 import socket
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
