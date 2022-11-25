@@ -31,6 +31,7 @@ def save_checkpoint(
     cfg: CheckpointConfig,
     trainer,
     epoch_itr,
+    end_of_epoch: bool,
     training_finished=False,
     async_callback_fn=None,
 ):
@@ -49,7 +50,6 @@ def save_checkpoint(
     write_timer.start()
 
     epoch = epoch_itr.epoch
-    end_of_epoch = epoch_itr.end_of_epoch()
     updates = trainer.get_num_updates()
 
     logger.info(f"Preparing to save checkpoint for epoch {epoch} @ {updates} updates")

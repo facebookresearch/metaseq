@@ -387,6 +387,7 @@ def validate_and_save(
             cfg.checkpoint,
             trainer,
             epoch_itr,
+            end_of_epoch=end_of_epoch,
             training_finished=should_stop,
             async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
             if cfg.checkpoint.cloud_upload_path
