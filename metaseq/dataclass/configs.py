@@ -652,13 +652,13 @@ class CommonEvalConfig(MetaseqDataclass):
 
 @dataclass
 class ReshardConfig(MetaseqDataclass):
-    save_dir: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "where to save the resharded checkpoints",
-            "argparse_alias": "--dest-dir",
-        },
-    )
+    # save_dir: Optional[str] = field(
+    #     default=None,
+    #     metadata={
+    #         "help": "where to save the resharded checkpoints",
+    #         "argparse_alias": "--dest-dir",
+    #     },
+    # )
     save_prefix: Optional[str] = field(
         default="reshard", metadata={"help": "save to dest-dir/save-prefix-shard{i}.pt"}
     )

@@ -55,16 +55,16 @@ def main(cfg: DictConfig) -> None:
 
     # replace with actual job id
     slurm_jobid = os.environ.get("SLURM_JOBID", None)
-    if "%jobid" in cfg.checkpoint.save_dir and slurm_jobid is not None:
-        cfg.checkpoint.save_dir = cfg.checkpoint.save_dir.replace("%jobid", slurm_jobid)
+    if "%jobid" in cfg.checkpoint.local_checkpoints_dir and slurm_jobid is not None:
+        cfg.checkpoint.local_checkpoints_dir = cfg.checkpoint.local_checkpoints_dir.replace("%jobid", slurm_jobid)
 
-    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
+    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.local_checkpoints_dir)
 
     if distributed_utils.is_master(cfg.distributed_training):
         # save a (vaguely human readable) copy of the training config
         OmegaConf.save(
             config=_flatten_config(cfg),
-            f=os.path.join(cfg.checkpoint.save_dir, "config.yml"),
+            f=os.path.join(cfg.checkpoint.local_checkpoints_dir, "config.yml"),
         )
 
     if (
@@ -238,14 +238,14 @@ def train(
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
-        aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
+        aim_param_checkpoint_dir=cfg.checkpoint.local_checkpoints_dir,
         wandb_project=(
             cfg.common.wandb_project
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
         wandb_run_name=os.environ.get(
-            "WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir)
+            "WANDB_NAME", os.path.basename(cfg.checkpoint.local_checkpoints_dir)
         ),
     )
     progress.update_config(_flatten_config(cfg))
@@ -297,7 +297,7 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
+                os.path.join(cfg.checkpoint.local_checkpoints_dir, "memory_usage.txt"), "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
@@ -306,7 +306,7 @@ def train(
                     file=sourceFile,
                 )
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+                os.path.join(cfg.checkpoint.local_checkpoints_dir, "profiler_trace.json")
             )
         else:
             valid_losses, should_stop = train(i, samples)
@@ -599,14 +599,14 @@ def validate(
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
-                aim_param_checkpoint_dir=cfg.checkpoint.save_dir,
+                aim_param_checkpoint_dir=cfg.checkpoint.local_checkpoints_dir,
                 wandb_project=(
                     cfg.common.wandb_project
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
                 wandb_run_name=os.environ.get(
-                    "WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir)
+                    "WANDB_NAME", os.path.basename(cfg.checkpoint.local_checkpoints_dir)
                 ),
             )
 

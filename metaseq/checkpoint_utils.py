@@ -40,7 +40,7 @@ def save_checkpoint(
 
     # only one worker should attempt to create the required dir
     if trainer.data_parallel_rank == 0:
-        os.makedirs(cfg.save_dir, exist_ok=True)
+        os.makedirs(cfg.local_checkpoints_dir, exist_ok=True)
 
     trainer.consolidate_optimizer()
 
@@ -83,7 +83,7 @@ def save_checkpoint(
     extra_state = {"train_iterator": epoch_itr.state_dict()}
 
     checkpoints = [
-        os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
+        os.path.join(cfg.local_checkpoints_dir, fn) for fn, cond in checkpoint_conds.items() if cond
     ]
     if len(checkpoints) > 0:
         if PathManager.islink(checkpoints[0]):
@@ -129,7 +129,7 @@ def _delete_old_checkpoint_files(
         # remove old checkpoints; checkpoints are sorted in descending order
         for one_suffix in suffixes:
             checkpoints = _checkpoint_paths(
-                cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
+                cfg.local_checkpoints_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
             )
             for old_chk in checkpoints[cfg.keep_last_updates :]:
                 if os.path.lexists(old_chk):
@@ -137,7 +137,7 @@ def _delete_old_checkpoint_files(
     if cfg.keep_last_epochs > 0:
         # remove old epoch checkpoints; checkpoints are sorted in descending order
         checkpoints = _checkpoint_paths(
-            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
+            cfg.local_checkpoints_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
         )
         for old_chk in checkpoints[cfg.keep_last_epochs :]:
             if os.path.lexists(old_chk):
@@ -154,7 +154,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
 
     if cfg.restore_file is None:
         checkpoint_path_to_load = os.path.join(
-            cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+            cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
         )
         first_launch = not PathManager.exists(checkpoint_path_to_load)
         if cfg.finetune_from_model is not None and first_launch:
@@ -207,7 +207,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     if cfg.cloud_upload_path:
         if cfg.cloud_upload_path.startswith("nfs:"):
             checkpoint_path_to_load = os.path.join(
-                cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
             )
             nfs_path = cfg.cloud_upload_path[4:]
             filename = None
@@ -266,7 +266,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
             ):
                 # download checkpoint into local save_dir
                 checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                    cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
                 )
                 azure_utils.download_recent_ckpt(
                     cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
@@ -279,7 +279,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                 blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
                 # download checkpoint into local save_dir
                 checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                    cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
                 )
                 azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
             else:
@@ -294,7 +294,7 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     ):
         # point checkpoint_path to the current checkpoint directory for loading, if it exists.
         save_dir_last = os.path.join(
-            cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+            cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
         )
         if PathManager.isfile(save_dir_last):
             checkpoint_path_to_load = save_dir_last
