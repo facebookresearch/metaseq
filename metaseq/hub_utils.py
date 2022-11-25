@@ -240,6 +240,7 @@ class GeneratorInterface:
             max_sentences=None,
             max_positions=None,
             ignore_invalid_inputs=False,
+            skip_remainder_batch=False,
         ).next_epoch_itr(shuffle=False)
         for batch in batches:
             src_tokens = batch["net_input"]["src_tokens"]

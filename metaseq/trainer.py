@@ -386,32 +386,20 @@ class Trainer(object):
             )
             state_dict["extra_state"].update(extra_state)
             if self.should_save_checkpoint_on_current_rank:
-                if self.cfg.checkpoint.write_checkpoints_asynchronously:
-                    if not hasattr(self, "async_checkpoint"):
-                        self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+                if not hasattr(self, "async_checkpoint"):
+                    self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
 
-                    def perform_save():
-                        try:
-                            logger.info(
-                                f"Beginning asynchronous torch.save to {filename}"
-                            )
-                            torch.save(state_dict, filename)
-                            if async_callback_fn is not None:
-                                async_callback_fn(filename)
-                            logger.info(
-                                f"Asynchronous torch.save to {filename} complete."
-                            )
-                        except Exception:
-                            logger.exception(f"Asyncronous save failed")
+                def perform_save():
+                    try:
+                        logger.info(f"Beginning asynchronous torch.save to {filename}")
+                        torch.save(state_dict, filename)
+                        if async_callback_fn is not None:
+                            async_callback_fn(filename)
+                        logger.info(f"Asynchronous torch.save to {filename} complete.")
+                    except Exception as e:
+                        logger.exception(f"Asynchronous save failed: {e}")
 
-                    self.async_checkpoint.submit(perform_save)
-                else:
-                    checkpoint_utils.torch_persistent_save(
-                        state_dict,
-                        filename,
-                        async_write=False,
-                        async_callback_fn=None,
-                    )
+                self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(

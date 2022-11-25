@@ -192,14 +192,6 @@ def main(cfg: DictConfig) -> None:
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
-    # Wait for all asynchronous file writes to complete.
-    if cfg.checkpoint.write_checkpoints_asynchronously:
-        logger.info(
-            "PathManager waiting for all asynchronous checkpoint writes to finish."
-        )
-        PathManager.async_close()
-        logger.info("PathManager finished waiting.")
-
 
 @metrics.aggregate("train")
 def train(
@@ -388,26 +380,15 @@ def validate_and_save(
             and was_successful_step
         )
     ) and not cfg.dataset.disable_validation
-    do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
-        cfg.checkpoint.evaluate_interval_updates > 0
-        and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
-    )
-    assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
     # Save checkpoint before validating.
     if do_save:
-        eval_kwargs = {
-            "checkpoint_suffix": trainer.checkpoint_suffix,
-            "gloo_pg": None,
-        }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
             epoch_itr,
             training_finished=should_stop,
-            async_callback_fn=functools.partial(
-                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
-            )
+            async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
             if cfg.checkpoint.cloud_upload_path
             else None,
         )
@@ -427,7 +408,7 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
+def post_checkpoint_callback(cfg, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -507,14 +488,6 @@ def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
-
-        # if do_evaluate:
-        #     _run_evaluations(
-        #         cfg.checkpoint.eval_module,
-        #         cfg.checkpoint.cloud_upload_path,
-        #         filename,
-        #         **eval_kwargs,
-        #     )
 
 
 def _run_evaluations(
