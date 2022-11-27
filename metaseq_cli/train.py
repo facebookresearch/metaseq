@@ -233,12 +233,17 @@ def train(
         else cfg.optimization.update_freq[-1]
     )
     if update_freq > 1:
-        itr = iterators.GroupedIterator(
+        # itr = iterators.GroupedIterator(
+        #     itr,
+        #     update_freq,
+        #    skip_remainder_batch=(
+        #         not cfg.optimization.train_with_epoch_remainder_batch
+        #     ),
+        # )
+        itr = iterators.StreamingGroupedIterator(
             itr,
             update_freq,
-            skip_remainder_batch=(
-                not cfg.optimization.train_with_epoch_remainder_batch
-            ),
+            skip_remainder_batch=False,
         )
 
     progress = progress_bar.get_progress_bar(
