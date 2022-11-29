@@ -83,7 +83,9 @@ def save_checkpoint(
     extra_state = {"train_iterator": epoch_itr.state_dict()}
 
     checkpoints = [
-        os.path.join(cfg.local_checkpoints_dir, fn) for fn, cond in checkpoint_conds.items() if cond
+        os.path.join(cfg.local_checkpoints_dir, fn)
+        for fn, cond in checkpoint_conds.items()
+        if cond
     ]
     if len(checkpoints) > 0:
         if PathManager.islink(checkpoints[0]):
@@ -129,7 +131,8 @@ def _delete_old_checkpoint_files(
         # remove old checkpoints; checkpoints are sorted in descending order
         for one_suffix in suffixes:
             checkpoints = _checkpoint_paths(
-                cfg.local_checkpoints_dir, pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix)
+                cfg.local_checkpoints_dir,
+                pattern=r"checkpoint_(\d+){}\.pt".format(one_suffix),
             )
             for old_chk in checkpoints[cfg.keep_last_updates :]:
                 if os.path.lexists(old_chk):
@@ -144,6 +147,166 @@ def _delete_old_checkpoint_files(
                 os.remove(old_chk)
 
 
+def get_storage_type(path):
+    if path.startswith("nfs:"):
+        return "nfs"
+    elif "windows.net" in path:
+        return "azure_blob"
+    else:
+        return "local"
+
+
+def get_checkpoint_steps(path):
+    match = re.search(r"checkpoint_(\d+)", path)
+    if match[1] is None:
+        return 0
+    return int(match[1])
+
+
+def get_all_checkpoints_from_directory(directory, suffix, increased_priority, storage_type):
+    checkpoints = []
+    for candidate in os.listdir(directory):
+        steps = get_checkpoint_steps(candidate)
+        if steps == 0:
+            continue
+        # TODO needs to be adapated for local dir
+        expected_file_count = distributed_utils.get_global_world_size()
+        present_files = len(
+            [
+                f
+                for f in os.listdir(os.path.join(directory, candidate))
+                if not f.startswith("_")
+            ]
+        )
+        if present_files != expected_file_count:
+            logger.info(
+                f"skipping checkpoint {candidate} because it only has"
+                f" {present_files} files (expected {expected_file_count})"
+            )
+            continue
+
+        # TODO validate this
+        checkpoints.append(
+            {
+                "path": os.path.join(directory, candidate, f"checkpoint{suffix}.pt"),
+                "priority": steps + increased_priority,
+                "storage_type": storage_type,
+            }
+        )
+    return checkpoints
+
+
+def get_recent_checkpoint_from_azure_blob(blob_url, suffix, increased_priority):
+    file_to_load = azure_utils.get_most_recent_ckpt(blob_url, suffix)
+    if file_to_load is None:
+        return []
+    steps = get_checkpoint_steps(file_to_load)
+    return [
+        {
+            "path": blob_url + "/" + file_to_load,
+            "priority": steps + increased_priority,
+            "storage_type": "azure_blob",
+        }
+    ]
+def get_checkpoint_to_finetune(finetune_path, suffix, priority):
+    if PathManager.exists(finetune_path):
+        validated_path = finetune_path
+    else:  # check for sharded version
+        sharded_path = finetune_path.replace(".pt", suffix + ".pt")
+        if PathManager.exists(sharded_path):
+            validated_path = sharded_path
+    if validated_path is None:
+        raise ValueError(
+            f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
+        )
+    return {
+        "path": validated_path,
+        "priority": priority,
+        "storage_type": get_storage_type(validated_path),
+        "run_before_loading": reset_for_finetuning
+        }
+
+def reset_for_finetuning(cfg, checkpoint):
+    cfg.reset_optimizer = True
+    cfg.reset_lr_scheduler = True
+    cfg.reset_meters = True
+    cfg.reset_dataloader = True
+    logger.warning(
+        "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
+    )
+
+def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
+    suffix = trainer.checkpoint_suffix
+    checkpoints = []
+
+    if cfg.finetune_from_model:
+        checkpoints.append(
+            get_checkpoint_to_finetune(cfg.finetune_from_model, suffix, 0)
+        )
+
+    if cfg.restore_file:
+        checkpoints.append(
+            {
+                "path": cfg.restore_file.replace(".pt", suffix + ".pt"),
+                "priority": get_checkpoint_steps(cfg.restore_file) + 0.1,
+                "storage_type": get_storage_type(cfg.restore_file),
+            }
+        )
+
+    if cfg.cloud_upload_path:
+        cloud_storage_type = get_storage_type(cfg.cloud_upload_path)
+        if cloud_storage_type == "nfs":
+            checkpoints.extend(
+                get_all_checkpoints_from_directory(
+                    cfg.cloud_upload_path[4:],
+                    suffix,
+                    increased_priority=0.2,
+                    storage_type="nfs",
+                )
+            )
+        elif cloud_storage_type == "azure_blob":
+            checkpoints.extend(
+                get_recent_checkpoint_from_azure_blob(
+                    cfg.cloud_upload_path, suffix, increased_priority=0.2
+                )
+            )
+
+
+    checkpoints.extend(
+        get_all_checkpoints_from_directory(
+            cfg.local_checkpoints_dir, increased_priority=0.3, storage_type="local"
+        )
+    )
+
+    checkpoints.sort(key = lambda checkpoint: checkpoint["priority"])
+    if len(checkpoints) == 0:
+        return ""
+    logger.info(f"The following checkpoints were found to be ready to load: {str(checkpoints)}")
+
+
+    selected = checkpoints[-1]
+    if "run_before_loading" in selected:
+        selected["before_loading"](cfg, selected)
+
+    if selected["storage_type"] == "local":
+        return selected["path"]
+
+    local_tmp_dir = os.path.join(
+            cfg.local_checkpoints_dir, "checkpoint_tmp{}.pt".format(suffix)
+        )
+    logger.info(
+        f"Copying checkpoint from {selected["path"]} -> {local_tmp_dir}"
+    )
+    if selected["storage_type"] == "nfs":
+        shutil.copyfile(selected["path"], local_tmp_dir)
+    elif selected["storage_type"] == "azure_blob":
+        azure_utils.download_specific_ckpt(selected["path"], local_tmp_dir)
+
+    return local_tmp_dir
+
+    # based on the storage type, process and return final path
+
+
 def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     # Logic flow:
     # - if no restore_file: < try to grab latest from checkpoint / cloud >
@@ -156,28 +319,29 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
         checkpoint_path_to_load = os.path.join(
             cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
         )
-        first_launch = not PathManager.exists(checkpoint_path_to_load)
-        if cfg.finetune_from_model is not None and first_launch:
-            # if there is no last checkpoint to restore, start the finetune from pretrained model
-            # else just use usual logic to load checkpoint, e.g. restart from last checkpoint and etc.
-            cfg.reset_optimizer = True
-            cfg.reset_lr_scheduler = True
-            cfg.reset_meters = True
-            cfg.reset_dataloader = True
-            checkpoint_path_to_load = None
-            logger.warning(
-                "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
-            )
-            if PathManager.exists(cfg.finetune_from_model):
-                return cfg.finetune_from_model
-            elif suffix is not None:  # check for sharded version
-                sharded_path = cfg.finetune_from_model.replace(".pt", suffix + ".pt")
-                if PathManager.exists(sharded_path):
-                    return sharded_path
-            else:
-                raise ValueError(
-                    f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
-                )
+        # move this out
+        # first_launch = not PathManager.exists(checkpoint_path_to_load)
+        # if cfg.finetune_from_model is not None and first_launch:
+        #     # if there is no last checkpoint to restore, start the finetune from pretrained model
+        #     # else just use usual logic to load checkpoint, e.g. restart from last checkpoint and etc.
+        #     cfg.reset_optimizer = True
+        #     cfg.reset_lr_scheduler = True
+        #     cfg.reset_meters = True
+        #     cfg.reset_dataloader = True
+        #     checkpoint_path_to_load = None
+        #     logger.warning(
+        #         "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
+        #     )
+        #     if PathManager.exists(cfg.finetune_from_model):
+        #         return cfg.finetune_from_model
+        #     elif suffix is not None:  # check for sharded version
+        #         sharded_path = cfg.finetune_from_model.replace(".pt", suffix + ".pt")
+        #         if PathManager.exists(sharded_path):
+        #             return sharded_path
+        #     else:
+        #         raise ValueError(
+        #             f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
+        # )
     else:  # restore_file specified
         if suffix is not None:
             checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
@@ -205,6 +369,8 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
 
     if cfg.cloud_upload_path:
+
+        # RSC NFS LOGIC
         if cfg.cloud_upload_path.startswith("nfs:"):
             checkpoint_path_to_load = os.path.join(
                 cfg.local_checkpoints_dir, "checkpoint_last{}.pt".format(suffix)
@@ -213,8 +379,9 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
             filename = None
             specific_restore_file_provided = cfg.restore_file is not None
             slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            # --cloud_upload_path, slurm restart or no (finetune and restart file)
             restart_from_latest = slurm_was_restarted or (
-                    cfg.finetune_from_model is None and not specific_restore_file_provided
+                cfg.finetune_from_model is None and not specific_restore_file_provided
             )
             if restart_from_latest:
                 checkpoints = []
@@ -245,8 +412,14 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                         f" {present_files} files (expected {expected_file_count})"
                     )
             else:
-                filename = cfg.restore_file.replace(".pt", suffix + ".pt") if cfg.restore_file is not None else None
+                # --cloud_upload_path, no slurm restart, or a finetune or restart file) -> use restore_file
+                filename = (
+                    cfg.restore_file.replace(".pt", suffix + ".pt")
+                    if cfg.restore_file is not None
+                    else None
+                )
             if filename is not None:
+                # rsc nfs copying
                 logger.info(
                     f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
                 )
@@ -254,15 +427,13 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
             else:
                 logger.info(f"No NFS checkpoints found")
 
+        # AZURE LOGIC
         elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
             if (
-                    # --restore-file was not passed, always download latest checkpoint
-                    (
-                            cfg.restore_file is None
-                            and cfg.finetune_from_model is None
-                    )
-                    # --restore-file was passed, but we requeued, so download latest checkpoint
-                    or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+                # --restore-file was not passed, always download latest checkpoint
+                (cfg.restore_file is None and cfg.finetune_from_model is None)
+                # --restore-file was passed, but we requeued, so download latest checkpoint
+                or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
             ):
                 # download checkpoint into local save_dir
                 checkpoint_path_to_load = os.path.join(
@@ -272,9 +443,9 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                     cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
                 )
             elif (
-                    # --restore-file was passed and is a blob URL, download that checkpoint
-                    cfg.restore_file is not None
-                    and "windows.net" in cfg.restore_file
+                # --restore-file was passed and is a blob URL, download that checkpoint
+                cfg.restore_file is not None
+                and "windows.net" in cfg.restore_file
             ):
                 blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
                 # download checkpoint into local save_dir
@@ -288,9 +459,10 @@ def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                 )
 
     # RSC logic: --restore-file was passed, and we requeued
+    # no cloud upload path specified
     elif (
-            cfg.restore_file is not None
-            and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+        cfg.restore_file is not None
+        and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
     ):
         # point checkpoint_path to the current checkpoint directory for loading, if it exists.
         save_dir_last = os.path.join(
@@ -308,15 +480,8 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     *passthrough_args* will be passed through to
     ``trainer.get_train_iterator``.
     """
-    if cfg.finetune_from_model is not None and (
-        cfg.reset_optimizer or cfg.reset_lr_scheduler or cfg.reset_meters or cfg.reset_dataloader
-    ):
-        raise ValueError(
-            "--finetune-from-model can not be set together with either --reset-optimizer"
-            " or reset_lr_scheduler or reset_meters or reset_dataloader"
-        )
 
-    checkpoint_path_to_load = get_and_prep_checkpoint_path(cfg, trainer)
+    checkpoint_path_to_load = prepare_local_checkpoint_path(cfg, trainer)
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
