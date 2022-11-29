@@ -107,12 +107,6 @@ class ComplicitStore(torch.distributed.Store):
         return self.store.wait(*args, **kwargs)
 
 
-# There seems to be some lifetime issue where if we don't keep this object alive
-# then stuff will fail down the line. In particular we saw that these calls:
-#   >>> torch.distributed.init_process_group("nccl", init_method="barrierlessenv://")
-#   >>> torch.distributed.new_group(ranks=[0])
-# led to this error:
-#   RuntimeError: fn INTERNAL ASSERT FAILED at "/opt/conda/conda-bld/pytorch_1659484809662/work/torch/csrc/distributed/c10d/init.cpp":155, please report a bug to PyTorch.
 STORE = None
 
 
