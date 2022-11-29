@@ -174,7 +174,7 @@ def get_checkpoint_steps(path: str) -> int:
 
 
 def get_all_checkpoints_from_directory(
-    directory: str, suffix: str, increased_priority: float, storage_type: str
+    directory: str, suffix: str, add_priority: float, storage_type: str
 ) -> List[CheckpointPath]:
     checkpoints = []
     for candidate in os.listdir(directory):
@@ -202,14 +202,14 @@ def get_all_checkpoints_from_directory(
             CheckpointPath(
                 path=os.path.join(directory, candidate, f"checkpoint{suffix}.pt"),
                 storage_type=storage_type,
-                priority=steps + increased_priority,
+                priority=steps + add_priority,
             )
         )
     return checkpoints
 
 
 def get_recent_checkpoint_from_azure_blob(
-    blob_url, suffix, increased_priority
+    blob_url, suffix, add_priority
 ) -> List[CheckpointPath]:
     file_to_load = azure_utils.get_most_recent_ckpt(blob_url, suffix)
     if file_to_load is None:
@@ -219,7 +219,7 @@ def get_recent_checkpoint_from_azure_blob(
         CheckpointPath(
             path=blob_url + "/" + file_to_load,
             storage_type="azure_blob",
-            priority=steps + increased_priority,
+            priority=steps + add_priority,
         )
     ]
 
@@ -281,20 +281,20 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
                 get_all_checkpoints_from_directory(
                     cfg.cloud_upload_path[4:],
                     suffix,
-                    increased_priority=0.2,
+                    add_priority=0.2,
                     storage_type="nfs",
                 )
             )
         elif cloud_storage_type == "azure_blob":
             checkpoints.extend(
                 get_recent_checkpoint_from_azure_blob(
-                    cfg.cloud_upload_path, suffix, increased_priority=0.2
+                    cfg.cloud_upload_path, suffix, add_priority=0.2
                 )
             )
 
     checkpoints.extend(
         get_all_checkpoints_from_directory(
-            cfg.local_checkpoints_dir, increased_priority=0.3, storage_type="local"
+            cfg.local_checkpoints_dir, add_priority=0.3, storage_type="local"
         )
     )
 
