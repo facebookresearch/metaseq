@@ -22,7 +22,6 @@ from metaseq.file_io import (
     PathManager,
     torch_load_cpu,
     load_and_pop_last_optimizer_state,
-    execute_in_parallel,
 )
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
@@ -430,11 +429,9 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
 
     try:
         if len(paths_to_load) > 1:
-            state = _merge_flat_fsdp_shards(
-                execute_in_parallel(load_and_pop_last_optimizer_state, paths_to_load, max_workers=16)
-            )
+            state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
         else:
-            state = load_and_pop_last_optimizer_state(paths_to_load[0])
+            state = torch_load_cpu(paths_to_load[0])
     except Exception as error:
         logger.error(
             f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."

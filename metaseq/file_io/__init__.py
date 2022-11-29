@@ -4,15 +4,12 @@
 # LICENSE file in the root directory of this source tree.
 
 from argparse import Namespace  # noqa: F401
-from typing import List, Callable
 import logging
 
 import torch
 
 from omegaconf.dictconfig import DictConfig
 from metaseq.file_io.common import g_pathmgr as PathManager
-
-import concurrent.futures
 
 
 __all__ = [
@@ -71,10 +68,3 @@ def load_and_pop_last_optimizer_state(pth):
     st = torch_load_cpu(pth)
     st.pop("last_optimizer_state", None)
     return st
-
-
-def execute_in_parallel(function: Callable, path_list: List[str], max_workers=None):
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        result_list = [result for result in executor.map(function, path_list)]
-
-    return result_list
