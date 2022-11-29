@@ -119,5 +119,45 @@ def meet_at_rendezvous(url, **kwargs):
     return iter([(STORE, rank, world_size)])
 
 
+def _tcp_retry_barrierless_rendezvous_handler(url: str, timeout=default_pg_timeout, **kwargs):
+    def _error(msg):
+        return ValueError("barrierlesstcpr:// rendezvous: " + msg)
+
+    global STORE
+
+    result = urlparse(url)
+    if not result.port:
+        raise _error("port number missing")
+    query_dict = _query_to_dict(result.query)
+    if "rank" not in query_dict:
+        raise _error("rank parameter missing")
+    if "world_size" not in query_dict:
+        raise _error("world size parameter missing")
+
+    rank = int(query_dict["rank"])
+    world_size = int(query_dict["world_size"])
+    assert result.hostname is not None
+
+    for tries in range(1, RETRIES + 1):
+        try:
+            store = _create_c10d_store(
+                result.hostname, result.port, rank, world_size, timeout
+            )
+            logger.warning(
+                f"Successfully connected to primary node on attempt {tries}/{RETRIES}"
+            )
+            STORE = ComplicitStore(store, world_size)
+            yield (STORE, rank, world_size)
+            break
+        except RuntimeError as re:
+            logger.error(
+                f"Failed to connect to primary node on attempt {tries}/{RETRIES}: {re}"
+            )
+            time.sleep(COOLDOWN * (2**tries))
+
+    # If this configuration is invalidated, there is nothing we can do about it
+    raise RuntimeError("Unable to perform re-rendezvous using barrierlesstcpr:// method")
+
 register_rendezvous_handler("barrierlessenv", meet_at_rendezvous)
 register_rendezvous_handler("tcpr", _tcp_retry_rendezvous_handler)
+register_rendezvous_handler("barrierlesstcpr", _tcp_retry_barrierless_rendezvous_handler)
