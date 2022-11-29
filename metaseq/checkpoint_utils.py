@@ -84,7 +84,7 @@ def save_checkpoint(
         and updates % cfg.save_interval_updates == 0
     )
 
-    checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
+    checkpoint_conds[f"checkpoint_{updates}_epoch_{epoch}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
     checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
         training_finished and cfg.save_last_checkpoint
