@@ -6,7 +6,7 @@ from typing import Dict
 from urllib.parse import urlparse
 
 from torch.distributed.constants import default_pg_timeout
-from torch.distributed import register_rendezvous_handler, Store, TCPStore
+from torch.distributed import register_rendezvous_handler, Store, TCPStore, rendezvous
 
 
 RETRIES = 5
@@ -73,8 +73,8 @@ def _tcp_retry_rendezvous_handler(url: str, timeout=default_pg_timeout, **kwargs
 STORE_BASED_BARRIER_MARKER = "store_based_barrier_key:"
 
 
-class ComplicitStore(torch.distributed.Store):
-    def __init__(self, store: torch.distributed.Store, world_size: int):
+class ComplicitStore(Store):
+    def __init__(self, store: Store, world_size: int):
         super().__init__()
         self.store = store
         self.world_size = world_size
@@ -112,7 +112,7 @@ STORE = None
 
 def meet_at_rendezvous(url, **kwargs):
     assert url == "barrierlessenv://"
-    rendezvous_iterator = torch.distributed.rendezvous("env://")
+    rendezvous_iterator = rendezvous("env://")
     store, rank, world_size = next(rendezvous_iterator)
     global STORE
     STORE = ComplicitStore(store, world_size)
