@@ -11,8 +11,10 @@ import os
 import re
 import traceback
 import socket
-from typing import Any, Dict, List, Optional, Tuple
 import shutil
+from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+
 
 import torch
 from omegaconf import OmegaConf
@@ -189,11 +191,11 @@ def get_all_checkpoints_from_directory(
 
         # TODO validate this
         checkpoints.append(
-            {
-                "path": os.path.join(directory, candidate, f"checkpoint{suffix}.pt"),
-                "priority": steps + increased_priority,
-                "storage_type": storage_type,
-            }
+            CheckpointPath(
+                path=os.path.join(directory, candidate, f"checkpoint{suffix}.pt"),
+                storage_type=storage_type,
+                priority=steps + increased_priority,
+            )
         )
     return checkpoints
 
@@ -204,11 +206,11 @@ def get_recent_checkpoint_from_azure_blob(blob_url, suffix, increased_priority):
         return []
     steps = get_checkpoint_steps(file_to_load)
     return [
-        {
-            "path": blob_url + "/" + file_to_load,
-            "priority": steps + increased_priority,
-            "storage_type": "azure_blob",
-        }
+        CheckpointPath(
+            path=blob_url + "/" + file_to_load,
+            storage_type="azure_blob",
+            priority=steps + increased_priority,
+        )
     ]
 
 
@@ -223,12 +225,12 @@ def get_checkpoint_to_finetune(finetune_path, suffix, priority):
         raise ValueError(
             f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
         )
-    return {
-        "path": validated_path,
-        "priority": priority,
-        "storage_type": get_storage_type(validated_path),
-        "run_before_loading": reset_for_finetuning,
-    }
+    return CheckpointPath(
+        path=validated_path,
+        storage_type=get_storage_type(validated_path),
+        priority=priority,
+        run_before_loading=[reset_for_finetuning],
+    )
 
 
 def reset_for_finetuning(cfg, checkpoint):
@@ -241,10 +243,11 @@ def reset_for_finetuning(cfg, checkpoint):
     )
 
 
-def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
+def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     suffix = trainer.checkpoint_suffix
-    checkpoints = []
 
+    # collect all possible checkpoint paths
+    checkpoints = []
     if cfg.finetune_from_model:
         checkpoints.append(
             get_checkpoint_to_finetune(cfg.finetune_from_model, suffix, 0)
@@ -252,11 +255,11 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
 
     if cfg.restore_file:
         checkpoints.append(
-            {
-                "path": cfg.restore_file.replace(".pt", suffix + ".pt"),
-                "priority": get_checkpoint_steps(cfg.restore_file) + 0.1,
-                "storage_type": get_storage_type(cfg.restore_file),
-            }
+            CheckpointPath(
+                path=cfg.restore_file.replace(".pt", suffix + ".pt"),
+                priority=get_checkpoint_steps(cfg.restore_file) + 0.1,
+                storage_type=get_storage_type(cfg.restore_file),
+            )
         )
 
     if cfg.cloud_upload_path:
@@ -283,33 +286,32 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
         )
     )
 
-    checkpoints.sort(key=lambda checkpoint: checkpoint["priority"])
+    # get the most recent valid checkpoint
+    checkpoints.sort(key=lambda checkpoint: checkpoint.priority)
     if len(checkpoints) == 0:
         return ""
     logger.info(
         f"The following checkpoints were found to be ready to load: {str(checkpoints)}"
     )
+    checkpoint = checkpoints[-1]
 
-    selected = checkpoints[-1]
-    if "run_before_loading" in selected:
-        selected["before_loading"](cfg, selected)
+    _ = [hook(cfg, checkpoint) for hook in checkpoint.run_before_loading]
 
-    if selected["storage_type"] == "local":
-        return selected["path"]
+    if checkpoint.storage_type == "local":
+        return checkpoint.path
 
+    # copy cloud checkpoints to a local tmp_dir
     local_tmp_dir = os.path.join(
         cfg.local_checkpoints_dir, f"checkpoint_tmp{suffix}.pt"
     )
 
-    logger.info(f"Copying checkpoint from {selected['path']} -> {local_tmp_dir}")
-    if selected["storage_type"] == "nfs":
-        shutil.copyfile(selected["path"], local_tmp_dir)
-    elif selected["storage_type"] == "azure_blob":
-        azure_utils.download_specific_ckpt(selected["path"], local_tmp_dir)
+    logger.info(f"Copying checkpoint from {checkpoint.path} -> {local_tmp_dir}")
+    if checkpoint.storage_type == "nfs":
+        shutil.copyfile(checkpoint.path, local_tmp_dir)
+    elif checkpoint.storage_type == "azure_blob":
+        azure_utils.download_specific_ckpt(checkpoint.path, local_tmp_dir)
 
     return local_tmp_dir
-
-    # based on the storage type, process and return final path
 
 
 def get_and_prep_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
@@ -941,3 +943,11 @@ def _get_pad_info(state_dict: Dict) -> Dict[str, int]:
             assert full_key not in res, f"collision: {full_key} already in {res}"
             res[full_key] = v["padding"]
     return res
+
+
+@dataclass
+class CheckpointPath:
+    path: str
+    storage_type: str
+    priority: float = 0
+    run_before_loading: list = field(default_factory=list)
