@@ -312,18 +312,19 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
     if checkpoint.storage_type == "local":
         return checkpoint.path
 
-    # copy cloud checkpoints to a local temporary file
-    local_tmp_dir = os.path.join(
-        cfg.local_checkpoints_dir, f"checkpoint_tmp{suffix}.pt"
+    # copy cloud checkpoints to a local cache file
+    local_cache_dir = os.path.join(
+        cfg.local_checkpoints_dir,
+        f"cached_checkpoint_{checkpoint.priority}{suffix}.pt",
     )
 
-    logger.info(f"Copying checkpoint from {checkpoint.path} -> {local_tmp_dir}")
+    logger.info(f"Copying checkpoint from {checkpoint.path} -> {local_cache_dir}")
     if checkpoint.storage_type == "nfs":
-        shutil.copyfile(checkpoint.path, local_tmp_dir)
+        shutil.copyfile(checkpoint.path, local_cache_dir)
     elif checkpoint.storage_type == "azure_blob":
-        azure_utils.download_specific_ckpt(checkpoint.path, local_tmp_dir)
+        azure_utils.download_specific_ckpt(checkpoint.path, local_cache_dir)
 
-    return local_tmp_dir
+    return local_cache_dir
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
