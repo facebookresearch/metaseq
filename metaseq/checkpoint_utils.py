@@ -163,7 +163,9 @@ def get_checkpoint_steps(path):
     return int(match[1])
 
 
-def get_all_checkpoints_from_directory(directory, suffix, increased_priority, storage_type):
+def get_all_checkpoints_from_directory(
+    directory, suffix, increased_priority, storage_type
+):
     checkpoints = []
     for candidate in os.listdir(directory):
         steps = get_checkpoint_steps(candidate)
@@ -208,6 +210,8 @@ def get_recent_checkpoint_from_azure_blob(blob_url, suffix, increased_priority):
             "storage_type": "azure_blob",
         }
     ]
+
+
 def get_checkpoint_to_finetune(finetune_path, suffix, priority):
     if PathManager.exists(finetune_path):
         validated_path = finetune_path
@@ -223,8 +227,9 @@ def get_checkpoint_to_finetune(finetune_path, suffix, priority):
         "path": validated_path,
         "priority": priority,
         "storage_type": get_storage_type(validated_path),
-        "run_before_loading": reset_for_finetuning
-        }
+        "run_before_loading": reset_for_finetuning,
+    }
+
 
 def reset_for_finetuning(cfg, checkpoint):
     cfg.reset_optimizer = True
@@ -234,6 +239,7 @@ def reset_for_finetuning(cfg, checkpoint):
     logger.warning(
         "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
     )
+
 
 def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
     suffix = trainer.checkpoint_suffix
@@ -271,18 +277,18 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
                 )
             )
 
-
     checkpoints.extend(
         get_all_checkpoints_from_directory(
             cfg.local_checkpoints_dir, increased_priority=0.3, storage_type="local"
         )
     )
 
-    checkpoints.sort(key = lambda checkpoint: checkpoint["priority"])
+    checkpoints.sort(key=lambda checkpoint: checkpoint["priority"])
     if len(checkpoints) == 0:
         return ""
-    logger.info(f"The following checkpoints were found to be ready to load: {str(checkpoints)}")
-
+    logger.info(
+        f"The following checkpoints were found to be ready to load: {str(checkpoints)}"
+    )
 
     selected = checkpoints[-1]
     if "run_before_loading" in selected:
@@ -292,11 +298,10 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer):
         return selected["path"]
 
     local_tmp_dir = os.path.join(
-            cfg.local_checkpoints_dir, "checkpoint_tmp{}.pt".format(suffix)
-        )
-    logger.info(
-        f"Copying checkpoint from {selected["path"]} -> {local_tmp_dir}"
+        cfg.local_checkpoints_dir, f"checkpoint_tmp{suffix}.pt"
     )
+
+    logger.info(f"Copying checkpoint from {selected['path']} -> {local_tmp_dir}")
     if selected["storage_type"] == "nfs":
         shutil.copyfile(selected["path"], local_tmp_dir)
     elif selected["storage_type"] == "azure_blob":

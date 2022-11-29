@@ -442,9 +442,7 @@ class CheckpointConfig(MetaseqDataclass):
     # )
     restore_file: Optional[str] = field(
         default=None,  # Used to be: "checkpoint_last.pt"
-        metadata={
-            "help": "filename from which to load checkpoint"
-        },
+        metadata={"help": "filename from which to load checkpoint"},
     )
     finetune_from_model: Optional[str] = field(
         default=None,

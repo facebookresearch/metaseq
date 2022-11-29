@@ -56,7 +56,9 @@ def main(cfg: DictConfig) -> None:
     # replace with actual job id
     slurm_jobid = os.environ.get("SLURM_JOBID", None)
     if "%jobid" in cfg.checkpoint.local_checkpoints_dir and slurm_jobid is not None:
-        cfg.checkpoint.local_checkpoints_dir = cfg.checkpoint.local_checkpoints_dir.replace("%jobid", slurm_jobid)
+        cfg.checkpoint.local_checkpoints_dir = (
+            cfg.checkpoint.local_checkpoints_dir.replace("%jobid", slurm_jobid)
+        )
 
     checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.local_checkpoints_dir)
 
@@ -297,7 +299,8 @@ def train(
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.local_checkpoints_dir, "memory_usage.txt"), "a"
+                os.path.join(cfg.checkpoint.local_checkpoints_dir, "memory_usage.txt"),
+                "a",
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
@@ -306,7 +309,9 @@ def train(
                     file=sourceFile,
                 )
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.local_checkpoints_dir, "profiler_trace.json")
+                os.path.join(
+                    cfg.checkpoint.local_checkpoints_dir, "profiler_trace.json"
+                )
             )
         else:
             valid_losses, should_stop = train(i, samples)
