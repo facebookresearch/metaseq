@@ -36,7 +36,7 @@ else:
     )
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
-ARG_OVERRIDES = constants_module.ARG_OVERRIDES
+INFERENCE_ARG_OVERRIDES = constants_module.INFERENCE_ARG_OVERRIDES
 
 logger = build_logger()
 
@@ -119,7 +119,7 @@ def cli_main():
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
 
     model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
-    model_overrides.update(ARG_OVERRIDES)
+    model_overrides.update(INFERENCE_ARG_OVERRIDES)
     cfg.common_eval.model_overrides = str(model_overrides)
 
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)

@@ -58,4 +58,4 @@ LAUNCH_ARGS = [
 ]
 
 # Optional arg overrides which influence model loading during inference
-ARG_OVERRIDES = {}
+INFERENCE_ARG_OVERRIDES = {}
