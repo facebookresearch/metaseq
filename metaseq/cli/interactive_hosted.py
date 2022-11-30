@@ -308,7 +308,7 @@ def completions(engine=None):
     if "n" not in generation_args:
         generation_args["n"] = 1
     if "best_of" not in generation_args:
-        generation_args["best_of"] = generation_args["n"]    
+        generation_args["best_of"] = generation_args["n"]
     # beam search
     if int(generation_args["best_of"]) > MAX_BEAM:
         logger.warning(
