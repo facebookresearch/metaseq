@@ -305,15 +305,17 @@ def completions(engine=None):
         generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
     else:
         generation_args["top_p"] = 1.0
-    # beam search top n
-    if "n" in generation_args:
-        if int(generation_args["n"]) > MAX_BEAM:
-            logger.warning(
-                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
-            )
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
-    else:
+    if "n" not in generation_args:
         generation_args["n"] = 1
+    if "best_of" not in generation_args:
+        generation_args["best_of"] = generation_args["n"]
+    # beam search
+    if int(generation_args["best_of"]) > MAX_BEAM:
+        logger.warning(
+            f'beam size/sampling size of {int(generation_args["best_of"])} too large, using {MAX_BEAM} to avoid OOM'
+        )
+        generation_args["best_of"] = MAX_BEAM
+        generation_args["n"] = min(MAX_BEAM, int(generation_args["n"]))
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):
