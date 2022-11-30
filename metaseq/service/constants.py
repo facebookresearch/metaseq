@@ -56,3 +56,6 @@ LAUNCH_ARGS = [
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
     "/tmp",  # required "data" argument.
 ]
+
+# Optional arg overrides which influence model loading during inference
+INFERENCE_ARG_OVERRIDES = {}

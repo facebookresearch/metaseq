@@ -12,6 +12,7 @@ See docs/api.md for more information.
 """
 
 import os
+import ast
 import random
 import sys
 import logging
@@ -35,6 +36,7 @@ else:
     )
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
+INFERENCE_ARG_OVERRIDES = constants_module.INFERENCE_ARG_OVERRIDES
 
 logger = build_logger()
 
@@ -115,6 +117,11 @@ def cli_main():
     args.data = os.path.dirname(args.path)  # hardcode the data arg
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
+
+    model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
+    model_overrides.update(INFERENCE_ARG_OVERRIDES)
+    cfg.common_eval.model_overrides = str(model_overrides)
+
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
