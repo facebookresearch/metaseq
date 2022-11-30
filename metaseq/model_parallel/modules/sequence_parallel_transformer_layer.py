@@ -108,7 +108,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
         v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
 
-        attn = xops.MemoryEfficientAttentionFlashAttentionOp.forward(
+        attn = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.forward(
             None, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
         ).view(seq_len, bsz, -1)
 
@@ -287,7 +287,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         # recalculate attention
         fake_ctx = _FakeContext()
-        attn = xops.MemoryEfficientAttentionFlashAttentionOp.forward(
+        attn = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.forward(
             fake_ctx, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
         ).view(seq_len, bsz, -1)
 
@@ -302,7 +302,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         attn = SequeuceParallelTransformerBlock._collapse_first_dimensions(attn)
         grad_out_proj_weight = grad_attention_output.t().matmul(attn)
 
-        d_q, d_k, d_v, _, _ = xops.MemoryEfficientAttentionFlashAttentionOp.backward(
+        d_q, d_k, d_v, _, _ = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.backward(
             fake_ctx, grad_out_proj_input
         )
         d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
