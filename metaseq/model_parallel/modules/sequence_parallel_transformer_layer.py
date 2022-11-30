@@ -56,6 +56,60 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
     """
 
     @staticmethod
+    def forward_mha(q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype):
+        scaling = head_dim**-0.5
+        matmul_result = torch.empty(
+            bsz * (embed_dim_per_partition // head_dim),
+            seq_len,
+            seq_len,
+            dtype=dtype,
+            device=torch.cuda.current_device(),
+        )
+        # Scale q,k before matmul for stability see https://tinyurl.com/sudb9s96 for math
+        matmul_result = torch.baddbmm(
+            matmul_result,
+            math.sqrt(scaling) * q.transpose(0, 1),
+            math.sqrt(scaling) * k.transpose(0, 1).transpose(1, 2),
+            beta=0.0,
+        )
+        # attn_probs = matmul_result
+        scale_t = torch.tensor([1.0])
+        attn_probs = scaled_upper_triang_masked_softmax_cuda.forward(
+            matmul_result, scale_t[0]
+        )
+        attn = torch.bmm(attn_probs, v)
+        attn = attn.transpose(0, 1).contiguous().view(seq_len, bsz, -1)
+        return attn, attn_probs
+
+    @staticmethod
+    def backward_mha(grad_mha_output, q, k, v, attn_probs, seq_len, bsz, head_dim):
+        scaling = head_dim**-0.5
+        grad_mha_output = grad_mha_output.view(seq_len, -1, head_dim).transpose(0, 1)
+        grad_v = (
+            torch.bmm(attn_probs.transpose(1, 2), grad_mha_output)
+            .transpose(0, 1)
+            .contiguous()
+            .view(seq_len, bsz, -1)
+        )
+        grad_attn_probs_out = torch.bmm(grad_mha_output, v.transpose(1, 2))
+
+        grad_attn_probs_in = scaled_upper_triang_masked_softmax_cuda.backward(
+            grad_attn_probs_out, attn_probs, 1.0
+        )
+        grad_q = torch.bmm(
+            math.sqrt(scaling) * grad_attn_probs_in,
+            math.sqrt(scaling) * k.transpose(0, 1),
+        )
+        grad_q = grad_q.transpose(0, 1).contiguous().view(seq_len, bsz, -1)
+        grad_k = torch.bmm(
+            math.sqrt(scaling) * grad_attn_probs_in.transpose(1, 2),
+            math.sqrt(scaling) * q.transpose(0, 1),
+        )
+        grad_k = grad_k.transpose(0, 1).contiguous().view(seq_len, bsz, -1)
+        grad_kvq_proj_output = torch.cat([grad_k, grad_v, grad_q], dim=-1)
+        return grad_kvq_proj_output
+
+    @staticmethod
     def forward(
         ctx,
         input,
