@@ -574,10 +574,6 @@ class GenerationConfig(MetaseqDataclass):
         default=5,
         metadata={"help": "beam size"},
     )
-    nbest: int = field(
-        default=1,
-        metadata={"help": "number of hypotheses to output"},
-    )
     max_len_a: float = field(
         default=0,
         metadata={

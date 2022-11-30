@@ -47,7 +47,7 @@ LAUNCH_ARGS = [
     f"--merges-filename {BPE_MERGES}",
     f"--vocab-filename {BPE_VOCAB}",
     f"--path {MODEL_FILE}",
-    "--beam 1 --nbest 1",
+    "--beam 1",
     "--distributed-port 13000",
     "--checkpoint-shard-count 1",
     f"--batch-size {BATCH_SIZE}",

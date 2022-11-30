@@ -217,7 +217,6 @@ class GeneratorInterface:
         self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
         self.cfg.generation.sampling = top_p > 0.0
         self.cfg.generation.beam = best_of
-        self.cfg.generation.nbest = n
         if temperature > 0:
             self.cfg.generation.temperature = temperature
         elif temperature == 0:
