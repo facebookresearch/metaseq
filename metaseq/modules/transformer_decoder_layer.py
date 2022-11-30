@@ -70,6 +70,9 @@ class TransformerDecoderLayer(nn.Module):
         self.activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
         self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
 
+        self.attn_variant = getattr(args, "attn_variant", "default")
+        sefl.xf_attn_op = getattr(args, "xf_attn_op", None)
+
         # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
             "initialize_params_on_gpu": initialize_params_on_gpu,
@@ -219,8 +222,8 @@ class TransformerDecoderLayer(nn.Module):
                 self.self_attn.head_dim,
                 recompute_fc1,
                 self.activation_fn_name,
-                attn_variant=getattr(args, "attn_variant", "default")
-                xf_attn_op=getattr(args, "xf_attn_op", None)
+                self.attn_variant,
+                self.xf_attn_op,
             )
             return x
 
