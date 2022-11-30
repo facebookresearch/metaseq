@@ -765,7 +765,9 @@ class Trainer(object):
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
             # skip optimizer step if there is a loss spike
-            self.skip_spike(logging_outputs, self.cfg.optimization.max_loss_to_skip_batch)
+            self.skip_spike(
+                logging_outputs, self.cfg.optimization.max_loss_to_skip_batch
+            )
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates()
