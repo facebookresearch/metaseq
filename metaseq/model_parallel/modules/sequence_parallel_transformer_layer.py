@@ -9,6 +9,7 @@ import importlib
 import math
 import torch
 from types import SimpleNamespace
+from metaseq.dataclass.constants import AttentionVariants
 
 # Not importing here cause cpu tests don't like it
 global fused_layer_norm_cuda
@@ -120,10 +121,26 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         head_dim,
         recompute_fc1,
         activation_fn_name,  # "relu" or "gelu" for now
+        attn_variant,
+        xf_attn_op,
     ):
         assert (
             activation_fn_name == "relu" or activation_fn_name == "gelu"
         ), "Only relu/gelu is supported!"
+
+        xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        if xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+
+        xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
+        if xf_eff_attn and xf_attn_op is not None:
+            try:
+                xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
+
         # import from apex
         global fused_layer_norm_cuda
         if fused_layer_norm_cuda is None:
@@ -158,13 +175,23 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         k, v, q = split_tensor_along_last_dim(kvq_out, 3, contiguous_split_chunks=True)
         seq_len, bsz, embed_dim_per_partition = q.size()
-        q = q.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-        k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-        v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
 
-        attn = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.forward(
-            None, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
-        ).view(seq_len, bsz, -1)
+        if xf_eff_attn:
+            q = q.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+            k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+            v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+
+            attn = xf_op.forward(
+                None, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
+            ).view(seq_len, bsz, -1)
+        else:
+            q = q.view(seq_len, -1, head_dim)
+            k = k.view(seq_len, -1, head_dim)
+            v = v.view(seq_len, -1, head_dim).transpose(0, 1)
+
+            attn, _ = SequeuceParallelTransformerBlock.forward_mha(
+                q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
+            )
 
         out_proj_out = torch.matmul(attn, out_proj_weight.t())
         out_proj_out = _reduce_scatter_along_first_dim(out_proj_out)
@@ -340,10 +367,15 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         )
 
         # recalculate attention
-        fake_ctx = _FakeContext()
-        attn = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.forward(
-            fake_ctx, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
-        ).view(seq_len, bsz, -1)
+        if xf_eff_attn:
+            fake_ctx = _FakeContext()
+            attn = xf_op.forward(
+                fake_ctx, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
+            ).view(seq_len, bsz, -1)
+        else:
+            attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
+                q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
+            )
 
         handle.wait()
 
@@ -356,13 +388,16 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         attn = SequeuceParallelTransformerBlock._collapse_first_dimensions(attn)
         grad_out_proj_weight = grad_attention_output.t().matmul(attn)
 
-        d_q, d_k, d_v, _, _ = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp.backward(
-            fake_ctx, grad_out_proj_input
-        )
-        d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
-        d_k = d_k.transpose(0, 1).view(seq_len, bsz, -1)
-        d_v = d_v.transpose(0, 1).view(seq_len, bsz, -1)
-        grad_kvq_proj_output = torch.cat([d_k, d_v, d_q], dim=-1)
+        if xf_eff_attn:
+            d_q, d_k, d_v, _, _ = xf_op.backward(fake_ctx, grad_out_proj_input)
+            d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
+            d_k = d_k.transpose(0, 1).view(seq_len, bsz, -1)
+            d_v = d_v.transpose(0, 1).view(seq_len, bsz, -1)
+            grad_kvq_proj_output = torch.cat([d_k, d_v, d_q], dim=-1)
+        else:
+            grad_kvq_proj_output = SequeuceParallelTransformerBlock.backward_mha(
+                grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
+            )
 
         (
             mha_layer_norm_output,
