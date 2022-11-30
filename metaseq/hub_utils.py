@@ -197,8 +197,8 @@ class GeneratorInterface:
         temperature: softmax temperature
         top_p: nucleus probability
         log_probs: return this cutoff of the probability distribution
-        n: beam size
-        best_of: number of beams to return. must be <= n
+        best_of: beam size
+        n: number of beams to return. must be <= best_of
         echo: if true, returned text/tokens/scores includes the prompt.
             This is useful for getting PPL evaluations.
         stop: a list of terminating tokens
@@ -217,6 +217,7 @@ class GeneratorInterface:
         self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
         self.cfg.generation.sampling = top_p > 0.0
         self.cfg.generation.beam = best_of
+        self.cfg.generation.nbest = n
         if temperature > 0:
             self.cfg.generation.temperature = temperature
         elif temperature == 0:
@@ -289,7 +290,7 @@ class GeneratorInterface:
             # actually turn everything into strings
             for i in range(all_tokens.size(0)):
                 beams = []
-                for j in range(best_of):
+                for j in range(n):
                     # first beam is always the highest scoring
                     tokens = all_tokens[i, j].tolist()
                     scores = all_scores[i, j].tolist()
