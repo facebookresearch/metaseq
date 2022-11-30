@@ -7,6 +7,7 @@ import argparse
 import ast
 import logging
 import os
+import re
 import time
 from argparse import Namespace
 from typing import List, Optional
@@ -16,12 +17,13 @@ import numpy as np
 import torch
 
 from metaseq import checkpoint_utils, tasks
-from metaseq import utils
+from metaseq import utils, distributed_utils
 from metaseq.data import encoders
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.service.utils import normalize_newlines
+from metaseq.file_io import PathManager
 
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,24 @@ class GeneratorInterface:
         return self.bpe.bpe.decode(x)
 
     def load_model(self):
+        if self.cfg.common.model_parallel_size == 1:
+            r = distributed_utils.get_global_rank()
+        else:
+            r = distributed_utils.get_data_parallel_rank()
+
+        suffix = self.cfg.checkpoint.checkpoint_suffix
+
+        sharded_files = PathManager.ls(
+            re.sub(".pt$", f"{suffix}*", self.cfg.common_eval.path)
+        )
+        if len(sharded_files) > 0 and "-shard" in sharded_files[0]:
+            # We are loading a sharded checkpoint
+            suffix += f"-shard{r}"
+        else:
+            suffix += ""
+
+        self.cfg.checkpoint.checkpoint_suffix = suffix
+
         utils.import_user_module(self.cfg.common)
 
         # Fix seed for stochastic decoding
