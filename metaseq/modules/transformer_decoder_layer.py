@@ -71,7 +71,7 @@ class TransformerDecoderLayer(nn.Module):
         self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
 
         self.attn_variant = getattr(args, "attn_variant", "default")
-        sefl.xf_attn_op = getattr(args, "xf_attn_op", None)
+        self.xf_attn_op = getattr(args, "xf_attn_op", None)
 
         # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
