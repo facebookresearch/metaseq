@@ -275,7 +275,7 @@ def train(
 
         end_of_epoch = not itr.has_next()
         if end_of_epoch:
-            end_of_epoch = distributed_utils.get_global_rank()
+            grank = distributed_utils.get_global_rank()
             dataset = epoch_itr.dataset
             while not hasattr(dataset, 'len_cache'):
                 dataset = dataset.dataset
