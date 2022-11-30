@@ -219,6 +219,8 @@ class TransformerDecoderLayer(nn.Module):
                 self.self_attn.head_dim,
                 recompute_fc1,
                 self.activation_fn_name,
+                attn_variant=getattr(args, "attn_variant", "default")
+                xf_attn_op=getattr(args, "xf_attn_op", None)
             )
             return x
 
