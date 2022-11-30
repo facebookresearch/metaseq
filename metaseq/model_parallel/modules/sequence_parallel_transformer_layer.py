@@ -242,12 +242,16 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             ctx.head_dim,
             ctx.embed_dim_per_partition,
             ctx.activation_fn_name,
+            ctx.xf_eff_attn,
+            ctx.xf_op,
         ) = (
             bsz,
             seq_len,
             head_dim,
             embed_dim_per_partition,
             activation_fn_name,
+            xf_eff_attn,
+            xf_op,
         )
 
         # apply scatter gather,
@@ -271,12 +275,22 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             fc1_weight,
             fc2_weight,
         ) = ctx.saved_tensors
-        bsz, seq_len, head_dim, embed_dim_per_partition, activation_fn_name = (
+        (
+            bsz,
+            seq_len,
+            head_dim,
+            embed_dim_per_partition,
+            activation_fn_name,
+            xf_eff_attn,
+            xf_op,
+        ) = (
             ctx.bsz,
             ctx.seq_len,
             ctx.head_dim,
             ctx.embed_dim_per_partition,
             ctx.activation_fn_name,
+            ctx.xf_eff_attn,
+            ctx.xf_op,
         )
         dtype = grad_output.dtype
 
