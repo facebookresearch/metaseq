@@ -963,7 +963,7 @@ class Trainer(object):
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
-    def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch):
+    def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch, span=9):
         if ewm_ratio_to_skip_batch == -1:
             return
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
@@ -974,7 +974,8 @@ class Trainer(object):
             self._ewm_loss = loss_t
 
         ewm_t_1 = self._ewm_loss
-        ewm_t = ewm(loss_t, ewm_t_1, span=9)
+        alpha = 2 / (span + 1)
+        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
         ewm_ratio = loss_t / ewm_t
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
@@ -985,7 +986,7 @@ class Trainer(object):
                 f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
                 f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
             )
-
+        # the current loss is only included in ewm if the current batch is not skipped
         self._ewm_loss = ewm_t
 
     def cumulative_training_time(self):
@@ -1267,11 +1268,6 @@ def _set_module_by_path(module, path, value):
     for name in path[:-1]:
         module = getattr(module, name)
     setattr(module, path[-1], value)
-
-
-def ewm(loss_t, ewm_t_1, span):
-    alpha = 2 / (span + 1)
-    return (1 - alpha) * ewm_t_1 + alpha * loss_t
 
 
 class SpikeError(Exception):
