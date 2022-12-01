@@ -31,7 +31,7 @@ LAUNCH_ARGS = [
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--spm-path /shared/home/liliyu/data/text-speech-models/V262144_I8192_S2000_M512_R1024_1M_V2.json",
-    f"--path /shared/home/liliyu/data/text-speech-models/en_speech_text_c4_2_7B_v3/consolidated_mp2/consolidated.pt",
+    f"--path /shared/home/liliyu/data/text-speech-models/en_speech_text_2_7B_full_v8/consolidated_mp2/consolidated.pt",
     "--image-tokens 8192",
     "--speech-tokens 2000",
     "--beam 1 --nbest 1",
