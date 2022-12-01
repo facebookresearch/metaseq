@@ -141,6 +141,8 @@ class Trainer(object):
         self._previous_training_time = 0
         self._cumulative_training_time = None
 
+        self.real_steps = 0
+
     def reinitialize(self):
         """Reinitialize the Trainer, typically after model params change."""
         self._lr_scheduler = None
@@ -967,11 +969,16 @@ class Trainer(object):
         )
 
     def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch):
+        self.real_steps += 1
         if ewm_ratio_to_skip_batch == -1:
             return
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
         loss_t = float(loss_sum / sample_size / math.log(2))
+
+        if self.real_steps % 10 == 0:
+            loss_t *= 10
+            logger.info("Increased loss by 10x")
 
         if self._ewm_loss is None:
             self._ewm_loss = loss_t
