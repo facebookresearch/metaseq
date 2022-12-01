@@ -978,6 +978,7 @@ class Trainer(object):
         ewm_t_1 = self._ewm_loss
         ewm_t = ewm(loss_t, ewm_t_1, span = 9)
         ewm_ratio = loss_t / ewm_t
+        logger.info(f"Step {self.get_num_updates()}: ewm_t_1: {ewm_t_1:.2f}, ewm_t: {ewm_t:.2f}, ewm ratio: {ewm_ratio:.2f}")
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
             raise SpikeError(
@@ -1273,7 +1274,7 @@ def _set_module_by_path(module, path, value):
 
 def ewm(loss_t, ewm_t_1, span):
     alpha = 2 / (span + 1)
-    return (1 - alpha) * ewm_1 + alpha * loss_t
+    return (1 - alpha) * ewm_t_1 + alpha * loss_t
 
 class SpikeError(Exception):
     pass
