@@ -1,7 +1,6 @@
 import os
 import unittest
 import random
-import tempfile
 import torch
 from types import SimpleNamespace
 from megatron.mpu import initialize_model_parallel
@@ -16,17 +15,18 @@ def reset_seeds():
 
 def _distributed_init():
     backend = "nccl"
-    local_rank = None
     rank = 0
     world_size = 1
     device = 0
     torch.cuda.set_device(device)
+
 
     # Call the init process.
     init_method = "tcp://"
     master_ip = os.getenv("MASTER_ADDR", "localhost")
     master_port = os.getenv("MASTER_PORT", "6000")
     init_method += master_ip + ":" + master_port
+    init_method="file:///d:/tmp/some_file"
     torch.distributed.init_process_group(
         backend=backend, world_size=world_size, rank=rank, init_method=init_method
     )
@@ -69,8 +69,10 @@ class TestParity(unittest.TestCase):
         # std attn
         args.attn_variant = std_attn_variant
         reset_seeds()
-        decoder = TransformerDecoderLayer(args).cuda()
+        decoder = ModelParallelTransformerDecoderLayer((args).cuda()
         result = decoder(x_)
+        
+        torch.distributed.barrier()
 
         assert torch.allclose(xf_result, result)
 
@@ -80,7 +82,15 @@ class TestParity(unittest.TestCase):
         loss = torch.norm(result)
         loss.backward()
 
+        torch.distributed.barrier()
         assert torch.allclose(x.grad, x_.grad)
+
+        # Reset groups
+        mpu.destroy_model_parallel()
+
+        torch.distributed.barrier()
+        if torch.distributed.get_rank() == 0:
+            print('>> passed the test :-)')
 
 
 if __name__ == "__main__":
