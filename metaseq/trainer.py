@@ -996,7 +996,7 @@ class Trainer(object):
         if ewm_ratio > ewm_ratio_to_skip_batch:
             raise SpikeError(
                 f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss:.2f}. "
+                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
                 f"The ewm for the loss was only at {ewm_t:.2f} . "
                 f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
                 f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
