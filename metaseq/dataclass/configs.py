@@ -415,10 +415,11 @@ class OptimizationConfig(MetaseqDataclass):
             "help": "Skip gradient update if gnorm is higher than --clip-norm value"
         },
     )
-    max_loss_to_skip_batch: float = field(
-        default=-1,
+    ewm_ratio_to_skip_batch: float = field(
+        default=1.25,
         metadata={
-            "help": "Skip current batch if loss is higher than this value. Turned off at -1"
+            "help": "Skip current batch if the loss to loss ewm ratio is "
+            "higher than this value. Turned off at -1"
         },
     )
 
