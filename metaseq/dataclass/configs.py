@@ -416,7 +416,7 @@ class OptimizationConfig(MetaseqDataclass):
         },
     )
     ewm_ratio_to_skip_batch: float = field(
-        default=1.25,
+        default=-1,
         metadata={
             "help": "Skip current batch if the loss to loss ewm ratio is "
             "higher than this value. Turned off at -1"
