@@ -3,7 +3,7 @@ import unittest
 import random
 import torch
 from types import SimpleNamespace
-from megatron.mpu import initialize_model_parallel
+from megatron.mpu import destroy_model_parallel, initialize_model_parallel
 from metaseq.model_parallel.modules import ModelParallelTransformerDecoderLayer
 
 
@@ -85,7 +85,7 @@ class TestParity(unittest.TestCase):
         assert torch.allclose(x.grad, x_.grad)
 
         # Reset groups
-        mpu.destroy_model_parallel()
+        destroy_model_parallel()
 
         torch.distributed.barrier()
         if torch.distributed.get_rank() == 0:
