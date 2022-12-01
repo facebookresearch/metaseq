@@ -358,7 +358,7 @@ class Trainer(object):
                 "extra_state": {
                     "metrics": metrics.state_dict(),
                     "previous_training_time": self.cumulative_training_time(),
-                    "ewm_loss": self._ewm_loss
+                    "ewm_loss": self._ewm_loss,
                 },
             }
 
@@ -544,7 +544,9 @@ class Trainer(object):
 
             if "ewm_loss" in extra_state:
                 self._ewm_loss = extra_state["ewm_loss"]
-                logger.info(f"loaded ewm loss from checkpoint with value {self._ewm_loss}")
+                logger.info(
+                    f"loaded ewm loss from checkpoint with value {self._ewm_loss}"
+                )
 
             self.lr_step(epoch)
 
@@ -987,12 +989,16 @@ class Trainer(object):
 
         if self._ewm_loss is None:
             self._ewm_loss = loss_t
-            logger.info("ewm loss was None at this point, so it was initilialized to loss_t")
+            logger.info(
+                "ewm loss was None at this point, so it was initilialized to loss_t"
+            )
 
         ewm_t_1 = self._ewm_loss
-        ewm_t = ewm(loss_t, ewm_t_1, span = 9)
+        ewm_t = ewm(loss_t, ewm_t_1, span=9)
         ewm_ratio = loss_t / ewm_t
-        logger.info(f"Step {self.get_num_updates()}: ewm_t_1: {ewm_t_1:.2f}, ewm_t: {ewm_t:.2f}, ewm ratio: {ewm_ratio:.2f}")
+        logger.info(
+            f"Step {self.get_num_updates()}: loss_t: {loss_t:.2f}, ewm_t_1: {ewm_t_1:.2f}, ewm_t: {ewm_t:.2f}, ewm ratio: {ewm_ratio:.2f}"
+        )
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
             raise SpikeError(
@@ -1289,6 +1295,7 @@ def _set_module_by_path(module, path, value):
 def ewm(loss_t, ewm_t_1, span):
     alpha = 2 / (span + 1)
     return (1 - alpha) * ewm_t_1 + alpha * loss_t
+
 
 class SpikeError(Exception):
     pass
