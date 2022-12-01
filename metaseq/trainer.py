@@ -112,6 +112,7 @@ class Trainer(object):
         self._warn_once = set()
         self._wrapped_criterion = None
         self._wrapped_model = None
+        self._ewm_loss = None
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -357,6 +358,7 @@ class Trainer(object):
                 "extra_state": {
                     "metrics": metrics.state_dict(),
                     "previous_training_time": self.cumulative_training_time(),
+                    "ewm_loss": self._ewm_loss
                 },
             }
 
@@ -539,6 +541,10 @@ class Trainer(object):
             if "previous_training_time" in extra_state:
                 self._previous_training_time = extra_state["previous_training_time"]
                 self._start_time = time.time()
+
+            if "ewm_loss" in extra_state:
+                self._ewm_loss = extra_state["ewm_loss"]
+                logger.info(f"loaded ewm loss from checkpoint with value {self._ewm_loss}")
 
             self.lr_step(epoch)
 
@@ -780,7 +786,7 @@ class Trainer(object):
                 raise FloatingPointError("gradients are Nan/Inf")
             # skip optimizer step if there is a loss spike
             self.skip_spike(
-                logging_outputs, self.cfg.optimization.max_loss_to_skip_batch
+                logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
             )
             # take an optimization step
             self.task.optimizer_step(
@@ -972,18 +978,31 @@ class Trainer(object):
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
 
-    def skip_spike(self, logging_outputs, max_loss_to_skip_batch):
-        if max_loss_to_skip_batch == -1:
+    def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch):
+        if ewm_ratio_to_skip_batch == -1:
             return
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
-        loss = float(loss_sum / sample_size / math.log(2))
-        if loss > max_loss_to_skip_batch:
+        loss_t = float(loss_sum / sample_size / math.log(2))
+
+        if self._ewm_loss is None:
+            self._ewm_loss = loss_t
+            logger.info("ewm loss was None at this point, so it was initilialized to loss_t")
+
+        ewm_t_1 = self._ewm_loss
+        ewm_t = ewm(loss_t, ewm_t_1, span = 9)
+        ewm_ratio = loss_t / ewm_t
+
+        if ewm_ratio > ewm_ratio_to_skip_batch:
             raise SpikeError(
                 f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss:.2f}, "
-                f"which is higher than max_loss_to_skip_batch: {max_loss_to_skip_batch:.2f}"
+                f"num_update: {self.get_num_updates()} the loss is {loss:.2f}. "
+                f"The ewm for the loss was only at {ewm_t:.2f} . "
+                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
             )
+
+        self._ewm_loss = ewm_t
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1265,6 +1284,10 @@ def _set_module_by_path(module, path, value):
         module = getattr(module, name)
     setattr(module, path[-1], value)
 
+
+def ewm(loss_t, ewm_t_1, span):
+    alpha = 2 / (span + 1)
+    return (1 - alpha) * ewm_1 + alpha * loss_t
 
 class SpikeError(Exception):
     pass
