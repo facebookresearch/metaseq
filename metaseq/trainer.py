@@ -113,6 +113,7 @@ class Trainer(object):
         self._wrapped_criterion = None
         self._wrapped_model = None
         self._ewm_loss = None
+        self._skipped_loss_spikes = 0
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -784,7 +785,7 @@ class Trainer(object):
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
             # skip optimizer step if there is a loss spike
-            self.skip_spike(
+            ewm_loss_ratio = self.skip_spike(
                 logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
             )
             # take an optimization step
@@ -836,7 +837,7 @@ class Trainer(object):
 
             # log stats
             logging_output = self._reduce_and_log_stats(
-                logging_outputs, sample_size, grad_norm
+                logging_outputs, sample_size, grad_norm, ewm_loss_ratio
             )
 
             # clear CUDA cache to reduce memory fragmentation
@@ -993,6 +994,7 @@ class Trainer(object):
         ewm_ratio = loss_t / ewm_t
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
+            self._skipped_loss_spikes += 1
             raise SpikeError(
                 f"Skip batch as we encountered a loss spike. In "
                 f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
@@ -1002,6 +1004,8 @@ class Trainer(object):
             )
         # the current loss is only included in ewm if the current batch is not skipped
         self._ewm_loss = ewm_t
+
+        return ewm_ratio
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1185,13 +1189,17 @@ class Trainer(object):
                     + "-" * 80
                 )
 
-    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
+    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0):
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
         ):
             metrics.log_speed("ups", 1.0, priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
+            metrics.log_scalar("ewm_loss", self._ewm_loss, priority=700, round=2)
+            metrics.log_scalar("ewm_loss_ratio", ewm_loss_ratio, priority=710, round=4)
+            metrics.log_scalar("skipped_loss_spikes", self._skipped_loss_spikes, priority=720)
+            self._skipped_loss_spikes = 0
             if self.cfg.optimization.clip_norm > 0:
                 metrics.log_scalar(
                     "clip",
