@@ -1187,7 +1187,9 @@ class Trainer(object):
                     + "-" * 80
                 )
 
-    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0):
+    def _reduce_and_log_stats(
+        self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
+    ):
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
@@ -1196,7 +1198,9 @@ class Trainer(object):
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
             metrics.log_scalar("ewm_loss", self._ewm_loss, priority=700, round=2)
             metrics.log_scalar("ewm_loss_ratio", ewm_loss_ratio, priority=710, round=4)
-            metrics.log_scalar("skipped_loss_spikes", self._skipped_loss_spikes, priority=720)
+            metrics.log_scalar(
+                "skipped_loss_spikes", self._skipped_loss_spikes, priority=720
+            )
             self._skipped_loss_spikes = 0
             if self.cfg.optimization.clip_norm > 0:
                 metrics.log_scalar(
