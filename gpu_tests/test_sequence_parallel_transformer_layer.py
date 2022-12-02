@@ -1,6 +1,6 @@
-import os
 import unittest
 import random
+import sys
 import torch
 from types import SimpleNamespace
 from megatron.mpu import destroy_model_parallel, initialize_model_parallel
@@ -30,10 +30,30 @@ def _distributed_init():
     )
 
 
+def _allclose(out, ref, atol, rtol, msg="failed"):
+    flatten_diff = ((out - ref).abs() - atol - ref.abs() * rtol).flatten()
+    max_pos = flatten_diff.argmax()
+    max_diff = flatten_diff[max_pos]
+    num_different = torch.count_nonzero(flatten_diff > 0)
+    percentage = num_different / flatten_diff.numel()
+    del flatten_diff
+    assert torch.allclose(out, ref, rtol=rtol, atol=atol), (
+        f"{msg}: "
+        f"out={out.flatten()[max_pos]} and ref={ref.flatten()[max_pos]} (diff={max_diff} > 0)"
+        f"/ atol={atol}, rtol={rtol}"
+        f"/ total failing elements: {num_different}, percentage={percentage}"
+    )
+
+
 class TestParity(unittest.TestCase):
     def test_xformers_parity(self):
         if not torch.cuda.is_available():
             raise unittest.SkipTest("CUDA not available, skipping test")
+        if "xformers" not in sys.modules:
+            raise unittest.SkipTest("xformers not available, skipping test")
+
+        atol = 4e-3
+        rtol = 4e-4
 
         _distributed_init()
         tensor_model_parallel_size_ = 1
@@ -73,9 +93,7 @@ class TestParity(unittest.TestCase):
         decoder = ModelParallelTransformerDecoderLayer(args).cuda()
         result = decoder(x_)
 
-        torch.distributed.barrier()
-
-        assert torch.allclose(xf_result, result)
+        assert _allclose(xf_result, result, atol=atol, rtol=rtol)
 
         loss_xf = torch.norm(xf_result)
         loss_xf.backward()
@@ -84,7 +102,7 @@ class TestParity(unittest.TestCase):
         loss.backward()
 
         torch.distributed.barrier()
-        assert torch.allclose(x.grad, x_.grad)
+        assert torch.allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
 
         # Reset groups
         destroy_model_parallel()
