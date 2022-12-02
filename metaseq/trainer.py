@@ -12,9 +12,9 @@ import logging
 import re
 import sys
 import time
+import math
 from itertools import chain
 from typing import Any, Dict, List
-
 import torch
 from omegaconf import OmegaConf
 
@@ -112,6 +112,8 @@ class Trainer(object):
         self._warn_once = set()
         self._wrapped_criterion = None
         self._wrapped_model = None
+        self._ewm_loss = None
+        self._skipped_loss_spikes = 0
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -357,6 +359,7 @@ class Trainer(object):
                 "extra_state": {
                     "metrics": metrics.state_dict(),
                     "previous_training_time": self.cumulative_training_time(),
+                    "ewm_loss": self._ewm_loss,
                 },
             }
 
@@ -527,6 +530,9 @@ class Trainer(object):
             if "previous_training_time" in extra_state:
                 self._previous_training_time = extra_state["previous_training_time"]
                 self._start_time = time.time()
+
+            if "ewm_loss" in extra_state:
+                self._ewm_loss = extra_state["ewm_loss"]
 
             self.lr_step(epoch)
 
@@ -759,13 +765,15 @@ class Trainer(object):
                 self.cfg.optimization.clip_norm_type,
                 self.cfg.optimization.skip_gradient_update_on_clip_norm,
             )
-
             # check that grad norms are consistent across workers
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
-
+            # skip optimizer step if there is a loss spike
+            ewm_loss_ratio = self.skip_spike(
+                logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
+            )
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates()
@@ -795,6 +803,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
+        except SpikeError as e:
+            overflow = True
+            logger.info(str(e))
+            self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -811,7 +823,7 @@ class Trainer(object):
 
             # log stats
             logging_output = self._reduce_and_log_stats(
-                logging_outputs, sample_size, grad_norm
+                logging_outputs, sample_size, grad_norm, ewm_loss_ratio
             )
 
             # clear CUDA cache to reduce memory fragmentation
@@ -951,6 +963,33 @@ class Trainer(object):
             aggregate_norm_fn=None,
             skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
         )
+
+    def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch, span=9):
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        loss_t = float(loss_sum / sample_size / math.log(2))
+
+        if self._ewm_loss is None:
+            self._ewm_loss = loss_t
+
+        ewm_t_1 = self._ewm_loss
+        alpha = 2 / (span + 1)
+        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
+        ewm_ratio = loss_t / ewm_t
+
+        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
+            self._skipped_loss_spikes += 1
+            raise SpikeError(
+                f"Skip batch as we encountered a loss spike. In "
+                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+                f"The ewm for the loss was only at {ewm_t:.2f} . "
+                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            )
+        # the current loss is only included in ewm if the current batch is not skipped
+        self._ewm_loss = ewm_t
+
+        return ewm_ratio
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1134,13 +1173,21 @@ class Trainer(object):
                     + "-" * 80
                 )
 
-    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
+    def _reduce_and_log_stats(
+        self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
+    ):
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
         ):
             metrics.log_speed("ups", 1.0, priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
+            metrics.log_scalar("ewm_loss", self._ewm_loss, priority=700, round=2)
+            metrics.log_scalar("ewm_loss_ratio", ewm_loss_ratio, priority=710, round=4)
+            metrics.log_scalar(
+                "skipped_loss_spikes", self._skipped_loss_spikes, priority=720
+            )
+            self._skipped_loss_spikes = 0
             if self.cfg.optimization.clip_norm > 0:
                 metrics.log_scalar(
                     "clip",
@@ -1231,3 +1278,7 @@ def _set_module_by_path(module, path, value):
     for name in path[:-1]:
         module = getattr(module, name)
     setattr(module, path[-1], value)
+
+
+class SpikeError(Exception):
+    pass
