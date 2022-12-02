@@ -8,8 +8,8 @@ from typing import Optional
 import torch
 from torch import nn as nn, Tensor
 
-from metaseq import utils
 from metaseq.modules import (
+    ActivationFn,
     LayerNorm,
     Dropout,
     Linear,
@@ -33,10 +33,13 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         ffn_dim = args.encoder_ffn_embed_dim
-        self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, "activation_fn", "relu") or "relu"
-        )
         self.fc1 = Linear(self.embed_dim, ffn_dim)
+        self.activation_fn = ActivationFn(
+            getattr(args, "activation_fn", "relu") or "relu",
+            Linear,
+            self.embed_dim,
+            ffn_dim,
+        )
         self.fc2 = Linear(ffn_dim, self.embed_dim)
         self.final_layer_norm = LayerNorm(self.embed_dim)
 
@@ -47,9 +50,6 @@ class TransformerEncoderLayer(nn.Module):
             dropout=args.attention_dropout,
             self_attention=True,
         )
-
-    def residual_connection(self, x, residual):
-        return residual + x
 
     def forward(
         self,
@@ -86,12 +86,11 @@ class TransformerEncoderLayer(nn.Module):
             key=x,
             value=x,
             key_padding_mask=encoder_padding_mask,
-            need_weights=False,
             attn_mask=attn_mask,
         )
 
         x = self.dropout_module(x)
-        x = self.residual_connection(x, residual)
+        x = residual + x
 
         residual = x
         x = self.final_layer_norm(x)
@@ -102,6 +101,5 @@ class TransformerEncoderLayer(nn.Module):
             self.fc2,
             self.dropout_module,
         )
-        l_aux = None
-        x = self.residual_connection(x, residual)
-        return x, l_aux
+        x = residual + x
+        return x

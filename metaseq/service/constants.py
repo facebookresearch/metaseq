@@ -36,3 +36,6 @@ LAUNCH_ARGS = [
     "--beam 1 --nbest 1",
     "/tmp",  # required "data" argument.
 ]
+
+# Optional arg overrides which influence model loading during inference
+INFERENCE_ARG_OVERRIDES = {}

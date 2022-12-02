@@ -46,11 +46,29 @@ class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         assert getattr(
             args, "use_sharded_state", False
         ), "Use sharded state must be True for tensor parallel, otherwise model saving and loaded might be broken"
+
+        if getattr(args, "sequence_parallel", False):
+            assert (
+                getattr(args, "model_parallel_size", 1) > 1
+            ), "--sequence-parallel only works when --model-parallel-size is greater than 1"
+            assert (
+                getattr(args, "dropout", 0.0) == 0.0
+            ), "havent yet tested if rng states are correct for dropout with seq_parallel"
+            assert (
+                getattr(args, "activation_fn", "gelu") == "gelu"
+                or getattr(args, "activation_fn", "gelu") == "relu"
+            ), "For now only supports gelu and relu"
+            assert not getattr(
+                args, "checkpoint_activations", False
+            ), "Cannot set --checkpoint-activations with sequence parallel."
+            assert not getattr(
+                args, "distribute_checkpointed_activations", False
+            ), "Cannot set --distribute-checkpointed-activations with sequence parallel."
 
         decoder = ModelParallelTransformerDecoder(
             args,
@@ -106,10 +124,6 @@ def base_lm_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)

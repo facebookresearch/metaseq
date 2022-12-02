@@ -181,9 +181,7 @@ class CommonConfig(MetaseqDataclass):
     model_parallel_size: int = field(
         default=1, metadata={"help": "total number of GPUs to parallelize model over"}
     )
-    profile: bool = field(
-        default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
-    )
+    profile: bool = field(default=False, metadata={"help": "use pytorch profiler (v2)"})
     use_plasma_view: bool = field(
         default=False, metadata={"help": "Store indices and sizes in shared memory"}
     )
@@ -195,9 +193,6 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
-    )
-    new_profiler: bool = field(
-        default=False, metadata={"help": "use pytorch profiler (v2)"}
     )
 
 
@@ -431,13 +426,6 @@ class OptimizationConfig(MetaseqDataclass):
             " (note: this may be interpreted differently depending on --lr-scheduler)"
         },
     )
-    train_with_epoch_remainder_batch: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "if set, include the last (partial) batch of each epoch in training"
-            " (default is to skip it)."
-        },
-    )
 
 
 @dataclass
@@ -498,30 +486,31 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
+    eval_module: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Python module that is dinamically imported to run evaluations. It must have an eval_fn method."
+                "Required args for eval_fn:"
+                "1. First one contains the cloud upload path."
+                "2. Second one contains the filename of the checkpoints in the cloud"
+            )
+        },
+    )
+    evaluate_interval_updates: int = field(
+        default=0, metadata={"help": "run eval_fn from eval_module every N updates"}
+    )
+    evaluate_last_checkpoint: bool = field(
+        default=False,
+        metadata={
+            "help": "run the eval_fn from eval_module at the end of the training run"
+        },
+    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
     keep_last_updates: int = field(
         default=-1, metadata={"help": "keep only the last N updates checkpoints"}
-    )
-    best_checkpoint_metric: str = field(
-        default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}
-    )
-    maximize_best_checkpoint_metric: bool = field(
-        default=False,
-        metadata={
-            "help": 'select the largest metric value for saving "best" checkpoints'
-        },
-    )
-    patience: int = field(
-        default=-1,
-        metadata={
-            "help": (
-                "early stop training if valid performance doesn't "
-                "improve for N consecutive validation runs; note "
-                "that this is influenced by --validate-interval"
-            )
-        },
     )
     checkpoint_suffix: str = field(
         default="", metadata={"help": "suffix to add to the checkpoint file name"}
@@ -542,8 +531,9 @@ class CheckpointConfig(MetaseqDataclass):
             "(default: only load on rank 0 and broadcast to other devices)"
         },
     )
+    # TODO: remove write_checkpoints_asynchronously flag; metaseq-internal has dependency here so keeping for now.
     write_checkpoints_asynchronously: bool = field(
-        default=False,
+        default=True,
         metadata={
             "help": (
                 "Write checkpoints asynchronously in a separate "
@@ -569,6 +559,13 @@ class CheckpointConfig(MetaseqDataclass):
         metadata={"help": "cluster we are running on: azure/aws/fair/rsc"},
     )
     model_parallel_size: int = II("common.model_parallel_size")
+    sequence_parallel: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use sequeunce level parallelism as over tensor parallel gpus."
+            " only use this option when --model-parallel-size > 1"
+        },
+    )
 
 
 @dataclass
@@ -576,10 +573,6 @@ class GenerationConfig(MetaseqDataclass):
     beam: int = field(
         default=5,
         metadata={"help": "beam size"},
-    )
-    nbest: int = field(
-        default=1,
-        metadata={"help": "number of hypotheses to output"},
     )
     max_len_a: float = field(
         default=0,

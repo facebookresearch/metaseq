@@ -3,25 +3,22 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
 import copy
 import importlib
 import logging
 import os
 import random
+import re
 import sys
 import warnings
 import math
-from typing import Callable, Dict, List, Optional
+from typing import List, Optional
 
-import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from torch import Tensor
 
 from metaseq.distributed import utils as distributed_utils
-from metaseq.incremental_decoding_utils import HasIncrementalState
 
 try:
     from amp_C import multi_tensor_l2norm
@@ -78,11 +75,7 @@ class FileContentsAction(argparse.Action):
 
 
 def split_paths(paths: str) -> List[str]:
-    return (
-        paths.split(os.pathsep)
-        if "://" not in paths
-        else paths.split(MANIFOLD_PATH_SEP)
-    )
+    return paths.split(os.pathsep) if "://" not in paths else paths.split("|")
 
 
 def apply_to_sample(f, sample):
@@ -128,29 +121,6 @@ def move_to_cpu(sample, cast_to_fp32=True):
     return apply_to_sample(_move_to_cpu, sample)
 
 
-def get_incremental_state(
-    module: HasIncrementalState,
-    incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
-    key: str,
-) -> Optional[Dict[str, Optional[Tensor]]]:
-    """Helper for getting incremental state for an nn.Module."""
-    return module.get_incremental_state(incremental_state, key)
-
-
-def set_incremental_state(
-    module: HasIncrementalState,
-    incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
-    key: str,
-    value: Dict[str, Optional[Tensor]],
-) -> Optional[Dict[str, Dict[str, Optional[Tensor]]]]:
-    """Helper for setting incremental state for an nn.Module."""
-    if incremental_state is not None:
-        result = module.set_incremental_state(incremental_state, key, value)
-        if result is not None:
-            incremental_state = result
-    return incremental_state
-
-
 def load_align_dict(replace_unk):
     if replace_unk is None:
         align_dict = None
@@ -168,57 +138,7 @@ def load_align_dict(replace_unk):
     return align_dict
 
 
-def parse_embedding(embed_path):
-    """Parse embedding text file into a dictionary of word and embedding tensors.
-
-    The first line can have vocabulary size and dimension. The following lines
-    should contain word and embedding separated by spaces.
-
-    Example:
-        2 5
-        the -0.0230 -0.0264  0.0287  0.0171  0.1403
-        at -0.0395 -0.1286  0.0275  0.0254 -0.0932
-    """
-    embed_dict = {}
-    with open(embed_path) as f_embed:
-        next(f_embed)  # skip header
-        for line in f_embed:
-            pieces = line.rstrip().split(" ")
-            embed_dict[pieces[0]] = torch.Tensor(
-                [float(weight) for weight in pieces[1:]]
-            )
-    return embed_dict
-
-
-norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
-
-
-def load_embedding(embed_dict, vocab, embedding):
-    for idx in range(len(vocab)):
-        token = vocab[idx]
-        if token in embed_dict:
-            embedding.weight.data[idx] = embed_dict[token]
-    return embedding
-
-
-def post_process_prediction(
-    hypo_tokens,
-    alignment,
-    tgt_dict,
-    remove_bpe=None,
-    extra_symbols_to_ignore=None,
-):
-    hypo_str = tgt_dict.string(
-        hypo_tokens, remove_bpe, extra_symbols_to_ignore=extra_symbols_to_ignore
-    )
-    if remove_bpe is not None:
-        # Convert back to tokens for evaluating without BPE
-        # Note that the dictionary can be modified inside the method.
-        hypo_tokens = tgt_dict.encode_line(hypo_str, add_if_not_exist=True)
-    return hypo_tokens, hypo_str, alignment
-
-
-def make_positions(tensor, padding_idx: int, onnx_trace: bool = False):
+def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
     Position numbers begin at padding_idx+1. Padding symbols are ignored.
@@ -267,6 +187,9 @@ def multi_tensor_l2_total_norm(grads, chunk_size=2048 * 32) -> torch.Tensor:
             norms += [torch.norm(g, p=2, dtype=torch.float32) for g in cur_device_grads]
     total_norm = torch.norm(torch.stack(norms))
     return total_norm
+
+
+norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
 
 
 @torch.no_grad()
@@ -468,18 +391,12 @@ def import_user_module(args):
                 )
 
 
-def softmax(x, dim: int, onnx_trace: bool = False):
-    if onnx_trace:
-        return F.softmax(x.float(), dim=dim)
-    else:
-        return F.softmax(x, dim=dim, dtype=torch.float32)
+def softmax(x, dim: int):
+    return F.softmax(x, dim=dim, dtype=torch.float32)
 
 
-def log_softmax(x, dim: int, onnx_trace: bool = False):
-    if onnx_trace:
-        return F.log_softmax(x.float(), dim=dim)
-    else:
-        return F.log_softmax(x, dim=dim, dtype=torch.float32)
+def log_softmax(x, dim: int):
+    return F.log_softmax(x, dim=dim, dtype=torch.float32)
 
 
 def get_perplexity(loss, round=2, base=2):
@@ -491,44 +408,6 @@ def get_perplexity(loss, round=2, base=2):
         return safe_round(base**loss, round)
     except OverflowError:
         return float("inf")
-
-
-def deprecation_warning(message, stacklevel=3):
-    # don't use DeprecationWarning, since it's ignored by default
-    warnings.warn(message, stacklevel=stacklevel)
-
-
-def relu_squared(x: torch.Tensor):
-    return F.relu(x).pow(2)
-
-
-def get_activation_fn(activation: str) -> Callable:
-    """Returns the activation function corresponding to `activation`"""
-    from metaseq.modules import gelu_accurate
-
-    if activation == "relu":
-        return F.relu
-    elif activation == "relu_squared":
-        return relu_squared
-    elif activation == "gelu":
-        return gelu_accurate
-    elif activation == "tanh":
-        return torch.tanh
-    elif activation == "linear":
-        return lambda x: x
-    else:
-        raise RuntimeError("--activation-fn {} not supported".format(activation))
-
-
-def get_available_activation_fns() -> List:
-    return [
-        "relu",
-        "relu_squared",
-        "gelu",
-        "gelu_accurate",
-        "tanh",
-        "linear",
-    ]
 
 
 def has_parameters(module):
@@ -597,33 +476,14 @@ class CudaEnvironment(object):
         logger.info(first_line)
 
 
-def eval_str_list(x, type=float):
-    if x is None:
-        return None
-    if isinstance(x, str):
-        x = eval(x)
-    try:
-        return list(map(type, x))
-    except TypeError:
-        return [type(x)]
-
-
-def round_safe(x):
-    if torch.is_tensor(x):
-        return float(np.round(x.cpu().numpy(), 4))
-    else:
-        try:
-            return round(x, 4)
-        except Exception:
-            return x
-
-
+# TODO[susan]: Move this to metaseq-internal where it is currently used
 def remove_prefix(text: str, prefix: str):
     if text.startswith(prefix):
         return text[len(prefix) :]
     return text
 
 
+# TODO[susan]: Move this to metaseq-internal where it is currently used
 def print_r0(*x, file=None):
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         print(*x, file=file, flush=True)
@@ -674,3 +534,38 @@ def get_precise_epoch(epoch: Optional[int], count: int, iterator_size: int) -> f
         if epoch is not None and iterator_size > 0
         else None
     )
+
+
+def tokenize_line(line):
+    line = re.compile(r"\s+").sub(" ", line)
+    line = line.strip()
+    return line.split()
+
+
+def init_method_normal(sigma, truncate_init=False):
+    """Init method based on N(0, sigma)."""
+
+    def init_(tensor):
+        if truncate_init:
+            return torch.nn.init.trunc_normal_(
+                tensor, mean=0.0, std=sigma, a=-3 * sigma, b=3 * sigma
+            )
+        else:
+            return torch.nn.init.normal_(tensor, mean=0.0, std=sigma)
+
+    return init_
+
+
+def scaled_init_method_normal(sigma, num_layers, truncate_init=False):
+    """Init method based on N(0, sigma/sqrt(2*num_layers)."""
+    std = sigma / math.sqrt(2.0 * num_layers)
+
+    def init_(tensor):
+        if truncate_init:
+            return torch.nn.init.trunc_normal_(
+                tensor, mean=0.0, std=std, a=-3 * std, b=3 * std
+            )
+        else:
+            return torch.nn.init.normal_(tensor, mean=0.0, std=std)
+
+    return init_

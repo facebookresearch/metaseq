@@ -24,14 +24,6 @@ def get_my_ip():
     return socket.gethostbyname(socket.gethostname())
 
 
-def encode_fn(generator, x):
-    """
-    encode a given value to list of bpe tokens
-    """
-    assert generator.bpe is not None
-    return generator.bpe.bpe.encode(normalize_newlines(x)).ids
-
-
 def build_logger():
     logging.basicConfig(
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -39,5 +31,5 @@ def build_logger():
         level=os.environ.get("LOGLEVEL", "INFO").upper(),
         stream=sys.stdout,
     )
-    logger = logging.getLogger("metaseq_cli.interactive")
+    logger = logging.getLogger("metaseq.cli.interactive")
     return logger

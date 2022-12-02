@@ -37,13 +37,14 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList(layers)
 
+    # TODO[susanz]: Return signature seems off. Cleanup?
+    #  fsdp_checkpoint_wrap_layer_frequency always 1 so this path is not called.
     def forward(self, x, **kwargs):
-        l_aux = []
         inner_states = []
         for layer in self.layers:
-            x, layer_attn, _, l_aux_i = layer(x, **kwargs)
+            x = layer(x, **kwargs)
             inner_states.append(x)
-        return x, layer_attn, inner_states, l_aux
+        return x, inner_states
 
 
 def _log_weight_stats(tensor, name):
@@ -75,14 +76,11 @@ class TransformerDecoder(IncrementalDecoder):
             self.dropout_module = None
 
         self.share_input_output_embed = args.share_decoder_input_output_embed
-        input_embed_dim = embed_tokens.embedding_dim
-        embed_dim = args.decoder_embed_dim
-        self.embed_dim = embed_dim
-        self.output_embed_dim = args.decoder_output_dim
+        self.embed_dim = args.decoder_embed_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
         self.embed_tokens = embed_tokens
-        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(self.embed_dim)
 
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
@@ -90,17 +88,6 @@ class TransformerDecoder(IncrementalDecoder):
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.project_in_dim = (
-            Linear(
-                input_embed_dim,
-                embed_dim,
-                bias=False,
-                initialize_params_on_gpu=initialize_params_on_gpu,
-                dtype=dtype,
-            )
-            if embed_dim != input_embed_dim
-            else None
-        )
         self.use_alibi: bool = getattr(args, "alibi", False)
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
@@ -109,19 +96,18 @@ class TransformerDecoder(IncrementalDecoder):
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_target_positions,
-                embed_dim,
+                self.embed_dim,
                 self.padding_idx,
                 learned=args.decoder_learned_pos,
                 learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
                 full_megatron_init=getattr(args, "full_megatron_init", False),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+                truncate_init=getattr(args, "truncate_init", False),
             )
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
         self.embed_positions.to(device).to(dtype)
-
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
         self.layers = nn.ModuleList([])
         layers = []
@@ -170,22 +156,10 @@ class TransformerDecoder(IncrementalDecoder):
         self.num_layers = len(self.layers)
 
         self.layer_norm = LayerNorm(
-            embed_dim,
+            self.embed_dim,
             elementwise_affine=not getattr(args, "disable_affine_ln", False),
         )
         self.layer_norm.to(device).to(dtype)
-
-        self.project_out_dim = (
-            Linear(
-                embed_dim,
-                self.output_embed_dim,
-                bias=False,
-                initialize_params_on_gpu=initialize_params_on_gpu,
-                dtype=dtype,
-            )
-            if embed_dim != self.output_embed_dim
-            else None
-        )
 
         self.output_projection = None
         if self.share_input_output_embed:
@@ -199,15 +173,14 @@ class TransformerDecoder(IncrementalDecoder):
             self.output_projection.weight = self.embed_tokens.weight
         else:
             self.output_projection = Linear(
-                self.output_embed_dim,
+                self.embed_dim,
                 len(dictionary),
                 bias=False,
                 initialize_params_on_gpu=initialize_params_on_gpu,
                 dtype=dtype,
             )
-            std = self.output_embed_dim**-0.5
-            nn.init.trunc_normal_(
-                self.output_projection.weight, mean=0, std=std, a=-4 * std, b=4 * std
+            nn.init.normal_(
+                self.output_projection.weight, mean=0, std=self.embed_dim**-0.5
             )
             if initialize_params_on_gpu:
                 self.output_projection = utils.floating_point_precision_convertor(
@@ -360,15 +333,14 @@ class TransformerDecoder(IncrementalDecoder):
 
         x = embed = self.embed_scale * token_embedding
 
-        if self.project_in_dim is not None:
-            x = self.project_in_dim(x)
-
         if positions is not None:
             x += positions
 
         if self.dropout_module is not None:
             x = self.dropout_module(x)
 
+        # Returning in T x B x C format as that makes integrating sequence parallelism easier.
+        x = x.transpose(0, 1).contiguous()
         return x, embed, positions
 
     # forward for TransformerDecoder
@@ -413,6 +385,9 @@ class TransformerDecoder(IncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
+
+        # Transposing back to B x T x C, so that the interface stays the same.
+        x = x.transpose(0, 1).contiguous()
         return x, extra
 
     def extract_features(
@@ -422,35 +397,16 @@ class TransformerDecoder(IncrementalDecoder):
         token_embeddings: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
-        return self.extract_features_scriptable(
-            prev_output_tokens,
-            incremental_state=incremental_state,
-            token_embeddings=token_embeddings,
-            self_attn_padding_mask=self_attn_padding_mask,
-        )
-
-    def extract_features_scriptable(
-        self,
-        prev_output_tokens,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        token_embeddings: Optional[Tensor] = None,
-        self_attn_padding_mask: Optional[Tensor] = None,
-    ):
-        """
-        A scriptable subclass of this class has an extract_features method and calls
-        super().extract_features, but super() is not supported in torchscript. A copy
-        of this function is made to be used in the subclass instead.
-        """
-        last_layer_idx = self.num_layers - 1
-
         # compute self-attention padding mask (involves device-to-host transfer,
         # so put it at the top of the forward)
-        if self_attn_padding_mask is None and (
-            self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any()
+        if (
+            self_attn_padding_mask is None
+            and prev_output_tokens.eq(self.padding_idx).any()
         ):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # embed tokens and positions
+        # x is T x B x C
         x, tok, pos = self.forward_embedding(
             prev_output_tokens, token_embeddings, incremental_state
         )
@@ -462,43 +418,27 @@ class TransformerDecoder(IncrementalDecoder):
         else:
             self_attn_mask = None
 
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
-
         # decoder layers
-        attn: Optional[Tensor] = None
         # store other representations for instrumentation in VocabParallelCrossEntCrit
         # Note: we are only storing the embeddings output and output of final transformer block
         # instead of all inner representations, as thats the only thing being logged and storing
         # all intermediate representation causes OOM for large models during validation.
         inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
-        l_aux = []
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _, l_aux_i = layer(
+            x = layer(
                 x,
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
+                recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
             )
-            l_aux.append(l_aux_i)
-            if layer_attn is not None and idx == last_layer_idx:
-                attn = layer_attn.float().to(x)
-
         inner_states.append(x)
-        if attn is not None:
-            # average probabilities over heads
-            attn = attn.mean(dim=0)
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
-
-        if self.project_out_dim is not None:
-            x = self.project_out_dim(x)
-
-        return x, {"attn": [attn], "inner_states": inner_states, "l_aux": l_aux}
+        # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
+        return x, {"inner_states": inner_states}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
@@ -511,7 +451,7 @@ class TransformerDecoder(IncrementalDecoder):
         return min(self.max_target_positions, self.embed_positions.max_positions)
 
     def buffered_future_mask(self, tensor, input_tokens=None):
-        batch_size, cur_seq_len = tensor.size(0), tensor.size(1)
+        cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
         need_to_make_new_mask = (
             self._future_mask.size(0) == 0

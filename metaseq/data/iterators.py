@@ -131,12 +131,14 @@ class StreamingCountingIterator(object):
         self.n = 0
         self.next_worker = 0
         self.sequences_consumed = [0 for _ in range(self.num_workers)]
+        self.worker_offset = 0
 
     def __iter__(self):
         return self
 
     def __next__(self):
         worker_id, r = next(self._peekable_itr)
+        worker_id = (worker_id + self.worker_offset) % self.num_workers
         self.sequences_consumed[worker_id] += self.batch_size * self.num_shards
         self.next_worker = (worker_id + 1) % self.num_workers
         self.n += 1
@@ -242,6 +244,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         assert isinstance(dataset, torch.utils.data.IterableDataset)
 
         self._itr: Optional[StreamingCountingIterator] = None
+        self.worker_offset = 0
 
     @property
     def next_epoch_idx(self):
@@ -356,6 +359,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             self._itr.n = n
             self._itr.sequences_consumed = sequences_consumed
             self._itr.next_worker = next_worker
+            self._itr.worker_offset = next_worker
         else:
             self._itr = self._get_iterator_for_epoch(self.epoch)
             # checkpoint from before sequences_consumed was added, slow fast forward...
@@ -433,7 +437,7 @@ class EpochBatchIterator(EpochBatchIterating):
             (default: ``False``).
         skip_remainder_batch (bool, optional): if set, discard the last batch in an epoch
             for the sake of training stability, as the last batch is usually smaller than
-                local_batch_size * distributed_word_size (default: ``False``).
+                local_batch_size * distributed_word_size (default: ``True``).
     """
 
     def __init__(
@@ -449,7 +453,7 @@ class EpochBatchIterator(EpochBatchIterating):
         buffer_size=0,
         timeout=0,
         disable_shuffling=False,
-        skip_remainder_batch=False,
+        skip_remainder_batch=True,
     ):
         assert isinstance(dataset, torch.utils.data.Dataset)
         self.dataset = dataset
@@ -670,12 +674,12 @@ class GroupedIterator(CountingIterator):
         chunk_size (int): size of each chunk
         skip_remainder_batch (bool, optional): if set, discard the last grouped batch in
           each training epoch, as the last grouped batch is usually smaller than
-                local_batch_size * distributed_word_size * chunk_size (default: ``False``).
+                local_batch_size * distributed_word_size * chunk_size (default: ``True``).
     Attributes:
         n (int): number of elements consumed from this iterator
     """
 
-    def __init__(self, iterable, chunk_size, skip_remainder_batch=False):
+    def __init__(self, iterable, chunk_size, skip_remainder_batch=True):
         if skip_remainder_batch:
             total_num_itrs = int(math.floor(len(iterable) / float(chunk_size)))
             logger.info(
@@ -701,7 +705,7 @@ class GroupedIterator(CountingIterator):
             iterable.take(total_num_itrs * chunk_size)
 
 
-def _chunk_iterator(itr, chunk_size, skip_remainder_batch=False):
+def _chunk_iterator(itr, chunk_size, skip_remainder_batch=True):
     chunk = []
     for x in itr:
         chunk.append(x)

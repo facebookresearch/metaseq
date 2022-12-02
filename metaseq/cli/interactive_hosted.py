@@ -6,12 +6,13 @@
 """
 Host the demo.
 
-Launch with `python -m metaseq_cli.interactive_hosted` to run locally.
+Launch with `python -m metaseq.cli.interactive_hosted` to run locally.
 
 See docs/api.md for more information.
 """
 
 import os
+import ast
 import queue
 import pkg_resources
 import random
@@ -29,17 +30,28 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.service.queue import PriorityQueueRingShard
 from metaseq.service.workers import WorkItem
-from metaseq.service.constants import (
-    MAX_SEQ_LEN,
-    MAX_BATCH_TOKENS,
-    MAX_BEAM,
-    DEFAULT_PORT,
-    TOTAL_WORLD_SIZE,
-    LAUNCH_ARGS,
-)
-from metaseq.service.utils import get_my_ip, encode_fn, build_logger
+from metaseq.service.utils import get_my_ip, build_logger
 from metaseq.service.responses import OAIResponse
 
+import importlib
+
+if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
+    constants_module = importlib.import_module("metaseq.service.constants")
+else:
+    constants_module = importlib.import_module(
+        os.environ["METASEQ_SERVICE_CONSTANTS_MODULE"]
+    )
+    # Don't forget to patch OAIResponse
+    import metaseq.service.responses
+
+    metaseq.service.responses.CHECKPOINT_FOLDER = constants_module.CHECKPOINT_FOLDER
+MAX_SEQ_LEN = constants_module.MAX_SEQ_LEN
+MAX_BATCH_TOKENS = constants_module.MAX_BATCH_TOKENS
+MAX_BEAM = constants_module.MAX_BEAM
+DEFAULT_PORT = constants_module.DEFAULT_PORT
+TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
+LAUNCH_ARGS = constants_module.LAUNCH_ARGS
+INFERENCE_ARG_OVERRIDES = constants_module.INFERENCE_ARG_OVERRIDES
 
 app = Flask(__name__)
 
@@ -96,7 +108,7 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
             # fit the max sequence length
             max_prompt_len = max(x.prompt_len for x in [item] + batch)
             max_gen_len = max(x.gen_len for x in [item] + batch)
-            overflow = max_prompt_len + max_gen_len < MAX_SEQ_LEN
+            overflow = (max_prompt_len + max_gen_len) > MAX_SEQ_LEN
             if batch and (batch_cost > max_tokens or overflow):
                 # we're over budget, put it back in the queue
                 target_queue.put(item)
@@ -261,12 +273,12 @@ def completions(engine=None):
 
     if isinstance(prompts, str):
         # single string. tokenize and turn it to the single pre-tokenized case
-        prompts = [encode_fn(generator, prompts)]
+        prompts = [generator.encode_fn(prompts)]
     assert isinstance(prompts, list)
     assert len(prompts) > 0
     if isinstance(prompts[0], str):
         # multi string
-        prompts = [encode_fn(generator, p) for p in prompts]
+        prompts = [generator.encode_fn(p) for p in prompts]
     elif isinstance(prompts[0], int):
         # single pre-tokenized
         prompts = [prompts]
@@ -283,9 +295,9 @@ def completions(engine=None):
         if stop is None:
             pass
         elif isinstance(stop, str):
-            stop = [encode_fn(generator, stop)[0]]
+            stop = [generator.encode_fn(stop)[0]]
         else:
-            stop = [encode_fn(generator, s)[0] for s in stop]
+            stop = [generator.encode_fn(s)[0] for s in stop]
         generation_args["stop"] = stop
     if "temperature" in generation_args:
         generation_args["temperature"] = round(float(generation_args["temperature"]), 1)
@@ -295,15 +307,17 @@ def completions(engine=None):
         generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
     else:
         generation_args["top_p"] = 1.0
-    # beam search top n
-    if "n" in generation_args:
-        if int(generation_args["n"]) > MAX_BEAM:
-            logger.warning(
-                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
-            )
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
-    else:
+    if "n" not in generation_args:
         generation_args["n"] = 1
+    if "best_of" not in generation_args:
+        generation_args["best_of"] = generation_args["n"]
+    # beam search
+    if int(generation_args["best_of"]) > MAX_BEAM:
+        logger.warning(
+            f'beam size/sampling size of {int(generation_args["best_of"])} too large, using {MAX_BEAM} to avoid OOM'
+        )
+        generation_args["best_of"] = MAX_BEAM
+        generation_args["n"] = min(MAX_BEAM, int(generation_args["n"]))
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):
@@ -367,6 +381,11 @@ def cli_main():
     port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
+
+    model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
+    model_overrides.update(INFERENCE_ARG_OVERRIDES)
+    cfg.common_eval.model_overrides = str(model_overrides)
+
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 

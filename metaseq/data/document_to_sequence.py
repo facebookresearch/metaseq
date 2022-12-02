@@ -3,13 +3,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 import math
+import logging
 from typing import Optional
 
 import numpy as np
 import torch
 
 from metaseq.data import data_utils
+from metaseq.distributed import utils as distributed_utils
 import time
 
 from typing import Union, List, Iterable, Tuple, TypedDict, Literal
@@ -17,6 +20,8 @@ from typing import Union, List, Iterable, Tuple, TypedDict, Literal
 from multiprocessing import Array, Lock
 from contextlib import contextmanager
 from ctypes import c_int, sizeof, memmove, addressof
+
+logger = logging.getLogger(__name__)
 
 
 class LockingArray:
@@ -141,7 +146,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         break_mode (str, optional): Mode used for breaking tokens. Values can
             be one of:
             - 'none': break tokens into equally sized blocks (up to block_size)
-        drop_last (bool, optional): drop the last item (default: False)
+        drop_last (bool, optional): drop the last item (default: True)
         padding_idx (int, optional): index to use for padding symbols
             (required if *drop_last* is ``False``)
         shuffle_buffer_size (int, optional): buffer this many items and shuffle
@@ -159,7 +164,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         dataset: torch.utils.data.IterableDataset,
         block_size: int,
         break_mode: str = "none",
-        drop_last: Optional[bool] = False,
+        drop_last: Optional[bool] = True,
         padding_idx: Optional[int] = None,
         shuffle_buffer_size: int = 1,
         seed: Optional[int] = None,
@@ -349,11 +354,20 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         seq_it = iter(sequences())
 
         try:
+            if to_skip > 0 and worker_id == 0:
+                logger.info(f"Skipping {to_skip} sequences")
             with self.len_cache.worker_locks[worker_id]:
                 for i in range(to_skip):
                     next(seq_it)
             t1 = time.time()
             skip_time = t1 - t0
+            if worker_id == 0 and distributed_utils.get_global_rank() == 0:
+                local_rank = (
+                    os.environ["LOCAL_RANK"] if "LOCAL_RANK" in os.environ else 0
+                )
+                logger.info(
+                    f"Begin filling streaming dataset buffer for each worker on rank {local_rank}"
+                )
             while True:
                 with self.len_cache.worker_locks[worker_id]:
                     elem = next(seq_it)

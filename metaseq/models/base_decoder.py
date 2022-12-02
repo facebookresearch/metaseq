@@ -15,7 +15,6 @@ class BaseDecoder(nn.Module):
     def __init__(self, dictionary):
         super().__init__()
         self.dictionary = dictionary
-        self.onnx_trace = False
 
     def forward(self, prev_output_tokens, **kwargs):
         """
@@ -52,22 +51,11 @@ class BaseDecoder(nn.Module):
 
     def get_normalized_probs(self, logits: Tensor, log_probs: bool):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(logits, log_probs)
-
-    # TorchScript doesn't support super() method so that the scriptable Subclass
-    # can't access the base class model in Torchscript.
-    # Current workaround is to add a helper function with different name and
-    # call the helper function from scriptable Subclass.
-    def get_normalized_probs_scriptable(self, logits: Tensor, log_probs: bool):
-        """Get normalized probabilities (or log probs) from a net's output."""
         if log_probs:
-            return utils.log_softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.log_softmax(logits, dim=-1)
         else:
-            return utils.softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.softmax(logits, dim=-1)
 
     def max_positions(self):
         """Maximum input length supported by the decoder."""
         return 1e6  # an arbitrary large number
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True

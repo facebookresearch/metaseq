@@ -409,7 +409,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         data_buffer_size=0,
         disable_iterator_cache=False,
         batch_by_size=True,
-        skip_remainder_batch=False,
+        skip_remainder_batch=True,
     ):
         """
         Get an iterator that yields batches of data from the given dataset.
@@ -471,7 +471,6 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
-
         return iterators.StreamingEpochBatchIterator(
             dataset=dataset,
             batch_size=max_sentences,

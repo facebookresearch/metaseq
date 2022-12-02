@@ -16,7 +16,7 @@ class PartitionedStreamingDataset(torch.utils.data.IterableDataset):
         dataset (~torch.utils.data.IterableDataset): dataset to partition
         num_shards (int): number of ways to partition the dataset
         shard_id (int): shard index to iterate over
-        drop_last (bool, optional): drop the last item (default: False)
+        drop_last (bool, optional): drop the last item (default: True)
     """
 
     def __init__(
@@ -24,7 +24,7 @@ class PartitionedStreamingDataset(torch.utils.data.IterableDataset):
         dataset: torch.utils.data.IterableDataset,
         num_shards: int,
         shard_id: int,
-        drop_last: bool = False,
+        drop_last: bool = True,
     ):
         super().__init__()
         self.dataset = dataset

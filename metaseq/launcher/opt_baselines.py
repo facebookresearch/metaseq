@@ -14,7 +14,6 @@ from metaseq.launcher.opt_job_constants import (
     TOTAL_TRAIN_TOKENS,
     TOTAL_WARMUP_TOKENS,
     MODEL_SIZES,
-    DATA_LOCATIONS,
     VALID_SUBSETS,
 )
 from metaseq.launcher.sweep import (
@@ -22,6 +21,12 @@ from metaseq.launcher.sweep import (
     get_env_from_args,
     main as sweep_main,
 )
+
+try:
+    # internal logic denoting where data locations are
+    from metaseq_internal.constants import DATA_LOCATIONS
+except ImportError:
+    from metaseq.launcher.opt_job_constants import DATA_LOCATIONS
 
 # have to do this at the module level, unfortunately; unable to use args.<env>
 for _cluster, _folder in DATA_LOCATIONS.items():
@@ -75,17 +80,24 @@ def get_grid(args):
     # Infer data path if not given
     DATA_ROOT = ""
     valid_subsets = VALID_SUBSETS
-    if args.data is None and not args.benchmark:
-        cluster_env = get_env_from_args(args)
-        data_loc_by_env = DATA_LOCATIONS[cluster_env]
-        if args.circleci:
-            data_loc_by_env = "./gpu_tests/circleci"
-            valid_subsets = ["BookCorpusFair"]
-        args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
-        if os.path.exists(args.data):
-            DATA_ROOT = data_loc_by_env
+    if not args.benchmark:
+        if args.data is None:
+            cluster_env = get_env_from_args(args)
+            data_loc_by_env = DATA_LOCATIONS[cluster_env]
+            if args.circleci:
+                data_loc_by_env = "./gpu_tests/circleci"
+                valid_subsets = ["BookCorpusFair"]
+            args.data = os.path.join(data_loc_by_env, "corpus_dedup_10_10_1_0.05_exp29")
+            if os.path.exists(args.data):
+                DATA_ROOT = data_loc_by_env
+            else:
+                raise RuntimeError(
+                    "Where are you running this?! Check DATA_LOCATIONS or pass --data "
+                    "pointing to a directory with 'data' and 'tokenizers' folders."
+                )
         else:
-            raise RuntimeError("Where are you running this?! Check DATA_LOCATIONS.")
+            DATA_ROOT = args.data
+            args.data = os.path.join(args.data, "data")
 
     SEQ_LEN = 2048
     size = MODEL_SIZES[args.model_size]
@@ -153,7 +165,7 @@ def get_grid(args):
     grid += task_config
 
     if args.profile:
-        grid += [hyperparam("--new-profiler")]
+        grid += [hyperparam("--profile")]
 
     no_save_params = args.no_save_dir
     args.snapshot_code = True

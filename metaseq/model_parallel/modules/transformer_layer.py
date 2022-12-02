@@ -8,7 +8,7 @@ import math
 import torch
 from torch import nn
 
-import metaseq.utils as utils
+from metaseq import utils
 from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer, TransformerEncoderLayer
 from metaseq.utils import init_method_normal_trunc, scaled_init_method_normal_trunc
@@ -69,6 +69,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         megatron_init_sigma,
         dtype,
         disable_bias=False,
+        truncate_init=False,
     ):
         def _init_method_bias(bias):
             fan_in = input_dim
@@ -77,7 +78,9 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
 
         if full_megatron_init:
             # Setting bias init method to None, initializes biases with zero.
-            init_method_weights = init_method_normal_trunc(megatron_init_sigma)
+            init_method_weights = utils.init_method_normal(
+                megatron_init_sigma, truncate_init=truncate_init
+            )
             init_method_bias = None
         else:
             init_method_weights = _weight_init
@@ -96,21 +99,26 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         )
 
     # TODO[susanz]: unify method signatures with non-model-parallel version.
+    # Note: only fc2 includes the full_megatron_init_scalar arg, given the scaled_init_method_normal call.
     def build_fc2(
         self,
         input_dim,
         output_dim,
         initialize_params_on_gpu,
         full_megatron_init,
+        full_megatron_init_scalar,
         megatron_init_sigma,
         num_layers,
         dtype,
         disable_bias=False,
+        truncate_init=False,
     ):
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
-            init_method_weights = scaled_init_method_normal_trunc(
-                megatron_init_sigma, num_layers
+            init_method_weights = utils.scaled_init_method_normal(
+                megatron_init_sigma * full_megatron_init_scalar,
+                num_layers,
+                truncate_init=truncate_init,
             )
         else:
             init_method_weights = _weight_init
@@ -138,15 +146,19 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             embed_dim=embed_dim,
             num_heads=args.decoder_attention_heads,
             dropout=args.attention_dropout,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             use_cpu_initialization=not getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
             full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             bias=not getattr(args, "disable_bias", False),
+            attn_variant=getattr(args, "attn_variant", "default"),
+            xf_attn_op=getattr(args, "xf_attn_op", None),
+            truncate_init=getattr(args, "truncate_init", None),
         )
 
     def forward_attention(
@@ -157,16 +169,15 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         residual,
         key_padding_mask=None,
         incremental_state=None,
-        need_weights=False,
         attn_mask=None,
     ):
-        (attn_output, attn_bias), attn_weights = self.self_attn(
+        # This is calling into ModelParallelMultiheadAttention.forward
+        attn_output, attn_bias = self.self_attn(
             query=query,
             key=key,
             value=value,
             key_padding_mask=key_padding_mask,
             incremental_state=incremental_state,
-            need_weights=need_weights,
             attn_mask=attn_mask,
         )
         # Note [naman]: got rid off fused bias, dropout and residual cause
@@ -182,4 +193,4 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             training=self.training,
         )
         x = x + residual
-        return x, attn_weights
+        return x

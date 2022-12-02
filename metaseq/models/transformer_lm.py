@@ -11,7 +11,7 @@ from typing import Optional
 
 from omegaconf import II
 
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
@@ -25,6 +25,7 @@ from metaseq.models.transformer_decoder import (
     TransformerDecoder,
 )
 from metaseq.modules.embedding import Embedding
+from metaseq.modules.activation_functions import get_available_activation_fns
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
-    activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
+    activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
         default="relu", metadata={"help": "activation function to use"}
     )
     dropout: float = field(default=0.1, metadata={"help": "dropout probability"})
@@ -42,12 +43,6 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
-    )
-    decoder_output_dim: int = field(
-        default=512, metadata={"help": "decoder output dimension"}
-    )
-    decoder_input_dim: int = field(
-        default=512, metadata={"help": "decoder input dimension"}
     )
     decoder_ffn_embed_dim: int = field(
         default=2048, metadata={"help": "decoder embedding dimension for FFN"}
@@ -131,6 +126,16 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "Exact same init as Megatron"},
     )
+    full_megatron_init_scalar: float = field(
+        default=1.0,
+        metadata={
+            "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
+        },
+    )
+    truncate_init: bool = field(
+        default=False,
+        metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
+    )
     megatron_init_sigma: float = field(
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
@@ -148,7 +153,22 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     disable_affine_ln: Optional[bool] = field(
         default=False, metadata={"help": "disable weight and bias of layer norm"}
     )
-
+    attn_variant: ATTN_CHOICES = field(
+        default="default", metadata={"help": "variant to use for attention"}
+    )
+    xf_attn_op: str = field(
+        default="None",
+        metadata={
+            "help": "which memory efficient attention operation to use from xFormers."
+        },
+    )
+    recompute_fc1_num_layers: Optional[int] = field(
+        default=0,
+        metadata={
+            "help": "Num layers for which to recompute FC1 in backwards, "
+            "only applicable when --sequence-parallel option is set"
+        },
+    )
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
     tokens_per_sample: int = II("task.tokens_per_sample")
@@ -179,7 +199,7 @@ class TransformerLanguageModel(LanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         decoder = TransformerDecoder(
             args,
@@ -217,12 +237,6 @@ def base_lm_architecture(args):
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
     )
-
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)

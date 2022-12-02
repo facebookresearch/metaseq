@@ -10,7 +10,21 @@ import subprocess
 from typing import Optional, List, Callable, MutableMapping
 from urllib.parse import urlparse
 
-from metaseq.launcher.opt_job_constants import ComputeEnvs
+try:
+    # internal logic denoting where data locations are
+    from metaseq_internal.constants import (
+        ComputeEnvs,
+        DEFAULT_PARTITION,
+        DEFAULT_PREFIX,
+        DEFAULT_CPU_PER_TASK,
+    )
+except ImportError:
+    from metaseq.launcher.opt_job_constants import (
+        ComputeEnvs,
+        DEFAULT_PARTITION,
+        DEFAULT_PREFIX,
+        DEFAULT_CPU_PER_TASK,
+    )
 
 
 class hyperparam(object):
@@ -28,7 +42,7 @@ class hyperparam(object):
         Arguments:
         - name : the name of the hyperparameter (e.g., `--dropout`)
         - values : the set of values to sweep over (e.g., `[0.0, 0.1, 0.2]`)
-        - binary_flag : whether the hyperparameter uses a boolean flag (e.g., `--no-save`)
+        - binary_flag : whether the hyperparameter uses a boolean flag (e.g., `--no-tensorboard`)
         - save_dir_key : function that takes the hyperparameter value and returns the "key"
                          to be appended to the output directory name
         - positional_arg : whether the hyperparameter is a positional argument
@@ -71,16 +85,17 @@ class hyperparam(object):
 
 
 def get_env_from_args(args):
-    # Returns a ComputeEnvs enum.
     if args.azure:
         return ComputeEnvs.AZURE
     elif args.aws:
         return ComputeEnvs.AWS
     elif args.fair:
         return ComputeEnvs.FAIR
+    elif args.rsc:
+        return ComputeEnvs.RSC
     else:
         raise NotImplementedError(
-            "Env not passed in! Please pass in one of: --azure, --aws, --fair"
+            "Env not passed in! Please pass in one of: --azure, --aws, --fair, --rsc"
         )
 
 
@@ -135,7 +150,7 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
     parser.add_argument("--local", action="store_true", help="run job locally")
     parser.add_argument("--debug", action="store_true", help="debug")
     parser.add_argument(
-        "--script", default="metaseq_cli/train.py", help="script to launch"
+        "--script", default="metaseq/cli/train.py", help="script to launch"
     )
     parser.add_argument(
         "--python", default="python", help="path to nonstandard python binary"
@@ -174,19 +189,32 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         help="root path for saving the snapshot code.",
     )
     parser.add_argument(
+        "--snapshot-recurse-dirs-internal",
+        default="metaseq_internal",
+        help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
+    )
+    parser.add_argument(
         "--snapshot-recurse-dirs-oss",
-        default="metaseq,metaseq_cli",
+        default="metaseq",
         help="comma-separated directories from where to recursively copy *.py, *.so and *.yaml files",
     )
     parser.add_argument(
         "--no-tensorboard", action="store_true", help="disable tensorboard logging"
     )
     parser.add_argument("--no-wandb", action="store_true", help="disable WandB logging")
+    parser.add_argument(
+        "--post-steps",
+        nargs="+",
+        help="additional steps to execute after the primary job is complete. "
+        "this can be a file with the steps, or a string. some placeholders such as "
+        "{job_dir} will be replaced",
+    )
 
     # Env flags
     parser.add_argument("--azure", action="store_true", help="running on azure")
     parser.add_argument("--aws", action="store_true", help="running on aws")
     parser.add_argument("--fair", action="store_true", help="running on fair")
+    parser.add_argument("--rsc", action="store_true", help="running on rsc")
 
     # Azure specific flag
     parser.add_argument(
@@ -223,6 +251,17 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
         default=None,  # None will default to save_dir/tb
         help="save tensorboard logs in <tensorboard-logdir>/<prefix>.<save_dir_key>",
     )
+    parser.add_argument(
+        "-ts",
+        "--tombstonable",
+        type=bool,
+        default=False,
+        help=(
+            "make the job killable by writing a "
+            "tombstone 'tombstone_<job_id>' file to user's home directory "
+            "(/shared/home/$USER)"
+        ),
+    )
 
     if add_extra_options_func is not None:  # mutates parser
         add_extra_options_func(parser)
@@ -230,8 +269,8 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
 
     # Env check
     assert (
-        sum([args.azure, args.aws, args.fair]) == 1
-    ), "Must pass an env, and only one env (--azure, --aws, --fair)!"
+        sum([args.azure, args.aws, args.fair, args.rsc]) == 1
+    ), "Must pass an env, and only one env (--azure, --aws, --fair, or --rsc)!"
 
     # Set defaults based on env
     env = get_env_from_args(args)
@@ -241,19 +280,10 @@ def _get_args(add_extra_options_func=None, input_args: Optional[List[str]] = Non
 
 def _modify_arg_defaults_based_on_env(env, args):
     # TODO(susan): move all this default logic into separate config file
-    default_partition = None
-    if env == ComputeEnvs.FAIR:
-        default_partition = "learnfair"
+    default_partition = DEFAULT_PARTITION[env]
+    default_prefix = DEFAULT_PREFIX[env]
 
-    default_prefix = ""
-    if env == ComputeEnvs.AZURE:
-        default_prefix = "/shared/home"
-    elif env == ComputeEnvs.AWS:
-        default_prefix = "/checkpoints"
-    elif env == ComputeEnvs.FAIR:
-        default_prefix = "/checkpoint"
-
-    if env == ComputeEnvs.FAIR:
+    if env == ComputeEnvs.FAIR or env == ComputeEnvs.RSC:
         default_checkpoint_dir = os.path.join(
             default_prefix, os.environ["USER"], str(datetime.date.today())
         )
@@ -265,11 +295,7 @@ def _modify_arg_defaults_based_on_env(env, args):
             str(datetime.date.today()),
         )
 
-    default_cpu_per_task = None
-    if env == ComputeEnvs.AZURE or env == ComputeEnvs.AWS:
-        default_cpu_per_task = 12
-    elif env == ComputeEnvs.FAIR:
-        default_cpu_per_task = 10
+    default_cpu_per_task = DEFAULT_CPU_PER_TASK[env]
 
     default_cpu_bind = "none"
     if env == ComputeEnvs.AZURE:
@@ -294,7 +320,7 @@ def _modify_arg_defaults_based_on_env(env, args):
         if azure_upload_path != "":
             # write checkpoints to local scratch storage on each node
             default_local_checkpoints_dir = os.path.join(
-                "/mnt/scratch",
+                "/mnt/resource_nvme",
                 os.environ["USER"],
                 "checkpoints",
                 str(datetime.date.today()),
@@ -340,6 +366,9 @@ def _modify_arg_defaults_based_on_env(env, args):
     # assign default local checkpoint dir
     if args.local_checkpoints_dir is None:
         args.local_checkpoints_dir = default_local_checkpoints_dir
+
+    # assign base directory
+    args.base_directory = default_prefix
 
 
 def main(

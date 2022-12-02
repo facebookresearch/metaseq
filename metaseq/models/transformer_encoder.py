@@ -126,36 +126,6 @@ class TransformerEncoder(BaseEncoder):
                 - **encoder_embedding** (Tensor): the (scaled) embedding lookup
                   of shape `(batch, src_len, embed_dim)`
         """
-        return self.forward_scriptable(src_tokens, src_lengths, token_embeddings)
-
-    # TorchScript doesn't support super() method so that the scriptable Subclass
-    # can't access the base class model in Torchscript.
-    # Current workaround is to add a helper function with different name and
-    # call the helper function from scriptable Subclass.
-    def forward_scriptable(
-        self,
-        src_tokens,
-        src_lengths: Optional[torch.Tensor] = None,
-        token_embeddings: Optional[torch.Tensor] = None,
-    ):
-        """
-        Args:
-            src_tokens (LongTensor): tokens in the source language of shape
-                `(batch, src_len)`
-            src_lengths (torch.LongTensor): lengths of each source sentence of
-                shape `(batch)`
-            token_embeddings (torch.Tensor, optional): precomputed embeddings
-                default `None` will recompute embeddings
-
-        Returns:
-            dict:
-                - **encoder_out** (Tensor): the last encoder layer's output of
-                  shape `(src_len, batch, embed_dim)`
-                - **encoder_padding_mask** (ByteTensor): the positions of
-                  padding elements of shape `(batch, src_len)`
-                - **encoder_embedding** (Tensor): the (scaled) embedding lookup
-                  of shape `(batch, src_len, embed_dim)`
-        """
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         has_pads = encoder_padding_mask.any()
@@ -170,12 +140,10 @@ class TransformerEncoder(BaseEncoder):
         x = x.transpose(0, 1)
 
         # encoder layers
-        l_aux = []
         for layer in self.layers:
-            x, l_aux_i = layer(
+            x = layer(
                 x, encoder_padding_mask=encoder_padding_mask if has_pads else None
             )
-            l_aux.append(l_aux_i)
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -190,7 +158,6 @@ class TransformerEncoder(BaseEncoder):
             "encoder_embedding": [encoder_embedding],  # B x T x C
             "src_tokens": [],
             "src_lengths": [],
-            "l_aux": l_aux,
         }
 
     def max_positions(self):
