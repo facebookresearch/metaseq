@@ -68,6 +68,22 @@ install_fairscale: &install_fairscale
             cd ~/
         fi
 
+
+install_xformers: &install_xformers
+  - run:
+      name: Install xFormers from Source
+      working_directory: ~/
+      command: |
+        source activate metaseq
+        if ! python -c 'import xformers'; then
+            git clone https://github.com/facebookresearch/xformers.git
+            cd xformers
+            git checkout 4c06c79095ba8073dc870ee820e36a83302ae30c
+            git submodule update --init --recursive
+            pip install .
+            cd ~/
+        fi
+
 install_dep_pt19: &install_dep_pt19
   - run:
       name: Install Pytorch Dependencies
@@ -155,6 +171,7 @@ commands:
     steps:
       - <<: *install_dep_common
       - <<: *install_fairscale
+      - <<: *install_xformers
       - <<: *install_dep_fused_ops
       - <<: *install_repo
       - <<: *download_and_configure_125m_with_hf_dependencies
