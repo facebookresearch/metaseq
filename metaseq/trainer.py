@@ -979,8 +979,6 @@ class Trainer(object):
         )
 
     def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch, span=9):
-        if ewm_ratio_to_skip_batch == -1:
-            return
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
         loss_t = float(loss_sum / sample_size / math.log(2))
@@ -993,7 +991,7 @@ class Trainer(object):
         ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
         ewm_ratio = loss_t / ewm_t
 
-        if ewm_ratio > ewm_ratio_to_skip_batch:
+        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
             raise SpikeError(
                 f"Skip batch as we encountered a loss spike. In "
