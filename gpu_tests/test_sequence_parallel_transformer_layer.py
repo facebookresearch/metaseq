@@ -47,8 +47,10 @@ class TestParity(unittest.TestCase):
             decoder_ffn_embed_dim=64,
             decoder_layers=1,
             attention_dropout=0.0,
+            memory_efficient_fp16=True,
+            bf16=False,
         )
-        S, B, E = 128, 2, 64
+        S, B, E = 128, 1, 64
         x = torch.rand(
             (S, B, E), device="cuda", dtype=torch.float16, requires_grad=False
         )
