@@ -182,8 +182,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
             v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
 
-            attn = xf_op.forward(
-                None, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
+            attn = xf_op.forward_no_grad(
+                q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0, scale=None
             ).view(seq_len, bsz, -1)
         else:
             q = q.view(seq_len, -1, head_dim)
@@ -385,7 +385,13 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         if xf_eff_attn:
             fake_ctx = _FakeContext()
             attn = xf_op.forward(
-                fake_ctx, q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0
+                fake_ctx,
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                p=0.0,
+                scale=None,
             ).view(seq_len, bsz, -1)
         else:
             attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
