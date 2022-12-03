@@ -17,7 +17,7 @@ from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 from metaseq.launcher.opt_job_constants import Size, M
-# import logging
+import logging
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
@@ -151,8 +151,7 @@ def run_training(events, max_update):
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
 #        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
-    # logger = logging.getLogger("train_inner")
-    # with patch.object(logger, "_log", new=partial(log_to_events, events=events)):
+
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run",
         partial(local_run_mock, max_update=max_update, events=events),
@@ -181,11 +180,8 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 
 def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
-    # logger = logging.getLogger("train_inner")
-    # print(logger)
-    import metaseq.distributed.utils
     with patch.object(
-        metaseq.distributed.utils.logging.Logger, "_log", new=partialmethod(log_to_events, events=events),
+        logging.Logger, "_log", new=partialmethod(log_to_events, events=events),
     ):
         with patch("metaseq.cli.train.os.remove"):
             mock_metaseq_internal = MagicMock()
