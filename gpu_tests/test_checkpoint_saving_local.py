@@ -31,6 +31,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
         max_update_first_run = 20
         multiprocessing.set_start_method("spawn", force=True)
+
         with torch.multiprocessing.Manager() as manager:
             events = manager.list()
             p = multiprocessing.Process(
@@ -50,22 +51,24 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             for event in events_first_run
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
+
         self.assertEqual(len(training_log_events), max_update_first_run)
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 1)
 
-        # check that the correct checkpoints were created and uploaded
-        upload_events = [
-            event for event in events_first_run if event["type"] == "upload"
-        ]
-        self.assertEqual(len(upload_events), 8)
-        checkpoint_dir = "test-checkpoint"
-        common_checkpoint_model_dir = upload_events[0]["checkpoint_model_dir"]
-        file_names_saved_azure = sorted(
-            [worker_cmd["checkpoint_file"] for worker_cmd in upload_events]
-        )
+        # check that the correct checkpoints were created
+        checkpoint_dir = "test-checkpoint-local"
+        common_checkpoint_model_dir = os.listdir(checkpoint_dir)[0]
+        assert common_checkpoint_model_dir.endswith(".ngpu4")
+
+        file_names_saved_local = []
+        for file in os.listdir(os.path.join(checkpoint_dir, common_checkpoint_model_dir)):
+            if file.endswith(".pt"):
+                file_names_saved_local.append(file)
+        file_names_saved_local.sort()
+
         expected_file_names = sorted(
             [
                 "checkpoint_18-model_part-0-shard0.pt",
@@ -78,26 +81,11 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
                 "checkpoint_last-model_part-1-shard1.pt",
             ]
         )
-        self.assertEqual(file_names_saved_azure, expected_file_names)
-        for worker_cmd in upload_events:
-            self.assertEqual(
-                worker_cmd["command"],
-                [
-                    "azcopy",
-                    "copy",
-                    "--cap-mbps",
-                    "96.0",
-                    "https://myaccount.blob.core.windows.net/test",
-                ],
-            )
-            self.assertEqual(
-                worker_cmd["checkpoint_model_dir"], common_checkpoint_model_dir
-            )
-            self.assertEqual(worker_cmd["checkpoint_dir"], checkpoint_dir)
-            self.assertEqual(worker_cmd["file_saved_locally"], True)
+        self.assertEqual(file_names_saved_local, expected_file_names)
 
         # start second run, mock download the checkpoints from azure and keep training
         max_update_second_run = 35
+
         with torch.multiprocessing.Manager() as manager:
             events = manager.list()
             p = multiprocessing.Process(
@@ -111,7 +99,8 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             p.join()
             events_second_run = list(events)
 
-        # check that that checkpoints were downloaded
+        # # check that that checkpoints were downloaded
+        # print("event for event in events_second_run", [event for event in events_second_run])
         download_events = [
             event for event in events_second_run if event["type"] == "download"
         ]
@@ -127,33 +116,24 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             ]
         )
         self.assertEqual(file_names_downloaded, last_checkpoints)
-        for download in download_events:
-            self.assertEqual(
-                download["blob_url"], "https://myaccount.blob.core.windows.net/test"
-            )
-            self.assertEqual(
-                download["checkpoint_model_dir"], common_checkpoint_model_dir
-            )
-            self.assertEqual(download["checkpoint_dir"], checkpoint_dir)
-            self.assertTrue(download["checkpoint_file"].endswith(download["suffix"]))
 
         # check that second training ran correctly
-        training_log_events = [
+        training_log_events_second = [
             json.loads(event["message"])
             for event in events_second_run
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
         self.assertEqual(
-            len(training_log_events), max_update_second_run - max_update_first_run
+            len(training_log_events_second), max_update_second_run - max_update_first_run
         )
         self.assertEqual(
-            int(training_log_events[-1]["num_updates"]), max_update_second_run
+            int(training_log_events_second[-1]["num_updates"]), max_update_second_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 2)
+        self.assertAlmostEqual(float(training_log_events_second[-1]["loss"]), 12.666, 1)
 
         # cleanup
         cleanup_checkpoints = subprocess.Popen(
-            "rm -r ./test-checkpoint".split(),
+            "rm -r ./test-checkpoint-local".split(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,
@@ -164,11 +144,11 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
 def run_training(events, max_update):
     argv_injection = (
         "python3 metaseq/launcher/opt_baselines.py   "
-        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
-        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
+        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint-local    "
+        "--tensorboard-logdir ./test-checkpoint-local    --num-trials 1    --azure   "
         "--num-gpus 4 --num-nodes 1   --seed 1   "
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
+#        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run",
@@ -197,97 +177,98 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
     with patch("logging.Logger._log", partial(log_to_events, events=events)):
-        with patch(
-            "metaseq.cli.train._run_azcopy",
-            partial(subprocess_run_mock, events=events),
-        ):
-            with patch(
-                "metaseq.cli.train.Trainer.save_checkpoint",
-                partial(save_checkpoint_mock)
-            ):
-                with patch("metaseq.cli.train.os.remove"):
-                    mock_metaseq_internal = MagicMock()
-                    mock_metaseq_internal.azure_utils.download_recent_ckpt = partial(
-                        download_checkpoint_mock, events=events
-                    )
-                    sys.modules["metaseq_internal"] = mock_metaseq_internal
-                    distributed_main(i, main, cfg, kwargs)
+        with patch("metaseq.cli.train.os.remove"):
+            mock_metaseq_internal = MagicMock()
+            sys.modules["metaseq_internal"] = mock_metaseq_internal
+            distributed_main(i, main, cfg, kwargs)
+
+    # with patch("logging.Logger._log", partial(log_to_events, events=events)):
+    #     with patch(
+    #         "metaseq.cli.train._run_azcopy",
+    #         partial(subprocess_run_mock, events=events),
+    #     ):
+    #         with patch("metaseq.cli.train.os.remove"):
+    #             mock_metaseq_internal = MagicMock()
+    #             mock_metaseq_internal.azure_utils.download_recent_ckpt = partial(
+    #                 download_checkpoint_mock, events=events
+    #             )
+    #             sys.modules["metaseq_internal"] = mock_metaseq_internal
+    #             distributed_main(i, main, cfg, kwargs)
 
 
-def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
-    # mocks the download of the checkpoint from azure
-    _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = checkpoint_path.split(
-        "/"
-    )
-    events.append(
-        {
-            "type": "download",
-            "blob_url": blob_url,
-            "checkpoint_dir": checkpoint_dir,
-            "checkpoint_model_dir": checkpoint_model_dir,
-            "checkpoint_file": checkpoint_file,
-            "suffix": suffix,
-        }
-    )
+# def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
+#     # mocks the download of the checkpoint from azure
+#     _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = checkpoint_path.split(
+#         "/"
+#     )
+#     events.append(
+#         {
+#             "type": "download",
+#             "blob_url": blob_url,
+#             "checkpoint_dir": checkpoint_dir,
+#             "checkpoint_model_dir": checkpoint_model_dir,
+#             "checkpoint_file": checkpoint_file,
+#             "suffix": suffix,
+#         }
+#     )
 
-    return True
-
-
-def subprocess_run_mock(cmd, stdout, stderr, events):
-    # replaces subprocess.run azcopy command that uploads to azure
-    _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = cmd[4].split("/")
-    events.append(
-        {
-            "type": "upload",
-            "command": cmd[:4] + cmd[5:],
-            "checkpoint_dir": checkpoint_dir,
-            "checkpoint_model_dir": checkpoint_model_dir,
-            "checkpoint_file": checkpoint_file,
-            "file_saved_locally": os.path.exists(cmd[4]),
-        }
-    )
-
-    res = Mock()
-    res.returncode = 0
-    return res
+#     return True
 
 
-def save_checkpoint_mock(
-    filename, extra_state, training_finished=False, async_callback_fn=None
-):
+# def subprocess_run_mock(cmd, stdout, stderr, events):
+#     # replaces subprocess.run azcopy command that uploads to azure
+#     _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = cmd[4].split("/")
+#     events.append(
+#         {
+#             "type": "upload",
+#             "command": cmd[:4] + cmd[5:],
+#             "checkpoint_dir": checkpoint_dir,
+#             "checkpoint_model_dir": checkpoint_model_dir,
+#             "checkpoint_file": checkpoint_file,
+#             "file_saved_locally": os.path.exists(cmd[4]),
+#         }
+#     )
 
-    """Save all training state in a checkpoint file."""
-    # call state_dict on all ranks in case it needs internal communication
-    state_dicts = self.state_dict(filename, training_finished)
-    for filename, state_dict in state_dicts.items():
-        logger.info(f"Saving checkpoint to {filename}")
-        state_dict = utils.move_to_cpu(
-            state_dict,
-            # keep params in FP16 when training with --memory-efficient-fp16
-            cast_to_fp32=not self.cfg.common.memory_efficient_fp16,
-        )
-        state_dict["extra_state"].update(extra_state)
-        if self.should_save_checkpoint_on_current_rank:
-            if not hasattr(self, "async_checkpoint"):
-                self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
-
-            def perform_save():
-                try:
-                    logger.info(f"Beginning asynchronous torch.save to {filename}")
-                    torch.save(state_dict, filename)
-                    if async_callback_fn is not None:
-                        async_callback_fn(filename)
-                    logger.info(f"Asynchronous torch.save to {filename} complete.")
-                except Exception as e:
-                    logger.exception(f"Asynchronous save failed: {e}")
-
-            perform_save()
-            # self.async_checkpoint.submit(perform_save)
-        logger.info(f"Finished saving checkpoint to {filename}")
+#     res = Mock()
+#     res.returncode = 0
+#     return res
 
 
-def log_to_events(self, info, message, events, *args, **kwargs):
-    print(info)
+# def save_checkpoint_mock(
+#     self, filename, extra_state, training_finished=False, async_callback_fn=None
+# ):
+#     """Save all training state in a checkpoint file."""
+#     # call state_dict on all ranks in case it needs internal communication
+#     state_dicts = self.state_dict(filename, training_finished)
+#     for filename, state_dict in state_dicts.items():
+#         logger.info(f"Saving checkpoint to {filename}")
+#         state_dict = utils.move_to_cpu(
+#             state_dict,
+#             # keep params in FP16 when training with --memory-efficient-fp16
+#             cast_to_fp32=not self.cfg.common.memory_efficient_fp16,
+#         )
+#         state_dict["extra_state"].update(extra_state)
+#         if self.should_save_checkpoint_on_current_rank:
+#             if not hasattr(self, "async_checkpoint"):
+#                 self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+
+#             def perform_save():
+#                 try:
+#                     logger.info(f"Beginning asynchronous torch.save to {filename}")
+#                     torch.save(state_dict, filename)
+#                     if async_callback_fn is not None:
+#                         async_callback_fn(filename)
+#                     logger.info(f"Asynchronous torch.save to {filename} complete.")
+#                 except Exception as e:
+#                     logger.exception(f"Asynchronous save failed: {e}")
+
+#             perform_save()
+#             # self.async_checkpoint.submit(perform_save)
+#         logger.info(f"Finished saving checkpoint to {filename}")
+
+
+def log_to_events(info, message, events, *args, **kwargs):
+    print(info, message)
     if isinstance(info, str):
         events.append(
             {
