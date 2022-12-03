@@ -8,7 +8,7 @@ import os
 import subprocess
 import json
 import multiprocessing
-from functools import partial
+from functools import partial, partialmethod
 import unittest
 from unittest.mock import patch, Mock, MagicMock
 import torch
@@ -17,7 +17,7 @@ from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 from metaseq.launcher.opt_job_constants import Size, M
-import logging
+# import logging
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
@@ -151,16 +151,16 @@ def run_training(events, max_update):
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
 #        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
-    logger = logging.getLogger("train_inner")
-    with patch.object(logger, "_log", new=partial(log_to_events, events=events)):
-        with patch("sys.argv", argv_injection.split()[1:]), patch(
-            "metaseq.launcher.slurm.local_run",
-            partial(local_run_mock, max_update=max_update, events=events),
-        ), patch.dict(
-            "metaseq.launcher.opt_job_constants.MODEL_SIZES",
-            {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
-        ):
-            sweep_cli_main()
+    # logger = logging.getLogger("train_inner")
+    # with patch.object(logger, "_log", new=partial(log_to_events, events=events)):
+    with patch("sys.argv", argv_injection.split()[1:]), patch(
+        "metaseq.launcher.slurm.local_run",
+        partial(local_run_mock, max_update=max_update, events=events),
+    ), patch.dict(
+        "metaseq.launcher.opt_job_constants.MODEL_SIZES",
+        {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
+    ):
+        sweep_cli_main()
 
 
 def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
@@ -183,11 +183,14 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
     # logger = logging.getLogger("train_inner")
     # print(logger)
-    # with patch.object(logger, "_log", new=partial(log_to_events, events=events)):
-    with patch("metaseq.cli.train.os.remove"):
-        mock_metaseq_internal = MagicMock()
-        sys.modules["metaseq_internal"] = mock_metaseq_internal
-        distributed_main(i, main, cfg, kwargs)
+    import metaseq.distributed.utils
+    with patch.object(
+        metaseq.distributed.utils.logging.Logger, "_log", new=partialmethod(log_to_events, events=events),
+    ):
+        with patch("metaseq.cli.train.os.remove"):
+            mock_metaseq_internal = MagicMock()
+            sys.modules["metaseq_internal"] = mock_metaseq_internal
+            distributed_main(i, main, cfg, kwargs)
 
     # with patch("logging.Logger._log", partial(log_to_events, events=events)):
     #     with patch(
@@ -274,9 +277,9 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
 #         logger.info(f"Finished saving checkpoint to {filename}")
 
 
-def log_to_events(self, info, message, events, *args, **kwargs):
+def log_to_events(self, info, message, args, events, **kwargs):
     # print(events)
-    print(message)
+    print(self, info, message)
     if isinstance(message, str):
         # events = list(events)
         events.append(
