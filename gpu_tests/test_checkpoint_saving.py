@@ -26,9 +26,8 @@ import metaseq.utils as metaseq_utils
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-#@unittest.skip(
-#    "Test needs to be reworked after async checkpoint saving was added, which removes upload logging."
-#)
+
+
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
         max_update_first_run = 20
@@ -203,6 +202,7 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
             "metaseq.cli.train._run_azcopy",
             partial(subprocess_run_mock, events=events),
         ):
+            # need to mock this because the async part break the mock
             with patch(
                 "metaseq.cli.train.Trainer.save_checkpoint",
                 partialmethod(save_checkpoint_mock)
@@ -284,9 +284,9 @@ def save_checkpoint_mock(
                 except Exception as e:
                     logger.exception(f"Asynchronous save failed: {e}")
 
-            perform_save()
             # remove async part which break the patch
             # self.async_checkpoint.submit(perform_save)
+            perform_save()
         logger.info(f"Finished saving checkpoint to {filename}")
 
 
