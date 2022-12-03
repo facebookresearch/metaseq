@@ -203,7 +203,7 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
             # need to mock this because the async part break the mock
             with patch(
                 "metaseq.cli.train.Trainer.save_checkpoint",
-                partialmethod(save_checkpoint_mock)
+                partialmethod(save_checkpoint_mock),
             ):
                 with patch("metaseq.cli.train.os.remove"):
                     mock_metaseq_internal = MagicMock()
