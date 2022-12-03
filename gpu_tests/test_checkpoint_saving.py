@@ -26,8 +26,6 @@ import metaseq.utils as metaseq_utils
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-
-
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
         max_update_first_run = 20
