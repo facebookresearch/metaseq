@@ -7,6 +7,7 @@ import sys
 import os
 import subprocess
 import json
+import logging
 import multiprocessing
 from functools import partial, partialmethod
 import unittest
@@ -17,6 +18,7 @@ from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 from metaseq.launcher.opt_job_constants import Size, M
+import metaseq.utils as metaseq_utils
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
@@ -54,7 +56,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 1)
 
         # check that the correct checkpoints were created and uploaded
         upload_events = [
@@ -111,31 +113,31 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             p.join()
             events_second_run = list(events)
 
-        # # check that that checkpoints were downloaded
-        # download_events = [
-        #     event for event in events_second_run if event["type"] == "download"
-        # ]
-        # file_names_downloaded = sorted(
-        #     [download["checkpoint_file"] for download in download_events]
-        # )
-        # last_checkpoints = sorted(
-        #     [
-        #         "checkpoint_last-model_part-0-shard0.pt",
-        #         "checkpoint_last-model_part-0-shard1.pt",
-        #         "checkpoint_last-model_part-1-shard0.pt",
-        #         "checkpoint_last-model_part-1-shard1.pt",
-        #     ]
-        # )
-        # self.assertEqual(file_names_downloaded, last_checkpoints)
-        # for download in download_events:
-        #     self.assertEqual(
-        #         download["blob_url"], "https://myaccount.blob.core.windows.net/test"
-        #     )
-        #     self.assertEqual(
-        #         download["checkpoint_model_dir"], common_checkpoint_model_dir
-        #     )
-        #     self.assertEqual(download["checkpoint_dir"], checkpoint_dir)
-        #     self.assertTrue(download["checkpoint_file"].endswith(download["suffix"]))
+        # check that that checkpoints were downloaded
+        download_events = [
+            event for event in events_second_run if event["type"] == "download"
+        ]
+        file_names_downloaded = sorted(
+            [download["checkpoint_file"] for download in download_events]
+        )
+        last_checkpoints = sorted(
+            [
+                "checkpoint_last-model_part-0-shard0.pt",
+                "checkpoint_last-model_part-0-shard1.pt",
+                "checkpoint_last-model_part-1-shard0.pt",
+                "checkpoint_last-model_part-1-shard1.pt",
+            ]
+        )
+        self.assertEqual(file_names_downloaded, last_checkpoints)
+        for download in download_events:
+            self.assertEqual(
+                download["blob_url"], "https://myaccount.blob.core.windows.net/test"
+            )
+            self.assertEqual(
+                download["checkpoint_model_dir"], common_checkpoint_model_dir
+            )
+            self.assertEqual(download["checkpoint_dir"], checkpoint_dir)
+            self.assertTrue(download["checkpoint_file"].endswith(download["suffix"]))
 
         # check that second training ran correctly
         training_log_events = [
@@ -149,7 +151,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_second_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 1)
 
         # cleanup
         cleanup_checkpoints = subprocess.Popen(
@@ -255,21 +257,22 @@ def subprocess_run_mock(cmd, stdout, stderr, events):
 def save_checkpoint_mock(
     self, filename, extra_state, training_finished=False, async_callback_fn=None
 ):
-
+    logger = logging.getLogger("metaseq.trainer")
     """Save all training state in a checkpoint file."""
     # call state_dict on all ranks in case it needs internal communication
     state_dicts = self.state_dict(filename, training_finished)
     for filename, state_dict in state_dicts.items():
         logger.info(f"Saving checkpoint to {filename}")
-        state_dict = utils.move_to_cpu(
+        state_dict = metaseq_utils.move_to_cpu(
             state_dict,
             # keep params in FP16 when training with --memory-efficient-fp16
             cast_to_fp32=not self.cfg.common.memory_efficient_fp16,
         )
         state_dict["extra_state"].update(extra_state)
         if self.should_save_checkpoint_on_current_rank:
-            if not hasattr(self, "async_checkpoint"):
-                self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+            # remove async part which break the patch
+            # if not hasattr(self, "async_checkpoint"):
+            #     self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
 
             def perform_save():
                 try:
@@ -282,12 +285,13 @@ def save_checkpoint_mock(
                     logger.exception(f"Asynchronous save failed: {e}")
 
             perform_save()
+            # remove async part which break the patch
             # self.async_checkpoint.submit(perform_save)
         logger.info(f"Finished saving checkpoint to {filename}")
 
 
 def log_to_events(self, info, message, args, events, **kwargs):
-    print(message)
+    print(self, message)
     if isinstance(message, str):
         events.append(
             {
