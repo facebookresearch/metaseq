@@ -415,6 +415,14 @@ class OptimizationConfig(MetaseqDataclass):
             "help": "Skip gradient update if gnorm is higher than --clip-norm value"
         },
     )
+    ewm_ratio_to_skip_batch: float = field(
+        default=-1,
+        metadata={
+            "help": "Skip current batch if the loss to loss ewm ratio is "
+            "higher than this value. Turned off at -1"
+        },
+    )
+
     update_freq: List[int] = field(
         default_factory=lambda: [1],
         metadata={"help": "update parameters every N_i batches, when in epoch i"},
