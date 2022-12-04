@@ -233,18 +233,22 @@ def train(
         else cfg.optimization.update_freq[-1]
     )
     if update_freq > 1:
-        # itr = iterators.GroupedIterator(
-        #     itr,
-        #     update_freq,
-        #    skip_remainder_batch=(
-        #         not cfg.optimization.train_with_epoch_remainder_batch
-        #     ),
-        # )
-        itr = iterators.StreamingGroupedIterator(
-            itr,
-            update_freq,
-            skip_remainder_batch=False,
-        )
+        if isinstance(task, tasks.StreamLanguageModelingTask) or isinstance(
+            task, tasks.StreamingFinetuneLanguageModelingTask
+        ):
+            itr = iterators.StreamingGroupedIterator(
+                itr,
+                update_freq,
+                skip_remainder_batch=False,
+            )
+        else:
+            itr = iterators.GroupedIterator(
+                itr,
+                update_freq,
+                skip_remainder_batch=(
+                    not cfg.optimization.train_with_epoch_remainder_batch
+                ),
+            )
 
     progress = progress_bar.get_progress_bar(
         itr,
