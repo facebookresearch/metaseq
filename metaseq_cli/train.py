@@ -36,6 +36,9 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
+from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
+from metaseq.tasks.streaming_finetune_language_modeling import StreamingFinetuneLanguageModelingTask
+
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -233,8 +236,8 @@ def train(
         else cfg.optimization.update_freq[-1]
     )
     if update_freq > 1:
-        if isinstance(task, tasks.StreamLanguageModelingTask) or isinstance(
-            task, tasks.StreamingFinetuneLanguageModelingTask
+        if isinstance(task, StreamLanguageModelingTask) or isinstance(
+            task, StreamingFinetuneLanguageModelingTask
         ):
             itr = iterators.StreamingGroupedIterator(
                 itr,

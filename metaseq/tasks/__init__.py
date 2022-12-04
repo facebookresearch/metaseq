@@ -13,8 +13,6 @@ from metaseq.dataclass.utils import merge_with_parent, populate_dataclass
 from hydra.core.config_store import ConfigStore
 
 from .base_task import BaseTask, LegacyTask  # noqa
-from .streaming_language_modeling import StreamingLanguageModelingTask
-from .streaming_finetune_language_modeling import StreamingFinetuneLanguageModelingTask
 
 
 # register dataclass
