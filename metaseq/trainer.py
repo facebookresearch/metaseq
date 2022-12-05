@@ -774,9 +774,14 @@ class Trainer(object):
             ewm_loss_ratio = self.skip_spike(
                 logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
             )
+            # downscale grads by ewm_loss_ratio ** 4
+            if ewm_loss_ratio > 1.0:
+                grad_mult_factor = 1.0 / (ewm_loss_ratio ** 4)
+                self.optimizer.multiply_grads(grad_mult_factor)
+                logger.info(f"Scaling grads by f{grad_mult_factor}")
             # take an optimization step
             self.task.optimizer_step(
-                self.optimizer, model=self.model, update_num=self.get_num_updates()
+                self.optimizer, model=self.model, update_num=self.get_num_updates(),
             )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
@@ -803,10 +808,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
-        except SpikeError as e:
-            overflow = True
-            logger.info(str(e))
-            self.zero_grad()
+        # except SpikeError as e:
+            # overflow = True
+            # logger.info(str(e))
+            # self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -977,17 +982,18 @@ class Trainer(object):
         ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
         ewm_ratio = loss_t / ewm_t
 
-        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
+        if ewm_ratio > 1.0:
             self._skipped_loss_spikes += 1
-            raise SpikeError(
-                f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
-                f"The ewm for the loss was only at {ewm_t:.2f} . "
-                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
-                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
-            )
-        # the current loss is only included in ewm if the current batch is not skipped
-        self._ewm_loss = ewm_t
+            # raise SpikeError(
+            #     f"Skip batch as we encountered a loss spike. In "
+            #     f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+            #     f"The ewm for the loss was only at {ewm_t:.2f} . "
+            #     f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+            #     f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            # )
+        else:
+            # the current loss is only included in ewm if the current batch is not skipped
+            self._ewm_loss = ewm_t
 
         return ewm_ratio
 
