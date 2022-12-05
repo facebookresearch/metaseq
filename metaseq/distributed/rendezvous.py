@@ -106,9 +106,13 @@ class ComplicitStore(Store):
     def wait(self, *args, **kwargs):
         return self.store.wait(*args, **kwargs)
 
+
 STORE = None
 
-def _tcp_retry_barrierless_rendezvous_handler(url: str, timeout=default_pg_timeout, **kwargs):
+
+def _tcp_retry_barrierless_rendezvous_handler(
+    url: str, timeout=default_pg_timeout, **kwargs
+):
     assert url.startswith("barrierlesstcpr://")
     url = url.replace("barrierlesstcpr://", "tcpr://")
     rendezvous_iterator = rendezvous(url, timeout=timeout)
@@ -117,5 +121,8 @@ def _tcp_retry_barrierless_rendezvous_handler(url: str, timeout=default_pg_timeo
     STORE = ComplicitStore(store, world_size)
     return iter([(STORE, rank, world_size)])
 
+
 register_rendezvous_handler("tcpr", _tcp_retry_rendezvous_handler)
-register_rendezvous_handler("barrierlesstcpr", _tcp_retry_barrierless_rendezvous_handler)
+register_rendezvous_handler(
+    "barrierlesstcpr", _tcp_retry_barrierless_rendezvous_handler
+)
