@@ -107,7 +107,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         ]
         self.assertEqual(
             len(training_log_events_second),
-            max_update_second_run - max_update_first_run
+            max_update_second_run - max_update_first_run,
         )
         self.assertEqual(
             int(training_log_events_second[-1]["num_updates"]), max_update_second_run
