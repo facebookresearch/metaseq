@@ -277,12 +277,22 @@ def train(
         if end_of_epoch:
             grank = distributed_utils.get_global_rank()
             dataset = epoch_itr.dataset
-            while not hasattr(dataset, 'len_cache'):
+            while not hasattr(dataset, "len_cache"):
                 dataset = dataset.dataset
             len_cache = tuple(dataset.len_cache.data)
             cache_hash = hash(len_cache)
             contains_zero = any([x == 0 for x in len_cache])
-            logger.warn(f"End of Epoch on rank {grank}: sequences_consumed={itr.sequences_consumed} n={itr.n} len_cache_hash={cache_hash} len_cache_has_zeros={contains_zero}")
+            logger.warning(
+                " ".join(
+                    [
+                        f"End of Epoch on rank {grank}:",
+                        f"sequences_consumed={itr.sequences_consumed}",
+                        f"n={itr.n}",
+                        f"len_cache_hash={cache_hash}",
+                        f"len_cache_has_zeros={contains_zero}",
+                    ]
+                )
+            )
 
         valid_losses, should_stop = validate_and_save(
             cfg,
