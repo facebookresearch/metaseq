@@ -61,7 +61,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
 
         # check that the correct checkpoints were created
         checkpoint_dir = "test-checkpoint-local"
-        common_checkpoint_model_dir = os.listdir(checkpoint_dir)[0]
+        common_checkpoint_model_dir = sorted(os.listdir(checkpoint_dir))[0]
         assert common_checkpoint_model_dir.endswith(".ngpu4")
 
         file_names_saved_local = []
