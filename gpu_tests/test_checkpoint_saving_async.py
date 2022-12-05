@@ -25,9 +25,6 @@ import logging
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-#@unittest.skip(
-#    "Test needs to be reworked after async checkpoint saving was added, which removes upload logging."
-#)
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
         max_update_first_run = 20
@@ -131,7 +128,6 @@ def run_training(events, max_update):
         "--tensorboard-logdir ./test-checkpoint-local    --num-trials 1    --azure   "
         "--num-gpus 4 --num-nodes 1   --seed 1   "
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-#        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
 
     with patch("sys.argv", argv_injection.split()[1:]), patch(
@@ -172,10 +168,8 @@ def distributed_main_mock(i, main, cfg, kwargs, events):
 
 
 def log_to_events(self, info, message, args, events, **kwargs):
-    # print(events)
     print(self, info, message)
     if isinstance(message, str):
-        # events = list(events)
         events.append(
             {
                 "type": "log",
