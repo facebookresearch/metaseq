@@ -778,7 +778,7 @@ class Trainer(object):
             if ewm_loss_ratio > 1.0:
                 grad_mult_factor = 1.0 / (ewm_loss_ratio ** 4)
                 self.optimizer.multiply_grads(grad_mult_factor)
-                logger.info(f"Scaling grads by f{grad_mult_factor}")
+                logger.info(f"Scaling grads by {grad_mult_factor:.2f}")
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates(),
@@ -982,7 +982,7 @@ class Trainer(object):
         ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
         ewm_ratio = loss_t / ewm_t
 
-        if ewm_ratio > 1.0:
+        if ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
             # raise SpikeError(
             #     f"Skip batch as we encountered a loss spike. In "
@@ -992,7 +992,6 @@ class Trainer(object):
             #     f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
             # )
         else:
-            # the current loss is only included in ewm if the current batch is not skipped
             self._ewm_loss = ewm_t
 
         return ewm_ratio
