@@ -62,7 +62,9 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         assert common_checkpoint_model_dir.endswith(".ngpu4")
 
         file_names_saved_local = []
-        for file in os.listdir(os.path.join(checkpoint_dir, common_checkpoint_model_dir)):
+        for file in os.listdir(
+            os.path.join(checkpoint_dir, common_checkpoint_model_dir)
+        ):
             if file.endswith(".pt"):
                 file_names_saved_local.append(file)
         file_names_saved_local.sort()
@@ -104,7 +106,8 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
         self.assertEqual(
-            len(training_log_events_second), max_update_second_run - max_update_first_run
+            len(training_log_events_second),
+            max_update_second_run - max_update_first_run
         )
         self.assertEqual(
             int(training_log_events_second[-1]["num_updates"]), max_update_second_run
@@ -158,7 +161,9 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
     with patch.object(
-        logging.Logger, "_log", new=partialmethod(log_to_events, events=events),
+        logging.Logger,
+        "_log",
+        new=partialmethod(log_to_events, events=events),
     ):
         with patch("metaseq.cli.train.os.remove"):
             mock_metaseq_internal = MagicMock()
