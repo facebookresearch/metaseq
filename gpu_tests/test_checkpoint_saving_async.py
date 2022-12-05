@@ -10,7 +10,7 @@ import json
 import multiprocessing
 from functools import partial, partialmethod
 import unittest
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, MagicMock
 import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
@@ -145,8 +145,7 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
     train_cmd[train_cmd.index("--log-interval") + 1] = "1"
     train_cmd[train_cmd.index("--save-interval-updates") + 1] = "18"
     train_cmd[train_cmd.index("--num-workers") + 1] = "1"
-    
-    
+
     with patch.dict("os.environ", env, clear=True):
         with patch("sys.argv", train_cmd[1:]):
             with patch(
