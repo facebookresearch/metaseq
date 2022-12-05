@@ -68,7 +68,6 @@ install_fairscale: &install_fairscale
             cd ~/
         fi
 
-
 install_xformers: &install_xformers
   - run:
       name: Install xFormers from Source
@@ -171,7 +170,6 @@ commands:
     steps:
       - <<: *install_dep_common
       - <<: *install_fairscale
-      - <<: *install_xformers
       - <<: *install_dep_fused_ops
       - <<: *install_repo
       - <<: *download_and_configure_125m_with_hf_dependencies
