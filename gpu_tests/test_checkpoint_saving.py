@@ -7,8 +7,9 @@ import sys
 import os
 import subprocess
 import json
+import logging
 import multiprocessing
-from functools import partial
+from functools import partial, partialmethod
 import unittest
 from unittest.mock import patch, Mock, MagicMock
 import torch
@@ -17,15 +18,13 @@ from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
 from metaseq.distributed.utils import distributed_main
 from metaseq.launcher.opt_job_constants import Size, M
+import metaseq.utils as metaseq_utils
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
 @unittest.skipIf(
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
-)
-@unittest.skip(
-    "Test needs to be reworked after async checkpoint saving was added, which removes upload logging."
 )
 class TestCheckpointSavingAndUploading(unittest.TestCase):
     def test_checkpoint_saving_and_uploading(self):
@@ -54,7 +53,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 14.574, 1)
 
         # check that the correct checkpoints were created and uploaded
         upload_events = [
@@ -149,7 +148,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_second_run
         )
-        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 2)
+        self.assertAlmostEqual(float(training_log_events[-1]["loss"]), 12.666, 1)
 
         # cleanup
         cleanup_checkpoints = subprocess.Popen(
@@ -196,18 +195,23 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 
 def distributed_main_mock(i, main, cfg, kwargs, events):
     # need to patch this seperately here, otherwise spawns won't be patched
-    with patch("logging.Logger._log", partial(log_to_events, events=events)):
+    with patch("logging.Logger._log", partialmethod(log_to_events, events=events)):
         with patch(
             "metaseq.cli.train._run_azcopy",
             partial(subprocess_run_mock, events=events),
         ):
-            with patch("metaseq.cli.train.os.remove"):
-                mock_metaseq_internal = MagicMock()
-                mock_metaseq_internal.azure_utils.download_recent_ckpt = partial(
-                    download_checkpoint_mock, events=events
-                )
-                sys.modules["metaseq_internal"] = mock_metaseq_internal
-                distributed_main(i, main, cfg, kwargs)
+            # need to mock this because the async part break the mock
+            with patch(
+                "metaseq.cli.train.Trainer.save_checkpoint",
+                partialmethod(save_checkpoint_mock),
+            ):
+                with patch("metaseq.cli.train.os.remove"):
+                    mock_metaseq_internal = MagicMock()
+                    mock_metaseq_internal.azure_utils.download_recent_ckpt = partial(
+                        download_checkpoint_mock, events=events
+                    )
+                    sys.modules["metaseq_internal"] = mock_metaseq_internal
+                    distributed_main(i, main, cfg, kwargs)
 
 
 def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
@@ -248,13 +252,49 @@ def subprocess_run_mock(cmd, stdout, stderr, events):
     return res
 
 
-def log_to_events(self, info, message, events, *args, **kwargs):
-    print(info)
-    if isinstance(info, str):
+def save_checkpoint_mock(
+    self, filename, extra_state, training_finished=False, async_callback_fn=None
+):
+    logger = logging.getLogger("metaseq.trainer")
+    """Save all training state in a checkpoint file."""
+    # call state_dict on all ranks in case it needs internal communication
+    state_dicts = self.state_dict(filename, training_finished)
+    for filename, state_dict in state_dicts.items():
+        logger.info(f"Saving checkpoint to {filename}")
+        state_dict = metaseq_utils.move_to_cpu(
+            state_dict,
+            # keep params in FP16 when training with --memory-efficient-fp16
+            cast_to_fp32=not self.cfg.common.memory_efficient_fp16,
+        )
+        state_dict["extra_state"].update(extra_state)
+        if self.should_save_checkpoint_on_current_rank:
+            # remove async part which break the patch
+            # if not hasattr(self, "async_checkpoint"):
+            #     self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+
+            def perform_save():
+                try:
+                    logger.info(f"Beginning asynchronous torch.save to {filename}")
+                    torch.save(state_dict, filename)
+                    if async_callback_fn is not None:
+                        async_callback_fn(filename)
+                    logger.info(f"Asynchronous torch.save to {filename} complete.")
+                except Exception as e:
+                    logger.exception(f"Asynchronous save failed: {e}")
+
+            # remove async part which break the patch
+            # self.async_checkpoint.submit(perform_save)
+            perform_save()
+        logger.info(f"Finished saving checkpoint to {filename}")
+
+
+def log_to_events(self, info, message, args, events, **kwargs):
+    print(self, message)
+    if isinstance(message, str):
         events.append(
             {
                 "type": "log",
-                "message": info,
+                "message": message,
             }
         )
 

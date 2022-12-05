@@ -12,6 +12,7 @@ See docs/api.md for more information.
 """
 
 import os
+import ast
 import queue
 import pkg_resources
 import random
@@ -50,6 +51,7 @@ MAX_BEAM = constants_module.MAX_BEAM
 DEFAULT_PORT = constants_module.DEFAULT_PORT
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
+INFERENCE_ARG_OVERRIDES = constants_module.INFERENCE_ARG_OVERRIDES
 
 app = Flask(__name__)
 
@@ -305,15 +307,17 @@ def completions(engine=None):
         generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
     else:
         generation_args["top_p"] = 1.0
-    # beam search top n
-    if "n" in generation_args:
-        if int(generation_args["n"]) > MAX_BEAM:
-            logger.warning(
-                f'beam size/sampling size of {int(generation_args["n"])} too large, using {MAX_BEAM} to avoid OOM'
-            )
-        generation_args["n"] = min(MAX_BEAM, max(1, int(generation_args["n"])))
-    else:
+    if "n" not in generation_args:
         generation_args["n"] = 1
+    if "best_of" not in generation_args:
+        generation_args["best_of"] = generation_args["n"]
+    # beam search
+    if int(generation_args["best_of"]) > MAX_BEAM:
+        logger.warning(
+            f'beam size/sampling size of {int(generation_args["best_of"])} too large, using {MAX_BEAM} to avoid OOM'
+        )
+        generation_args["best_of"] = MAX_BEAM
+        generation_args["n"] = min(MAX_BEAM, int(generation_args["n"]))
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):
@@ -377,6 +381,11 @@ def cli_main():
     port = DEFAULT_PORT
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
+
+    model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
+    model_overrides.update(INFERENCE_ARG_OVERRIDES)
+    cfg.common_eval.model_overrides = str(model_overrides)
+
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
