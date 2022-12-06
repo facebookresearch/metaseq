@@ -978,9 +978,7 @@ class Trainer(object):
             self._ewm_loss = loss_t
 
         ewm_t_1 = self._ewm_loss
-        alpha = 2 / (span + 1)
-        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
-        ewm_ratio = loss_t / ewm_t
+        ewm_ratio = loss_t / ewm_t_1
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
@@ -992,6 +990,9 @@ class Trainer(object):
             #     f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
             # )
         else:
+            # update the moving average only if we are not loss spiking
+            alpha = 2 / (span + 1)
+            ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
             self._ewm_loss = ewm_t
 
         return ewm_ratio
