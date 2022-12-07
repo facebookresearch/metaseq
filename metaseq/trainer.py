@@ -777,8 +777,10 @@ class Trainer(object):
             # downscale grads by ewm_loss_ratio ** 4
             if ewm_loss_ratio > 1.0:
                 grad_mult_factor = 1.0 / (ewm_loss_ratio ** 4)
-                self.optimizer.multiply_grads(grad_mult_factor)
-                logger.info(f"Scaling grads by {grad_mult_factor:.2f}")
+                curr_lr = self.optimizer.get_lr()
+                new_lr = curr_lr * grad_mult_factor
+                self.optimizer.set_lr(new_lr)
+                logger.info(f"Scaling LR br {grad_mult_factor:.2f} to {new_lr:.2f}")
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates(),
