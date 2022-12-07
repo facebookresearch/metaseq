@@ -780,7 +780,7 @@ class Trainer(object):
                 curr_lr = self.optimizer.get_lr()
                 new_lr = curr_lr * grad_mult_factor
                 self.optimizer.set_lr(new_lr)
-                logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.2f}")
+                logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer, model=self.model, update_num=self.get_num_updates(),
