@@ -779,14 +779,16 @@ class Trainer(object):
             )
             # downscale grads by ewm_loss_ratio ** 4
             if ewm_loss_ratio > 1.0:
-                grad_mult_factor = 1.0 / (ewm_loss_ratio ** 4)
+                grad_mult_factor = 1.0 / (ewm_loss_ratio**4)
                 curr_lr = self.optimizer.get_lr()
                 new_lr = curr_lr * grad_mult_factor
                 self.optimizer.set_lr(new_lr)
                 logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
             # take an optimization step
             self.task.optimizer_step(
-                self.optimizer, model=self.model, update_num=self.get_num_updates(),
+                self.optimizer,
+                model=self.model,
+                update_num=self.get_num_updates(),
             )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
@@ -814,9 +816,9 @@ class Trainer(object):
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
         # except SpikeError as e:
-            # overflow = True
-            # logger.info(str(e))
-            # self.zero_grad()
+        # overflow = True
+        # logger.info(str(e))
+        # self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -1184,7 +1186,9 @@ class Trainer(object):
                     + "-" * 80
                 )
 
-    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0):
+    def _reduce_and_log_stats(
+        self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
+    ):
         # perform a bunch of arch-specific gradient metrics
         for name, param in self.model.named_parameters():
             if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
