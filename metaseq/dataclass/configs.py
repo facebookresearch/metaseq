@@ -560,6 +560,13 @@ class CheckpointConfig(MetaseqDataclass):
             "argparse_alias": "--cloud-dir",
         },
     )
+    cloud_eval_script_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path of eval script to run on checkpoints after they were uploaded"
+        },
+    )
+
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
     cluster_env: str = field(

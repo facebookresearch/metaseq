@@ -462,6 +462,11 @@ def post_checkpoint_callback(cfg, filename):
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
             temporary_checkpoint_file = f"_{checkpoint_file}"
+            logger.info(
+                f"checkpoint_dir: {checkpoint_dir}, checkpoint_file: {checkpoint_file}"
+            )
+            logger.info(f"destination_checkpoints_dir: {destination_checkpoints_dir}")
+            logger.info(f"temporary_checkpoint_file: {temporary_checkpoint_file}")
             try:
                 os.mkdir(os.path.join(destination_checkpoints_dir, checkpoint_dir))
             except FileExistsError:
@@ -495,6 +500,53 @@ def post_checkpoint_callback(cfg, filename):
                 ),
             )
             os.remove(filename)
+            if distributed_utils.get_global_rank() == 0:
+                logger.info("Running this only on global rank 0")
+                # check whether all the files are saved
+                num_eval_retries = 3
+                for retry in range(num_eval_retries):
+                    time.sleep(1 * 60)
+
+                    current_checkpoint_path = os.path.join(
+                        destination_checkpoints_dir, checkpoint_dir
+                    )
+                    all_current_checkpoints = os.listdir(current_checkpoint_path)
+                    num_files = len(
+                        [f for f in all_current_checkpoints if not f.startswith("_")]
+                    )
+                    # does global rank 0 really only run once?
+                    if num_files == cfg.distributed_training.distributed_world_size:
+                        logger.info(
+                            "Found that all checkpoints were saved, will now start to run evals"
+                        )
+                        script_dir = os.path.join(
+                            os.environ.get("METASEQ_SAVE_DIR"),
+                            cfg.checkpoint.cloud_eval_script_path,
+                        )
+                        logger.info("Script Dir" + script_dir)
+                        output = subprocess.run(
+                            [
+                                "bash",
+                                script_dir,
+                                os.path.join(current_checkpoint_path, "checkpoint.pt"),
+                            ],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        logger.info("finished running script")
+                        logger.info("Logs from script start")
+                        logger.info(output.stdout)
+                        logger.info(output.stderr)
+                        logger.info("logs stop")
+                        return
+                    logger.info(
+                        f"retrying eval as not all checkpoints were saved yet. Only {num_files} of "
+                        f"{cfg.distributed_training.distributed_world_size} checkpoint files found."
+                    )
+                logger.info(
+                    f"Did {num_eval_retries} retries for eval, could not find all checkpoints, so giving up on eval now"
+                )
+
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
