@@ -36,6 +36,9 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
+from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
+from metaseq.tasks.streaming_finetune_language_modeling import StreamingFinetuneLanguageModelingTask
+
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -233,13 +236,22 @@ def train(
         else cfg.optimization.update_freq[-1]
     )
     if update_freq > 1:
-        itr = iterators.GroupedIterator(
-            itr,
-            update_freq,
-            skip_remainder_batch=(
-                not cfg.optimization.train_with_epoch_remainder_batch
-            ),
-        )
+        if isinstance(task, StreamLanguageModelingTask) or isinstance(
+            task, StreamingFinetuneLanguageModelingTask
+        ):
+            itr = iterators.StreamingGroupedIterator(
+                itr,
+                update_freq,
+                skip_remainder_batch=False,
+            )
+        else:
+            itr = iterators.GroupedIterator(
+                itr,
+                update_freq,
+                skip_remainder_batch=(
+                    not cfg.optimization.train_with_epoch_remainder_batch
+                ),
+            )
 
     progress = progress_bar.get_progress_bar(
         itr,
