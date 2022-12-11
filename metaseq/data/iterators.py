@@ -140,6 +140,21 @@ class StreamingCountingIterator(object):
         return self._countable_itr.items_seen
 
 
+class StreamingGroupedIterator(StreamingCountingIterator):
+    """Wrapper around an Streaming iterable that returns groups (chunks) of items.
+
+    Args:
+        iterable (iterable): iterable to wrap
+        chunk_size (int): size of each chunk
+
+    """
+
+    def __init__(self, iterable, chunk_size, skip_remainder_batch=False):
+        logger.info(f"Grouping streaming iterator, ignoring skip_remainder_batch flag")
+        itr = _chunk_iterator(iterable, chunk_size, skip_remainder_batch)
+        super().__init__(itr)
+
+
 class EpochBatchIterating(object):
     def __len__(self) -> int:
         raise NotImplementedError
