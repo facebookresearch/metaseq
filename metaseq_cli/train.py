@@ -406,6 +406,10 @@ def validate_and_save(
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
         )
+        or (
+            cfg.dataset.log_traininig_trajectory
+            and num_updates in [10, 20, 50, 100, 200, 500]
+        )
     )
     do_validate = (
         (
@@ -420,6 +424,10 @@ def validate_and_save(
             and was_successful_step
         )
         or (cfg.dataset.validate_at_beginning and num_updates == 0)
+        or (
+            cfg.dataset.log_traininig_trajectory
+            and num_updates in [0, 10, 20, 50, 100, 200, 500]
+        )
     ) and not cfg.dataset.disable_validation
     valid_losses = [None]
     if do_validate:
