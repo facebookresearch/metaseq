@@ -407,7 +407,7 @@ def validate_and_save(
             and was_successful_step
         )
         or (
-            cfg.dataset.log_traininig_trajectory
+            cfg.dataset.log_training_trajectory
             and num_updates in [10, 20, 50, 100, 200, 500]
         )
     )
@@ -425,7 +425,7 @@ def validate_and_save(
         )
         or (cfg.dataset.validate_at_beginning and num_updates == 0)
         or (
-            cfg.dataset.log_traininig_trajectory
+            cfg.dataset.log_training_trajectory
             and num_updates in [0, 10, 20, 50, 100, 200, 500]
         )
     ) and not cfg.dataset.disable_validation
