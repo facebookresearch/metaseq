@@ -37,7 +37,9 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
-from metaseq.tasks.streaming_finetune_language_modeling import StreamingFinetuneLanguageModelingTask
+from metaseq.tasks.streaming_finetune_language_modeling import (
+    StreamingFinetuneLanguageModelingTask,
+)
 
 
 logging.basicConfig(
@@ -454,6 +456,7 @@ def validate_and_save(
             trainer,
             epoch_itr,
             valid_losses[0],
+            log_training_trajectory=cfg.dataset.validate_after_updates,
             training_finished=should_stop,
             async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
             if cfg.checkpoint.cloud_upload_path
