@@ -526,7 +526,6 @@ def post_checkpoint_callback(cfg, filename):
                             os.environ.get("METASEQ_SAVE_DIR"),
                             cfg.checkpoint.cloud_eval_script_path,
                         )
-                        logger.info("Script Dir" + script_dir)
                         res = subprocess.run(
                             [
                                 "bash",
