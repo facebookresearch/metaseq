@@ -512,15 +512,15 @@ def post_checkpoint_callback(cfg, filename):
                     current_checkpoint_path = os.path.join(
                         destination_checkpoints_dir, checkpoint_dir
                     )
-                    all_checkpoint_parts = os.listdir(current_checkpoint_path)
-                    num_files = len(
-                        [f for f in all_current_checkpoints if not f.startswith("_")]
+                    num_files = os.listdir(current_checkpoint_path)
+                    finished_checkpoint_parts = len(
+                        [f for f in num_files if not f.startswith("_")]
                     )
-                    if num_files == cfg.distributed_training.distributed_world_size:
+                    if finished_checkpoint_parts == cfg.distributed_training.distributed_world_size:
                         logger.info(
                             f"All checkpoint parts for {checkpoint_dir} are in NFS, will now start to run evals"
                         )
-                        logger.info(f"REMOVE checkpoints found: {num_files}")
+                        logger.info(f"REMOVE checkpoints found: {finished_checkpoint_parts}")
                         script_dir = os.path.join(
                             os.environ.get("METASEQ_SAVE_DIR"),
                             cfg.checkpoint.cloud_eval_script_path,
