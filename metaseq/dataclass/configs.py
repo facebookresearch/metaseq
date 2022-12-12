@@ -571,9 +571,18 @@ class CheckpointConfig(MetaseqDataclass):
         metadata={"help": "Number of retries of running evals on upload of checkpoint"},
     )
     cloud_eval_retry_wait_minutes: int = field(
-        default=5,
+        default=1,
         metadata={
             "help": "Time to wait between retries of running evals on upload of checkpoint"
+        },
+    )
+    cloud_eval_frequency: int = field(
+        default=200,
+        metadata={
+            "help": (
+                "Run evaluation only on uploaded checkpoints"
+                "with multiples of this frequency"
+            ),
         },
     )
 

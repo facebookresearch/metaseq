@@ -502,9 +502,13 @@ def post_checkpoint_callback(cfg, filename):
             os.remove(filename)
 
             # Run evals after all checkpoint parts have been uploaded
+            checkpoint_id = checkpoint_dir.split("_")[-1]
             if (
                 cfg.checkpoint.cloud_eval_script_path is not None
                 and distributed_utils.get_global_rank() == 0
+                and checkpoint_id.isdigit()
+                and cfg.checkpoint.cloud_eval_frequency > 0
+                and (int(checkpoint_id) % cfg.checkpoint.cloud_eval_frequency == 0)
             ):
                 for retry in range(cfg.checkpoint.cloud_eval_num_retries):
                     time.sleep(cfg.checkpoint.cloud_eval_retry_wait_minutes * 60)
@@ -516,11 +520,16 @@ def post_checkpoint_callback(cfg, filename):
                     finished_checkpoint_parts = len(
                         [f for f in num_files if not f.startswith("_")]
                     )
-                    if finished_checkpoint_parts == cfg.distributed_training.distributed_world_size:
+                    if (
+                        finished_checkpoint_parts
+                        == cfg.distributed_training.distributed_world_size
+                    ):
                         logger.info(
                             f"All checkpoint parts for {checkpoint_dir} are in NFS, will now start to run evals"
                         )
-                        logger.info(f"REMOVE checkpoints found: {finished_checkpoint_parts}")
+                        logger.info(
+                            f"REMOVE checkpoints found: {finished_checkpoint_parts}"
+                        )
                         script_dir = os.path.join(
                             os.environ.get("METASEQ_SAVE_DIR"),
                             cfg.checkpoint.cloud_eval_script_path,
