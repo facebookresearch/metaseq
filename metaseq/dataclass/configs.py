@@ -193,6 +193,13 @@ class CommonConfig(MetaseqDataclass):
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
     )
+    dont_log_param_and_grad_norm: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Don't log grad/param norms for each parameter.",
+            "argparse_alias": "--quiet",
+        },
+    )
 
 
 @dataclass
