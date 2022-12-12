@@ -462,11 +462,6 @@ def post_checkpoint_callback(cfg, filename):
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
             temporary_checkpoint_file = f"_{checkpoint_file}"
-            logger.info(
-                f"checkpoint_dir: {checkpoint_dir}, checkpoint_file: {checkpoint_file}"
-            )
-            logger.info(f"destination_checkpoints_dir: {destination_checkpoints_dir}")
-            logger.info(f"temporary_checkpoint_file: {temporary_checkpoint_file}")
             try:
                 os.mkdir(os.path.join(destination_checkpoints_dir, checkpoint_dir))
             except FileExistsError:
@@ -527,9 +522,6 @@ def post_checkpoint_callback(cfg, filename):
                         logger.info(
                             f"All checkpoint parts for {checkpoint_dir} are in NFS, will now start to run evals"
                         )
-                        logger.info(
-                            f"REMOVE checkpoints found: {finished_checkpoint_parts}"
-                        )
                         script_dir = os.path.join(
                             os.environ.get("METASEQ_SAVE_DIR"),
                             cfg.checkpoint.cloud_eval_script_path,
@@ -546,8 +538,6 @@ def post_checkpoint_callback(cfg, filename):
                         )
                         if res.returncode == 0:
                             logger.info(f"Sucessfully evaluated {checkpoint_dir}")
-                            logger.info(f"Eval script stdout = {res.stdout}")
-                            logger.info(f"Eval script stderr = {res.stderr}")
                         else:
                             logger.info(f"Error during evaluation: {res.returncode}")
                             logger.info(f"Eval script stdout = {res.stdout}")
