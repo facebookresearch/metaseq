@@ -74,11 +74,9 @@ def save_checkpoint(
     checkpoint_conds["checkpoint{}{}.pt".format(epoch, suffix)] = (
         end_of_epoch and not cfg.no_epoch_checkpoints and epoch % cfg.save_interval == 0
     )
-    checkpoint_conds[
-        "checkpoint_{}_{}{}.pt".format(epoch, updates, suffix)
-    ] = not end_of_epoch and (
-        (cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0)
-        or (log_training_trajectory and updates in [10, 20, 50, 100, 200, 500])
+    checkpoint_conds["checkpoint_{}_{}{}.pt".format(epoch, updates, suffix)] = (
+        not end_of_epoch
+        and ((cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0) or (log_training_trajectory and updates in [10, 20, 50, 100, 200, 500]))
     )
     checkpoint_conds["checkpoint_best{}.pt".format(suffix)] = (
         val_loss is not None
@@ -185,18 +183,12 @@ def _delete_old_checkpoint_files(
 def verify_shards(cfg, dir=None, checkpoint_name=None, distributed_world_size=None):
     # verifies that all the shards of the checkpoint are present
     checkpoint_name = checkpoint_name.replace(".pt", "")
-    num_gpus = (
-        DistributedTrainingConfig.distributed_world_size
-        if not distributed_world_size
-        else distributed_world_size
-    )
+    num_gpus = DistributedTrainingConfig.distributed_world_size if not distributed_world_size else distributed_world_size
     num_shards = 0
     for file in os.listdir(dir):
         if file.startswith(checkpoint_name):
             num_shards += 1
-    logger.info(
-        f"dir {dir} checkpoint_name {checkpoint_name} num_shards {num_shards} num_gpus {num_gpus}"
-    )
+    logger.info(f'dir {dir} checkpoint_name {checkpoint_name} num_shards {num_shards} num_gpus {num_gpus}')
     return num_shards == num_gpus
 
 
@@ -211,12 +203,7 @@ def get_last_good_checkpoint(cfg, distributed_world_size):
     unique_checkpoints = set(unique_checkpoints)
     unique_checkpoints = sorted(unique_checkpoints, reverse=True)
     for checkpoint in unique_checkpoints:
-        if verify_shards(
-            cfg,
-            dir=cfg.save_dir,
-            checkpoint_name=checkpoint,
-            distributed_world_size=distributed_world_size,
-        ):
+        if verify_shards(cfg, dir=cfg.save_dir, checkpoint_name=checkpoint, distributed_world_size=distributed_world_size):
             return checkpoint
     # no good checkpoints available, first launch
     return None
@@ -253,10 +240,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         )
         first_launch = not PathManager.exists(checkpoint_path_to_load)
         if not first_launch and not verify_shards(
-            cfg,
-            dir=cfg.save_dir,
-            checkpoint_name=cfg.restore_file,
-            distributed_world_size=distributed_world_size,
+            cfg, dir=cfg.save_dir, checkpoint_name=cfg.restore_file, distributed_world_size=distributed_world_size
         ):
             # checkpoint_last is corrupted
             best_checkpoint = get_last_good_checkpoint(cfg, distributed_world_size)
@@ -268,18 +252,13 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             else:
                 first_launch = True
 
-        elif (
-            first_launch
-            and get_last_good_checkpoint(cfg, distributed_world_size) is not None
-        ):
+        elif first_launch and get_last_good_checkpoint(cfg, distributed_world_size) is not None:
             # possible past checkpoint to load from
             cfg.restore_file = os.path.join(
-                cfg.save_dir,
-                get_last_good_checkpoint(cfg, distributed_world_size) + ".pt",
+                cfg.save_dir, get_last_good_checkpoint(cfg, distributed_world_size) + ".pt"
             )
             checkpoint_path_to_load = os.path.join(
-                cfg.save_dir,
-                get_last_good_checkpoint(cfg, distributed_world_size) + suffix + ".pt",
+                cfg.save_dir, get_last_good_checkpoint(cfg, distributed_world_size) + suffix + ".pt"
             )
             first_launch = False
 
@@ -310,12 +289,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         # --restore-file was passed
         checkpoint_name = cfg.restore_file.split("/")[-1]
         dir = cfg.restore_file.replace("/" + checkpoint_name, "")
-        if verify_shards(
-            cfg,
-            dir=dir,
-            checkpoint_name=checkpoint_name,
-            distributed_world_size=distributed_world_size,
-        ):
+        if verify_shards(cfg, dir=dir, checkpoint_name=checkpoint_name, distributed_world_size=distributed_world_size):
             # when the checkpoint passed by the user is not corrupted
             checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
         else:
@@ -325,10 +299,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             if get_last_good_checkpoint(cfg, distributed_world_size) is not None:
                 # checkpoint passed by user is corrupted but there is a good checkpoint to fall back on
                 checkpoint_path_to_load = os.path.join(
-                    cfg.save_dir,
-                    get_last_good_checkpoint(cfg, distributed_world_size)
-                    + suffix
-                    + ".pt",
+                    cfg.save_dir, get_last_good_checkpoint(cfg, distributed_world_size) + suffix + ".pt"
                 )
             else:
                 first_launch = True
@@ -339,25 +310,20 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     else:
         checkpoint_name = cfg.restore_file.split("/")[-1]
         dir = cfg.restore_file.replace("/" + checkpoint_name, "")
-        if verify_shards(
-            cfg,
-            dir=dir,
-            checkpoint_name=checkpoint_name,
-            distributed_world_size=distributed_world_size,
-        ):
+        if verify_shards(cfg, dir=dir, checkpoint_name=checkpoint_name, distributed_world_size=distributed_world_size):
             checkpoint_path_to_load = cfg.restore_file
         else:
             logger.warning("Passed checkpoint is corrupted or does not exist")
             first_launch = True
             checkpoint_path_to_load = cfg.restore_file
 
-    # Commenting this because it fails when checkpoint_last isnt saved i.e.
+    # Commenting this because it fails when checkpoint_last isnt saved i.e. 
     # when we save per-interval checkpoints
     # if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
-    # raise ValueError(
-    # "--finetune-from-model and --restore-file (non-default value) "
-    # "can not be specified together: " + str(cfg)
-    # )
+        # raise ValueError(
+            # "--finetune-from-model and --restore-file (non-default value) "
+            # "can not be specified together: " + str(cfg)
+        # )
 
     # Azure logic
     try:
