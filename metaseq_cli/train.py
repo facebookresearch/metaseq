@@ -236,7 +236,7 @@ def train(
         else cfg.optimization.update_freq[-1]
     )
     if update_freq > 1:
-        if isinstance(task, StreamLanguageModelingTask) or isinstance(
+        if isinstance(task, StreamingLanguageModelingTask) or isinstance(
             task, StreamingFinetuneLanguageModelingTask
         ):
             itr = iterators.StreamingGroupedIterator(
