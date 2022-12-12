@@ -47,6 +47,9 @@ class Trainer(object):
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
+        self.dont_log_param_and_grad_norm = getattr(
+            cfg.common, "dont_log_param_and_grad_norm", False
+        )
         if self.cuda:
             self.device = torch.device("cuda")
         else:
@@ -774,9 +777,18 @@ class Trainer(object):
             ewm_loss_ratio = self.skip_spike(
                 logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
             )
+            # downscale grads by ewm_loss_ratio ** 4
+            if ewm_loss_ratio > 1.0:
+                grad_mult_factor = 1.0 / (ewm_loss_ratio**4)
+                curr_lr = self.optimizer.get_lr()
+                new_lr = curr_lr * grad_mult_factor
+                self.optimizer.set_lr(new_lr)
+                logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
             # take an optimization step
             self.task.optimizer_step(
-                self.optimizer, model=self.model, update_num=self.get_num_updates()
+                self.optimizer,
+                model=self.model,
+                update_num=self.get_num_updates(),
             )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
@@ -803,10 +815,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
-        except SpikeError as e:
-            overflow = True
-            logger.info(str(e))
-            self.zero_grad()
+        # except SpikeError as e:
+        # overflow = True
+        # logger.info(str(e))
+        # self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -973,21 +985,22 @@ class Trainer(object):
             self._ewm_loss = loss_t
 
         ewm_t_1 = self._ewm_loss
-        alpha = 2 / (span + 1)
-        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
-        ewm_ratio = loss_t / ewm_t
+        ewm_ratio = loss_t / ewm_t_1
 
-        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
+        if ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
-            raise SpikeError(
-                f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
-                f"The ewm for the loss was only at {ewm_t:.2f} . "
-                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
-                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
-            )
-        # the current loss is only included in ewm if the current batch is not skipped
-        self._ewm_loss = ewm_t
+            # raise SpikeError(
+            #     f"Skip batch as we encountered a loss spike. In "
+            #     f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+            #     f"The ewm for the loss was only at {ewm_t:.2f} . "
+            #     f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+            #     f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            # )
+        else:
+            # update the moving average only if we are not loss spiking
+            alpha = 2 / (span + 1)
+            ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
+            self._ewm_loss = ewm_t
 
         return ewm_ratio
 
@@ -1176,6 +1189,38 @@ class Trainer(object):
     def _reduce_and_log_stats(
         self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
     ):
+        # perform a bunch of arch-specific gradient metrics
+        for name, param in self.model.named_parameters():
+            if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
+                break
+            if param.grad is None:
+                continue
+            nice_name = name.replace("module._fsdp_wrapped_module._fpw_module.", "")
+            nice_name = nice_name.replace("_fsdp_wrapped_module._fpw_module.", "")
+            nice_name = nice_name.replace("._fsdp_wrapped_module.flat_param_0", "")
+            nice_name = nice_name.replace("decoder.layers.", "layer")
+            # threshold for near zeros
+            threshold = torch.finfo(param.grad.dtype).tiny * 2
+            with torch.no_grad():
+                g = param.grad
+                if hasattr(self.optimizer, "_multiply_factor"):
+                    g = self.optimizer._multiply_factor * g
+                norm = g.norm(p=2, dim=-1, dtype=torch.float32)
+                max_ = g.max()
+                nz = ((g > -threshold) & (g < threshold)).sum() / g.numel()
+            # priorities for printing order
+            metrics.log_scalar(f"gnorm_{nice_name}", norm, priority=10)
+            metrics.log_scalar(f"gmax_{nice_name}", max_, priority=11)
+            metrics.log_scalar(f"gzero_{nice_name}", nz, priority=12)
+            with torch.no_grad():
+                norm = param.norm(p=2, dim=-1, dtype=torch.float32)
+                max_ = param.max()
+                nz = ((param > -threshold) & (param < threshold)).sum() / param.numel()
+            # priorities for printing order
+            metrics.log_scalar(f"pnorm_{nice_name}", norm, priority=13)
+            metrics.log_scalar(f"pmax_{nice_name}", max_, priority=14)
+            metrics.log_scalar(f"pzero_{nice_name}", nz, priority=15)
+
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
