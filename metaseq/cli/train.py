@@ -500,31 +500,33 @@ def post_checkpoint_callback(cfg, filename):
                 ),
             )
             os.remove(filename)
-            if distributed_utils.get_global_rank() == 0:
-                logger.info("Running this only on global rank 0")
-                # check whether all the files are saved
-                num_eval_retries = 3
-                for retry in range(num_eval_retries):
-                    time.sleep(1 * 60)
+
+            # Run evals after all checkpoint parts have been uploaded
+            if (
+                cfg.checkpoint.cloud_eval_script_path is not None
+                and distributed_utils.get_global_rank() == 0
+            ):
+                for retry in range(cfg.checkpoint.cloud_eval_num_retries):
+                    time.sleep(cfg.checkpoint.cloud_eval_retry_wait_minutes * 60)
 
                     current_checkpoint_path = os.path.join(
                         destination_checkpoints_dir, checkpoint_dir
                     )
-                    all_current_checkpoints = os.listdir(current_checkpoint_path)
+                    all_checkpoint_parts = os.listdir(current_checkpoint_path)
                     num_files = len(
                         [f for f in all_current_checkpoints if not f.startswith("_")]
                     )
-                    # does global rank 0 really only run once?
                     if num_files == cfg.distributed_training.distributed_world_size:
                         logger.info(
-                            "Found that all checkpoints were saved, will now start to run evals"
+                            f"All checkpoint parts for {checkpoint_dir} are in NFS, will now start to run evals"
                         )
+                        logger.info(f"REMOVE checkpoints found: {num_files}")
                         script_dir = os.path.join(
                             os.environ.get("METASEQ_SAVE_DIR"),
                             cfg.checkpoint.cloud_eval_script_path,
                         )
                         logger.info("Script Dir" + script_dir)
-                        output = subprocess.run(
+                        res = subprocess.run(
                             [
                                 "bash",
                                 script_dir,
@@ -533,18 +535,17 @@ def post_checkpoint_callback(cfg, filename):
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                         )
-                        logger.info("finished running script")
-                        logger.info("Logs from script start")
-                        logger.info(output.stdout)
-                        logger.info(output.stderr)
-                        logger.info("logs stop")
+                        if res.returncode == 0:
+                            logger.info(f"Sucessfully evaluated {checkpoint_dir}")
+                            logger.info(f"Eval script stdout = {res.stdout}")
+                            logger.info(f"Eval script stderr = {res.stderr}")
+                        else:
+                            logger.info(f"Error during evaluation: {res.returncode}")
+                            logger.info(f"Eval script stdout = {res.stdout}")
+                            logger.info(f"Eval script stderr = {res.stderr}")
                         return
-                    logger.info(
-                        f"retrying eval as not all checkpoints were saved yet. Only {num_files} of "
-                        f"{cfg.distributed_training.distributed_world_size} checkpoint files found."
-                    )
                 logger.info(
-                    f"Did {num_eval_retries} retries for eval, could not find all checkpoints, so giving up on eval now"
+                    f"Did not evaluate {checkpoint_dir}, as not all checkpoints were copied to NFS within waiting time"
                 )
 
         else:

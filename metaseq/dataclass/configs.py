@@ -566,6 +566,16 @@ class CheckpointConfig(MetaseqDataclass):
             "help": "Path of eval script to run on checkpoints after they were uploaded"
         },
     )
+    cloud_eval_num_retries: int = field(
+        default=8,
+        metadata={"help": "Number of retries of running evals on upload of checkpoint"},
+    )
+    cloud_eval_retry_wait_minutes: int = field(
+        default=5,
+        metadata={
+            "help": "Time to wait between retries of running evals on upload of checkpoint"
+        },
+    )
 
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
