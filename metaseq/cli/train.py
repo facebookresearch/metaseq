@@ -10,7 +10,6 @@ Train a new model on one or across multiple GPUs.
 import argparse
 import functools
 import logging
-import importlib
 import math
 import os
 import subprocess
