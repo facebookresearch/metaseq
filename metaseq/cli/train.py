@@ -528,13 +528,8 @@ def nfs_evaluation(
     if (
         cfg.checkpoint.nfs_eval_script_path is not None
         and distributed_utils.get_global_rank() == 0
-        and (
-            (cfg.checkpoint.nfs_eval_last_checkpoint and should_stop)
-            or (
-                cfg.checkpoint.nfs_eval_frequency > 0
-                and num_updates % cfg.checkpoint.nfs_eval_frequency == 0
-            )
-        )
+        and cfg.checkpoint.nfs_eval_frequency > 0
+        and num_updates % cfg.checkpoint.nfs_eval_frequency == 0
     ):
         for retry in range(cfg.checkpoint.nfs_eval_num_retries):
             time.sleep(cfg.checkpoint.nfs_eval_retry_wait_minutes * 60)

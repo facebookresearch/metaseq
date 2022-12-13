@@ -565,10 +565,6 @@ class CheckpointConfig(MetaseqDataclass):
             ),
         },
     )
-    nfs_eval_last_checkpoint: bool = field(
-        default=False,
-        metadata={"help": "Run evaluation at the end of the training run"},
-    )
 
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
