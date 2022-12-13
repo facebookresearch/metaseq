@@ -494,26 +494,6 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
-    eval_module: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": (
-                "Python module that is dinamically imported to run evaluations. It must have an eval_fn method."
-                "Required args for eval_fn:"
-                "1. First one contains the cloud upload path."
-                "2. Second one contains the filename of the checkpoints in the cloud"
-            )
-        },
-    )
-    evaluate_interval_updates: int = field(
-        default=0, metadata={"help": "run eval_fn from eval_module every N updates"}
-    )
-    evaluate_last_checkpoint: bool = field(
-        default=False,
-        metadata={
-            "help": "run the eval_fn from eval_module at the end of the training run"
-        },
-    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
@@ -560,23 +540,23 @@ class CheckpointConfig(MetaseqDataclass):
             "argparse_alias": "--cloud-dir",
         },
     )
-    cloud_eval_script_path: Optional[str] = field(
+    nfs_eval_script_path: Optional[str] = field(
         default=None,
         metadata={
             "help": "Path of eval script to run on checkpoints after they were uploaded"
         },
     )
-    cloud_eval_num_retries: int = field(
+    nfs_eval_num_retries: int = field(
         default=10,
         metadata={"help": "Number of retries of running evals on upload of checkpoint"},
     )
-    cloud_eval_retry_wait_minutes: int = field(
+    nfs_eval_retry_wait_minutes: int = field(
         default=5,
         metadata={
             "help": "Time to wait between retries of running evals on upload of checkpoint"
         },
     )
-    cloud_eval_frequency: int = field(
+    nfs_eval_frequency: int = field(
         default=5000,
         metadata={
             "help": (
@@ -584,6 +564,10 @@ class CheckpointConfig(MetaseqDataclass):
                 "with multiples of this frequency"
             ),
         },
+    )
+    nfs_eval_last_checkpoint: bool = field(
+        default=False,
+        metadata={"help": "Run evaluation at the end of the training run"},
     )
 
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
