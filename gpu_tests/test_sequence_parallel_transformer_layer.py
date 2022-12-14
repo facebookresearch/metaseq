@@ -37,7 +37,7 @@ def _allclose(out, ref, atol, rtol, msg="failed"):
     num_different = torch.count_nonzero(flatten_diff > 0)
     percentage = num_different / flatten_diff.numel()
     del flatten_diff
-    assert torch.allclose(out, ref, rtol=rtol, atol=atol), (
+    return torch.allclose(out, ref, rtol=rtol, atol=atol), (
         f"{msg}: "
         f"out={out.flatten()[max_pos]} and ref={ref.flatten()[max_pos]} (diff={max_diff} > 0)"
         f"/ atol={atol}, rtol={rtol}"
@@ -93,6 +93,7 @@ class TestParity(unittest.TestCase):
         decoder = ModelParallelTransformerDecoderLayer(args).cuda()
         result = decoder(x_)
 
+        torch.distributed.barrier()
         assert _allclose(xf_result, result, atol=atol, rtol=rtol)
 
         loss_xf = torch.norm(xf_result)
@@ -102,14 +103,14 @@ class TestParity(unittest.TestCase):
         loss.backward()
 
         torch.distributed.barrier()
-        assert torch.allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
+        assert _allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
 
         # Reset groups
         destroy_model_parallel()
 
         torch.distributed.barrier()
         if torch.distributed.get_rank() == 0:
-            print(">> passed the test :-)")
+            print(">> passed the test")
 
 
 if __name__ == "__main__":
