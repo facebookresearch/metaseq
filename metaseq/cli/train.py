@@ -527,16 +527,17 @@ def nfs_evaluation(
     if (
         cfg.checkpoint.nfs_eval_script_path is not None
         and distributed_utils.get_global_rank() == 0
-        and cfg.checkpoint.nfs_eval_frequency > 0
-        and num_updates % cfg.checkpoint.nfs_eval_frequency == 0
+        and ((cfg.checkpoint.nfs_eval_frequency > 0
+        and num_updates % cfg.checkpoint.nfs_eval_frequency == 0) or should_stop)
     ):
-        for retry in range(cfg.checkpoint.nfs_eval_num_retries):
-            time.sleep(cfg.checkpoint.nfs_eval_retry_wait_minutes * 60)
+        for retry in range(cfg.checkpoint.nfs_eval_num_attempts):
+            time.sleep(cfg.checkpoint.nfs_eval_attempt_wait_minutes * 60)
 
             current_checkpoint_path = os.path.join(
                 destination_checkpoints_dir, checkpoint_dir
             )
             num_files = os.listdir(current_checkpoint_path)
+            # only count completed checkpoints
             finished_checkpoint_parts = len(
                 [f for f in num_files if not f.startswith("_")]
             )
@@ -567,7 +568,7 @@ def nfs_evaluation(
                     logger.error(f"Eval script stdout = {res.stdout}")
                     logger.error(f"Eval script stderr = {res.stderr}")
                 return
-        logger.info(
+        logger.error(
             (
                 f"Did not evaluate {checkpoint_dir}, as only {num_files}/"
                 f"{cfg.distributed_training.distributed_world_size} "

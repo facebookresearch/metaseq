@@ -546,14 +546,14 @@ class CheckpointConfig(MetaseqDataclass):
             "help": "Path of eval script to run on checkpoints after they were uploaded"
         },
     )
-    nfs_eval_num_retries: int = field(
+    nfs_eval_num_attempts: int = field(
         default=10,
-        metadata={"help": "Number of retries of running evals on upload of checkpoint"},
+        metadata={"help": "Number of attempts of running evals on upload of checkpoint"},
     )
-    nfs_eval_retry_wait_minutes: int = field(
+    nfs_eval_attempt_wait_minutes: int = field(
         default=5,
         metadata={
-            "help": "Time to wait between retries of running evals on upload of checkpoint"
+            "help": "Time to wait between attempts of running evals on upload of checkpoint"
         },
     )
     nfs_eval_frequency: int = field(
