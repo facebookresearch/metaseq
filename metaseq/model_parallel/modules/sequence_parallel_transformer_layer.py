@@ -135,7 +135,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 "\n\nPlease install xformers to use memory efficient attention"
             )
 
-        xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
+        # xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
+        xf_op = xops.MemoryEfficientAttentionTritonFwdFlashBwOp
         if xf_eff_attn and xf_attn_op is not None:
             try:
                 xf_op = getattr(xops, xf_attn_op)
@@ -182,9 +183,12 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
             v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
 
+            # bmhk -> m, b*h, k
             attn = xf_op.forward_no_grad(
                 q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0, scale=None
-            ).view(seq_len, bsz, -1)
+            )  # .permute((0, 2, 1, 3)).view(-1, seq_len, head_dim).transpose(0, 1)
+            attn = attn.transpose(0, 1).view(seq_len, -1, head_dim)
+            # OR transpose 0/1, then view
         else:
             q = q.view(seq_len, -1, head_dim)
             k = k.view(seq_len, -1, head_dim)
