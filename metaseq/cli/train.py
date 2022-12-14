@@ -429,7 +429,7 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-def post_checkpoint_callback(cfg, num_updates, should_stop, filename):
+def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -501,7 +501,7 @@ def post_checkpoint_callback(cfg, num_updates, should_stop, filename):
             nfs_evaluation(
                 cfg,
                 num_updates,
-                should_stop,
+                training_finished,
                 checkpoint_dir,
                 destination_checkpoints_dir,
             )
@@ -522,7 +522,7 @@ def post_checkpoint_callback(cfg, num_updates, should_stop, filename):
 
 
 def nfs_evaluation(
-    cfg, num_updates, should_stop, checkpoint_dir, destination_checkpoints_dir
+    cfg, num_updates, training_finished, checkpoint_dir, destination_checkpoints_dir
 ):
     if (
         cfg.checkpoint.nfs_eval_script_path is not None
@@ -532,7 +532,7 @@ def nfs_evaluation(
                 cfg.checkpoint.nfs_eval_frequency > 0
                 and num_updates % cfg.checkpoint.nfs_eval_frequency == 0
             )
-            or should_stop
+            or training_finished
         )
     ):
         for retry in range(cfg.checkpoint.nfs_eval_num_attempts):
