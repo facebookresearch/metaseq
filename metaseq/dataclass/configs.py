@@ -548,7 +548,9 @@ class CheckpointConfig(MetaseqDataclass):
     )
     nfs_eval_num_attempts: int = field(
         default=10,
-        metadata={"help": "Number of attempts of running evals on upload of checkpoint"},
+        metadata={
+            "help": "Number of attempts of running evals on upload of checkpoint"
+        },
     )
     nfs_eval_attempt_wait_minutes: int = field(
         default=5,
