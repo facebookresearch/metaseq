@@ -494,26 +494,6 @@ class CheckpointConfig(MetaseqDataclass):
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
     )
-    eval_module: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": (
-                "Python module that is dinamically imported to run evaluations. It must have an eval_fn method."
-                "Required args for eval_fn:"
-                "1. First one contains the cloud upload path."
-                "2. Second one contains the filename of the checkpoints in the cloud"
-            )
-        },
-    )
-    evaluate_interval_updates: int = field(
-        default=0, metadata={"help": "run eval_fn from eval_module every N updates"}
-    )
-    evaluate_last_checkpoint: bool = field(
-        default=False,
-        metadata={
-            "help": "run the eval_fn from eval_module at the end of the training run"
-        },
-    )
     keep_last_epochs: int = field(
         default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
@@ -560,6 +540,34 @@ class CheckpointConfig(MetaseqDataclass):
             "argparse_alias": "--cloud-dir",
         },
     )
+    nfs_eval_script_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path of eval script to run on checkpoints after they were uploaded"
+        },
+    )
+    nfs_eval_num_attempts: int = field(
+        default=10,
+        metadata={
+            "help": "Number of attempts of running evals on upload of checkpoint"
+        },
+    )
+    nfs_eval_attempt_wait_minutes: int = field(
+        default=5,
+        metadata={
+            "help": "Time to wait between attempts of running evals on upload of checkpoint"
+        },
+    )
+    nfs_eval_frequency: int = field(
+        default=5000,
+        metadata={
+            "help": (
+                "Run evaluation only on uploaded checkpoints"
+                "with multiples of this frequency"
+            ),
+        },
+    )
+
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
     cluster_env: str = field(
