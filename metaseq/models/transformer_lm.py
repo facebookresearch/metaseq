@@ -134,12 +134,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     )
     pos_init_scalar: float = field(
         default=1.0,
-        metadata={
-            "help": "Factor to scale positional embedding init by."
-        },
+        metadata={"help": "Factor to scale positional embedding init by."},
     )
     truncate_init: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
     )
     megatron_init_sigma: float = field(
