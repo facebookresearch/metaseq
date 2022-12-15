@@ -43,18 +43,17 @@ def generation_main(cfg):
     generator = GeneratorInterface(cfg)
     models = generator.load_model()  # noqa: F841
 
-    prompts = ['this is a first test', 'this is a sencond one']
+    prompts = ["this is a first test", "this is a sencond one"]
     tokens = encode_prompts(prompts, generator)
-
+    MAX_TOKENS = [128] * len(tokens)
     generations = generator.generate(
-        inputs = tokens,
-        max_tokens = [128]*len(tokens),
-        top_p=0.5, 
-        echo=True, 
+        inputs=tokens,
+        max_tokens=MAX_TOKENS,
+        top_p=0.5,
+        echo=True,
     )
 
     print_r0(generations[0][0]["text"])
-
 
 
 if __name__ == "__main__":
@@ -69,4 +68,3 @@ if __name__ == "__main__":
     cfg = convert_namespace_to_omegaconf(args)
     cfg.distributed_training.distributed_world_size = TOTAL_WORLD_SIZE
     distributed_utils.call_main(cfg, generation_main)
-
