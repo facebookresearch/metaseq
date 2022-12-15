@@ -30,6 +30,7 @@ try:
     )
     from megatron.mpu.utils import split_tensor_along_last_dim
     from megatron.model.fused_softmax import scaled_upper_triang_masked_softmax_cuda
+    from megatron.mpu import get_tensor_model_parallel_world_size
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -135,8 +136,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 "\n\nPlease install xformers to use memory efficient attention"
             )
 
-        # xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
-        xf_op = xops.MemoryEfficientAttentionTritonFwdFlashBwOp
+        xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
+        # xf_op = xops.MemoryEfficientAttentionTritonFwdFlashBwOp
         if xf_eff_attn and xf_attn_op is not None:
             try:
                 xf_op = getattr(xops, xf_attn_op)
@@ -184,8 +185,14 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
 
             attn = (
-                xf_op.forward_no_grad(
-                    q, k, v, attn_bias=xops.LowerTriangularMask(), p=0.0, scale=None
+                xops.memory_efficient_attention_forward(
+                    q,
+                    k,
+                    v,
+                    attn_bias=xops.LowerTriangularMask(),
+                    p=0.0,
+                    scale=None,
+                    op=xf_op[0],
                 )
                 .transpose(0, 1)
                 .view(seq_len, -1, head_dim)
@@ -321,7 +328,9 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
 
         # Now wait for reduce scatter
-        handle.wait()
+        world_size = get_tensor_model_parallel_world_size()
+        if world_size != 1:
+            handle.wait()
 
         ffn_layer_norm_output, handle = _gather_along_first_dim(
             ffn_layer_norm_output, async_op=True, cached_buffer_name="mpu"
@@ -330,7 +339,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         grad_fc2_input = grad_output.matmul(fc2_weight)
 
         if ctx.recompute_fc1:
-            handle.wait()
+            if world_size != 1:
+                handle.wait()
             assert fc1_out is None
             fc1_out = torch.matmul(ffn_layer_norm_output, fc1_weight.t())
             actv_out = gelu(fc1_out) if activation_fn_name == "gelu" else relu(fc1_out)
@@ -350,7 +360,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         grad_fc2_weight = grad_output.t().matmul(actv_out)
 
         grad_fc1_input = grad_actv_input.matmul(fc1_weight)
-        handle.wait()
+        if world_size != 1:
+            handle.wait()
 
         grad_actv_input = SequeuceParallelTransformerBlock._collapse_first_dimensions(
             grad_actv_input
@@ -367,7 +378,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         grad_fc1_weight = grad_actv_input.t().matmul(ffn_layer_norm_output)
 
-        handle.wait()
+        if world_size != 1:
+            handle.wait()
 
         grad_attention_output = fused_layer_norm_cuda.backward(
             grad_fc1_input.contiguous(),
@@ -388,22 +400,25 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         # recalculate attention
         if xf_eff_attn:
-            fake_ctx = _FakeContext()
-            attn = xf_op.forward(
-                fake_ctx,
+            # TODO: reshape q/k/v?
+            attn, lse = xops.memory_efficient_attention_forward_requires_grad(
                 q,
                 k,
                 v,
                 attn_bias=xops.LowerTriangularMask(),
                 p=0.0,
                 scale=None,
-            ).view(seq_len, bsz, -1)
+                op=xf_op[0],
+            )
+            out = attn
+            attn = attn.transpose(0, 1).reshape(seq_len, -1, head_dim).contiguous()
         else:
             attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
                 q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
             )
 
-        handle.wait()
+        if world_size != 1:
+            handle.wait()
 
         grad_out_proj_input = grad_attention_output.matmul(out_proj_weight)
         grad_attention_output = (
@@ -415,7 +430,22 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         grad_out_proj_weight = grad_attention_output.t().matmul(attn)
 
         if xf_eff_attn:
-            d_q, d_k, d_v, _, _ = xf_op.backward(fake_ctx, grad_out_proj_input)
+            grad_out_proj_input = grad_out_proj_input.reshape(
+                seq_len, bsz, -1, head_dim
+            )
+            d_q, d_k, d_v = xops.memory_efficient_attention_backward(
+                grad=grad_out_proj_input,
+                output=out,
+                lse=lse,
+                query=q,
+                key=k,
+                value=v,
+                attn_bias=xops.LowerTriangularMask(),
+                p=0.0,
+                scale=None,
+                op=xf_op[1],
+            )
+            # bmhk => m bh k
             d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
             d_k = d_k.transpose(0, 1).view(seq_len, bsz, -1)
             d_v = d_v.transpose(0, 1).view(seq_len, bsz, -1)
@@ -424,6 +454,9 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_kvq_proj_output = SequeuceParallelTransformerBlock.backward_mha(
                 grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
             )
+
+            print(f"Diana Debug: shape of dq in std = {grad_kvq_proj_output[2].shape}")
+            print(f"Diana Debug: seq_len={seq_len}, bsz={bsz}, head_dim={head_dim}")
 
         (
             mha_layer_norm_output,
@@ -438,7 +471,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             cached_buffer_name="mpu",
         )
         grad_input = grad_kvq_proj_output.matmul(kvq_proj_weight)
-        handle.wait()
+        if world_size != 1:
+            handle.wait()
 
         grad_input, handle = _reduce_scatter_along_first_dim(grad_input, async_op=True)
         mha_layer_norm_output = (
@@ -452,7 +486,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             )
         )
         grad_kvq_weight = grad_kvq_proj_output.t().matmul(mha_layer_norm_output)
-        handle.wait()
+        if world_size != 1:
+            handle.wait()
 
         grad_input = fused_layer_norm_cuda.backward(
             grad_input.contiguous(),
@@ -469,6 +504,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_out_proj_weight,
             grad_fc1_weight,
             grad_fc2_weight,
+            None,
+            None,
             None,
             None,
             None,
