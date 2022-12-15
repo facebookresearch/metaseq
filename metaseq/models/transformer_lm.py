@@ -133,7 +133,7 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         },
     )
     truncate_init: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
     )
     megatron_init_sigma: float = field(
