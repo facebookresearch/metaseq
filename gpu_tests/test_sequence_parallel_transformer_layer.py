@@ -30,14 +30,14 @@ def _distributed_init():
     )
 
 
-def _allclose(out, ref, atol, rtol, msg="failed"):
+def _assert_allclose(out, ref, atol, rtol, msg="failed"):
     flatten_diff = ((out - ref).abs() - atol - ref.abs() * rtol).flatten()
     max_pos = flatten_diff.argmax()
     max_diff = flatten_diff[max_pos]
     num_different = torch.count_nonzero(flatten_diff > 0)
     percentage = num_different / flatten_diff.numel()
     del flatten_diff
-    return torch.allclose(out, ref, rtol=rtol, atol=atol), (
+    assert torch.allclose(out, ref, rtol=rtol, atol=atol), (
         f"{msg}: "
         f"out={out.flatten()[max_pos]} and ref={ref.flatten()[max_pos]} (diff={max_diff} > 0)"
         f"/ atol={atol}, rtol={rtol}"
@@ -94,16 +94,14 @@ class TestParity(unittest.TestCase):
         result = decoder(x_)
 
         torch.distributed.barrier()
-        assert _allclose(xf_result, result, atol=atol, rtol=rtol)
+        _assert_allclose(xf_result, result, atol=atol, rtol=rtol)
 
-        loss_xf = torch.norm(xf_result)
-        loss_xf.backward()
-
-        loss = torch.norm(result)
-        loss.backward()
+        # Test Backwards
+        xf_result.backward(torch.ones_like(x))
+        result.backward(torch.ones_like(x_))
 
         torch.distributed.barrier()
-        assert _allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
+        _assert_allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
 
         # Reset groups
         destroy_model_parallel()
