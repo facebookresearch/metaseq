@@ -192,6 +192,17 @@ def main(cfg: DictConfig) -> None:
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
 
+def get_skip_batches(to_skip):
+    skip_batches = {}
+    for skip_range in to_skip.split(","):
+        if "-" in skip_range:
+            start, end = skip_range.split("-")
+            skip_batches[int(start)] = int(end) - int(start) + 1
+        else:
+            skip_batches[int(skip_range)] = 1
+    return skip_batches
+
+
 @metrics.aggregate("train")
 def train(
     cfg: DictConfig, trainer: Trainer, task: tasks.BaseTask, epoch_itr
@@ -305,7 +316,23 @@ def train(
 
         return valid_losses, should_stop
 
+    skip_batches = None
+    if len(cfg.dataset.skip_batches) > 0:
+        skip_batches = get_skip_batches(cfg.dataset.skip_batches)
     for i, samples in enumerate(progress):
+        current_step = trainer.get_num_updates() + 1
+        if (
+            skip_batches is not None
+            and current_step in skip_batches
+            and skip_batches[current_step] > 0
+        ):
+            skip_batches[current_step] -= 1
+            logger.info(
+                f"Skipping batches starting from step {current_step} with "
+                f"{skip_batches[current_step]} batches left to skip"
+            )
+            continue
+
         if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
             logger.info("STARTING PROFILER")
             with profiler.profile(
