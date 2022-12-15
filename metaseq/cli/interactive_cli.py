@@ -79,6 +79,14 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
     request_object = distributed_utils.broadcast_object(
         None, src_rank=0, group=distributed_utils.get_global_group()
     )
+
+    stop = "<EOS>"
+    if stop is not None:
+        if isinstance(stop, str):
+            stop = [generator.encode_fn(stop)[0]]
+        else:
+            stop = [generator.encode_fn(s)[0] for s in stop]
+
     if torch.distributed.get_rank() == 0:
         while True:
             prompt = input_loop()
@@ -86,6 +94,8 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
             request_object = {
                 "inputs": [tokens],
                 "max_tokens": [128],
+                "stop": stop,
+                "top_p": 0.5,
             }
             print(request_object)
             distributed_utils.broadcast_object(

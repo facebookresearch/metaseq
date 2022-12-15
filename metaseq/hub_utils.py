@@ -343,7 +343,7 @@ class GeneratorInterface:
                         )
                         for top_scores, top_toks in zip(all_top_toks, all_top_scores):
                             lp = {
-                                self.bpe.bpe.decode([t.item()]): s.item()
+                                self.bpe.decode([t.item()]): s.item()
                                 for t, s in zip(top_toks, top_scores)
                             }
                             out_logprobs.append(lp)

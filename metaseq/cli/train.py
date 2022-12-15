@@ -10,11 +10,14 @@ Train a new model on one or across multiple GPUs.
 import argparse
 import functools
 import logging
+import importlib
 import math
 import os
 import subprocess
 import sys
 import time
+import socket
+import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
 import numpy as np
@@ -30,6 +33,7 @@ from metaseq import (
 )
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
+from metaseq.dataclass.configs import DynamicConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
@@ -37,18 +41,29 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
+if "SLURM_PROCID" in os.environ:
+    format_string = f"slurm_procid {os.environ['SLURM_PROCID']} : %(asctime)s | %(levelname)s | %(name)s | %(message)s"
+else:
+    format_string = f"%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=format_string,
     datefmt="%Y-%m-%d %H:%M:%S",
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
 )
 logging.Formatter.converter = time.gmtime  # Enforce UTC timestamps
-logger = logging.getLogger("metaseq_cli.train")
+logger = logging.getLogger("metaseq.cli.train")
 
 
 def main(cfg: DictConfig) -> None:
     utils.import_user_module(cfg.common)
+
+    # replace with actual job id
+    slurm_jobid = os.environ.get("SLURM_JOBID", None)
+    if "%jobid" in cfg.checkpoint.save_dir and slurm_jobid is not None:
+        cfg.checkpoint.save_dir = cfg.checkpoint.save_dir.replace("%jobid", slurm_jobid)
+
+    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
     if distributed_utils.is_master(cfg.distributed_training):
         # save a (vaguely human readable) copy of the training config
@@ -76,23 +91,11 @@ def main(cfg: DictConfig) -> None:
     np.random.seed(cfg.common.seed)
     utils.set_torch_seed(cfg.common.seed)
 
-    checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
-
     # Print nvidia smi stats
     logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
 
     # Print args
     logger.info(cfg)
-
-    if cfg.checkpoint.write_checkpoints_asynchronously:
-        try:
-            import iopath  # noqa: F401
-        except ImportError:
-            logging.exception(
-                "Asynchronous checkpoint writing is specified but iopath is "
-                "not installed: `pip install iopath`"
-            )
-            return
 
     # Setup task, e.g., translation, language modeling, etc.
     task = tasks.setup_task(cfg.task)
@@ -186,42 +189,13 @@ def main(cfg: DictConfig) -> None:
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
-    # ioPath implementation to wait for all asynchronous file writes to complete.
+    # Wait for all asynchronous file writes to complete.
     if cfg.checkpoint.write_checkpoints_asynchronously:
         logger.info(
-            "ioPath PathManager waiting for all asynchronous checkpoint "
-            "writes to finish."
+            "PathManager waiting for all asynchronous checkpoint writes to finish."
         )
         PathManager.async_close()
-        logger.info("ioPath PathManager finished waiting.")
-
-
-def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
-    # skip check if no validation was done in the current epoch
-    if valid_loss is None:
-        return False
-    if cfg.checkpoint.patience <= 0:
-        return False
-
-    def is_better(a, b):
-        return a > b if cfg.checkpoint.maximize_best_checkpoint_metric else a < b
-
-    prev_best = getattr(should_stop_early, "best", None)
-    if prev_best is None or is_better(valid_loss, prev_best):
-        should_stop_early.best = valid_loss
-        should_stop_early.num_runs = 0
-        return False
-    else:
-        should_stop_early.num_runs += 1
-        if should_stop_early.num_runs >= cfg.checkpoint.patience:
-            logger.info(
-                "early stop since valid performance hasn't improved for last {} runs".format(
-                    cfg.checkpoint.patience
-                )
-            )
-            return True
-        else:
-            return False
+        logger.info("PathManager finished waiting.")
 
 
 @metrics.aggregate("train")
@@ -290,9 +264,7 @@ def train(
         i,
         samples,
     ):
-        with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
-            "train_step-%d" % i
-        ):
+        with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
             log_output = trainer.train_step(samples)
@@ -321,20 +293,25 @@ def train(
 
         return valid_losses, should_stop
 
+    dcfg = DynamicConfig(
+        json_file_path=cfg.common.dynamic_config_path,
+        timeout=cfg.common.dynamic_config_timeout,
+    )
+
     for i, samples in enumerate(progress):
-        if (
-            distributed_utils.get_global_rank() == 0
-            and cfg.common.new_profiler
-            and i == 5
-        ):
-            logger.info("STARTING PROFILER")
+        force_profile = dcfg["force_profile"]
+        do_profile = (distributed_utils.get_global_rank() == 0) and (
+            (cfg.common.profile and i == 5) or force_profile
+        )
+        if do_profile:
+            logger.info(f"STARTING PROFILER: step {i}")
             with profiler.profile(
                 profile_memory=True, with_stack=True, record_shapes=True
             ) as prof:
                 valid_losses, should_stop = train(i, samples)
             torch.cuda.synchronize()
             with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt")
+                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
             ) as sourceFile:
                 print(
                     prof.key_averages(group_by_stack_n=5).table(
@@ -343,8 +320,9 @@ def train(
                     file=sourceFile,
                 )
             prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+                os.path.join(cfg.checkpoint.save_dir, f"profiler_trace_step_{i}.json")
             )
+            logger.info(f"FINISHING PROFILER: step {i}")
         else:
             valid_losses, should_stop = train(i, samples)
         if should_stop:
@@ -411,8 +389,7 @@ def validate_and_save(
         or should_stop
     )
     do_validate = (
-        (not end_of_epoch and do_save)  # validate during mid-epoch saves
-        or should_stop
+        should_stop
         or (
             cfg.dataset.validate_interval_updates > 0
             and num_updates > 0
@@ -420,30 +397,48 @@ def validate_and_save(
             and was_successful_step
         )
     ) and not cfg.dataset.disable_validation
-    valid_losses = [None]
-    if do_validate:
-        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+    do_evaluate = (should_stop and cfg.checkpoint.evaluate_last_checkpoint) or (
+        cfg.checkpoint.evaluate_interval_updates > 0
+        and num_updates % cfg.checkpoint.evaluate_interval_updates == 0
+    )
+    assert do_save or not do_evaluate, "Evaluate schedule must match checkpoint saves"
 
-    should_stop |= should_stop_early(cfg, valid_losses[0])
-
-    # Save checkpoint
+    # Save checkpoint before validating.
     if do_save:
+        eval_kwargs = {
+            "checkpoint_suffix": trainer.checkpoint_suffix,
+            "gloo_pg": None,  # dist.new_group(backend="gloo"),
+        }
         checkpoint_utils.save_checkpoint(
             cfg.checkpoint,
             trainer,
             epoch_itr,
-            valid_losses[0],
             training_finished=should_stop,
-            async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
+            async_callback_fn=functools.partial(
+                post_checkpoint_callback, cfg, do_evaluate, eval_kwargs
+            )
             if cfg.checkpoint.cloud_upload_path
             else None,
+            copy_to_nfs=cfg.checkpoint.cloud_upload_path.startswith("nfs:"),
         )
+
+    valid_losses = [None]
+    if do_validate:
+        valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
 
     trainer.reset_dummy_batch(epoch_itr.first_batch)
     return valid_losses, should_stop
 
 
-def post_checkpoint_callback(cfg, filename):
+def _checkpoint_add_directory(basename):
+    pattern = r"(checkpoint(\d+|_\d+|_last))(.*)"
+    m = re.match(pattern, basename)
+    assert m, f"checkpoint file doesn't follow pattern {pattern}"
+    return m[1], f"checkpoint{m[3]}"
+
+
+# filename is absolute filepath on local disk
+def post_checkpoint_callback(cfg, do_evaluate, eval_kwargs, filename):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -461,7 +456,7 @@ def post_checkpoint_callback(cfg, filename):
                 filename,
                 cfg.checkpoint.cloud_upload_path,
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if res.returncode != 0:
                 print("Error: {}, azcopy failed".format(res.returncode))
                 print("Azcopy stdout = {}".format(res.stdout))
@@ -472,6 +467,11 @@ def post_checkpoint_callback(cfg, filename):
                 f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
             )
             os.remove(filename)
+        elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
+            # TODO[susanz]: Add cleanup logic.
+            file_parentpath, file_basename = os.path.split(filename)
+            done_file = os.path.join(file_parentpath, "_done_" + file_basename)
+            os.close(os.open(done_file, os.O_CREAT))
         else:
             try:
                 # PathManager only supports writing to S3, but this function call
@@ -485,6 +485,42 @@ def post_checkpoint_callback(cfg, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
+
+        # if do_evaluate:
+        #     _run_evaluations(
+        #         cfg.checkpoint.eval_module,
+        #         cfg.checkpoint.cloud_upload_path,
+        #         filename,
+        #         **eval_kwargs,
+        #     )
+
+
+def _run_evaluations(
+    eval_module, cloud_upload_path, local_file, checkpoint_suffix, gloo_pg
+):
+    # Make sure all ranks have finished uploading checkpoints.
+    # If any rank doesn't hit the barrier within the timeout period, we throw an error and do
+    # not run evals. Error doesn't stop training run.
+    # dist.monitored_barrier(group=gloo_pg, timeout=timedelta(minutes=5))
+    # Run evals on rank 0
+    if distributed_utils.get_global_rank() != 0:
+        return
+    assert eval_module is not None, "--eval-module needs to be set."
+    module = importlib.import_module(eval_module)
+    if not hasattr(module, "eval_fn"):
+        raise RuntimeError(
+            f"{eval_module} must have a function called eval_fn to utilize for evaluations. "
+            "It expects the following signature:\n"
+            "def eval_fn(cloud_upload_path: str, checkpoint_name: str)"
+        )
+    checkpoint_name = local_file.split("/")[-1].replace(checkpoint_suffix, "")
+    logger.info(f"Kicking off eval_fn from: {module}")
+    module.eval_fn(cloud_upload_path, checkpoint_name)
+    logger.info(f"Successfully ran evaluation")
+
+
+def _run_azcopy(cmd, stdout, stderr):
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def get_training_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
@@ -575,31 +611,43 @@ def validate(
                         break
                     trainer.valid_step(sample)
             # log validation stats
-            stats = get_valid_stats(cfg, trainer, agg.get_smoothed_values())
+            stats = add_num_updates_to_stats(trainer, agg.get_smoothed_values())
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
-            valid_losses.append(stats[cfg.checkpoint.best_checkpoint_metric])
-    stats = get_valid_stats(cfg, trainer, combined_agg.get_smoothed_values())
+    stats = add_num_updates_to_stats(trainer, combined_agg.get_smoothed_values())
     progress.print(stats, tag="valid/combined", step=trainer.get_num_updates())
     return valid_losses
 
 
-def get_valid_stats(
-    cfg: DictConfig, trainer: Trainer, stats: Dict[str, Any]
-) -> Dict[str, Any]:
+def add_num_updates_to_stats(trainer: Trainer, stats: Dict[str, Any]) -> Dict[str, Any]:
     stats["num_updates"] = trainer.get_num_updates()
-    if hasattr(checkpoint_utils.save_checkpoint, "best"):
-        key = "best_{0}".format(cfg.checkpoint.best_checkpoint_metric)
-        best_function = max if cfg.checkpoint.maximize_best_checkpoint_metric else min
-        stats[key] = best_function(
-            checkpoint_utils.save_checkpoint.best,
-            stats[cfg.checkpoint.best_checkpoint_metric],
-        )
     return stats
+
+
+def set_local_per_worker_env_variables():
+    savedir = os.environ.get("METASEQ_SAVE_DIR")
+    if savedir is not None:
+        hostname = socket.gethostname()
+
+        restart = int(os.environ.get("SLURM_RESTART_COUNT", "0"))
+        nccl_dir = os.path.join(savedir, "nccl", f"restart_{restart:03d}")
+        os.makedirs(nccl_dir, exist_ok=True)
+        rank = int(os.environ.get("SLURM_PROCID", "0"))
+        os.environ["NCCL_DEBUG_FILE"] = os.path.join(
+            nccl_dir, f"rank_{rank:04d}_{hostname}"
+        )
+
+        # save a copy of all our environmental variables
+        env_dir = os.path.join(savedir, "envs", f"restart_{restart:03d}")
+        os.makedirs(env_dir, exist_ok=True)
+        with open(os.path.join(env_dir, f"rank_{rank:04d}_{hostname}"), "w") as f:
+            for key in sorted(os.environ.keys()):
+                f.write(f"{key}={os.environ[key]}\n")
 
 
 def cli_main(
     modify_parser: Optional[Callable[[argparse.ArgumentParser], None]] = None
 ) -> None:
+    set_local_per_worker_env_variables()
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
 
@@ -612,12 +660,7 @@ def cli_main(
             f"Started plasma server pid {server.server.pid} {cfg.common.plasma_path}"
         )
 
-    if args.profile:
-        with torch.cuda.profiler.profile():
-            with torch.autograd.profiler.emit_nvtx():
-                distributed_utils.call_main(cfg, main)
-    else:
-        distributed_utils.call_main(cfg, main)
+    distributed_utils.call_main(cfg, main)
 
 
 if __name__ == "__main__":

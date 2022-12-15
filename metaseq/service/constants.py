@@ -11,6 +11,7 @@ MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 2
 TOTAL_WORLD_SIZE = 2
+MAX_BEAM = 16
 
 
 CHECKPOINT_FOLDER = "~/sandbox/checkpoint_consolidated.pt"
@@ -29,8 +30,8 @@ LAUNCH_ARGS = [
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
-    f"--spm-path /shared/home/liliyu/data/text-speech-models/V262144_I8192_S2000_M512_R1024_1M_V2.json",
-    f"--path /shared/home/liliyu/data/text-speech-models/en_speech_text_c4_2_7B_v3/consolidated_mp2/consolidated.pt",
+    f"--spm-path /data/cm3z/liliyu/data/text-speech-models/V262144_I8192_S2000_M512_R1024_1M_V2.json",
+    f"--path /data/cm3z/liliyu/data/text-speech-models/en_speech_text_2_7B_full_v8/consolidated_mp2/consolidated.pt",
     "--image-tokens 8192",
     "--speech-tokens 2000",
     "--beam 1 --nbest 1",
