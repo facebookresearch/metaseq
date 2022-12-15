@@ -101,8 +101,8 @@ class TransformerDecoder(IncrementalDecoder):
                 learned=args.decoder_learned_pos,
                 learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
                 full_megatron_init=getattr(args, "full_megatron_init", False),
-                full_megatron_init_scalar=getattr(
-                    args, "full_megatron_init_scalar", 0.02
+                pos_init_scalar=getattr(
+                    args, "pos_init_scalar", 1.0
                 ),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
                 truncate_init=getattr(args, "truncate_init", False),
