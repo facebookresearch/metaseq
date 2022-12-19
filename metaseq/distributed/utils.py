@@ -44,7 +44,7 @@ def infer_init_method(cfg: DistributedTrainingConfig, force_distributed=False):
         _infer_slurm_init(cfg)
     elif all(
         key in os.environ
-        for key in ["MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "RANK"]
+        for key in ["MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "RANK", "LOCAL_RANK"]
     ):
         # support torch.distributed.launch
         _infer_torch_distributed_launch_init(cfg)
@@ -63,6 +63,7 @@ def _infer_torch_distributed_launch_init(cfg: DistributedTrainingConfig):
     cfg.distributed_init_method = "env://"
     cfg.distributed_world_size = int(os.environ["WORLD_SIZE"])
     cfg.distributed_rank = int(os.environ["RANK"])
+    cfg.device_id = int(os.environ["LOCAL_RANK"])
     # processes are created by torch.distributed.launch
     cfg.distributed_no_spawn = True
 
