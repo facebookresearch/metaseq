@@ -23,6 +23,7 @@ def reshard_fsdp_checkpoints(
     output_shard_name: str,
     num_output_shards: int = 1,
     unflatten_weights: bool = True,
+    flatten_weights: bool = False,
     skip_optimizer_state: bool = False,
 ) -> None:
     """
@@ -54,6 +55,7 @@ def reshard_fsdp_checkpoints(
         shard_state_dicts,
         num_output_shards=num_output_shards,
         unflatten_weights=unflatten_weights,
+        flatten_weights=flatten_weights,
         skip_optimizer_state=skip_optimizer_state,
     )
     for shard_idx, state_dict in enumerate(resharded_state_dicts):
@@ -67,6 +69,7 @@ def reshard_fsdp_state_dicts(
     shard_state_dicts: List[Dict[str, Any]],
     num_output_shards: int = 1,
     unflatten_weights: bool = True,
+    flatten_weights: bool = False,
     skip_optimizer_state: bool = False,
 ) -> List[Dict[str, Any]]:
     logger.info(f"Resharding state dicts into {num_output_shards} shard(s)")
@@ -76,6 +79,7 @@ def reshard_fsdp_state_dicts(
         shard_metadata=[s["shard_metadata"] for s in shard_state_dicts],
         num_output_shards=num_output_shards,
         unflatten_weights=unflatten_weights,
+        flatten_weights=flatten_weights,
     )
     resharded_state_dicts = [{} for _ in range(num_output_shards)]
     for shard_idx, (weight, metadata) in enumerate(
@@ -115,6 +119,7 @@ def reshard_fsdp_model_weights(
     shard_metadata: List[Dict[str, Any]],
     num_output_shards: int = 1,
     unflatten_weights: bool = False,
+    flatten_weights: bool = False,
 ) -> List[Dict[str, torch.Tensor]]:
     logger.info(f"Resharding model weights into {num_output_shards} shard(s)")
     if len(shard_weights) != len(shard_metadata):
@@ -128,25 +133,48 @@ def reshard_fsdp_model_weights(
         fsdp_path = param_metadata["fsdp_path"]
         for flat_name, param_info in param_metadata["params"].items():
             full_key = ".".join([fsdp_path, flat_name]) if fsdp_path else flat_name
-            if full_key not in shard_weights[0]:
-                raise ValueError(f"No weight found for key {full_key} in metadata.")
+            # import pdb; pdb.set_trace()
 
-            # Unshard FSDP tensor weights
-            sharded_weights = []
-            for weight, metadata in zip(shard_weights, shard_metadata):
-                pad = metadata["param_metadata"][idx]["params"][flat_name]["padding"]
-                sharded_weights.append(_unpad_tensor(weight[full_key], pad))
-            unsharded_weights = torch.cat(sharded_weights, dim=0)
+            if not flatten_weights:
+                if full_key not in shard_weights[0]:
+                    raise ValueError(f"No weight found for key {full_key} in metadata.")
 
-            # For single shard output, tensor weights can be unflattened
-            if unflatten_weights:
+                # Unshard FSDP tensor weights
+                sharded_weights = []
+                for weight, metadata in zip(shard_weights, shard_metadata):
+                    pad = metadata["param_metadata"][idx]["params"][flat_name]["padding"]
+                    sharded_weights.append(_unpad_tensor(weight[full_key], pad))
+                unsharded_weights = torch.cat(sharded_weights, dim=0)
+
+                # For single shard output, tensor weights can be unflattened
+                if unflatten_weights:
+                    # list of tensor values, shapes, and numels, paddings for a flattened tensor
+                    names, shapes, numels, _ = param_info.values()
+                    assert sum(numels) == unsharded_weights.size(0)
+                    # this uses the list of numels to split the tensor directly in correctly sized pieces
+                    for n, t, s in zip(names, unsharded_weights.split(numels), shapes):
+                        param_name = ".".join([fsdp_path, n]) if fsdp_path else n
+                        print(param_name)
+                        print(s)
+                        resharded_weights[0][param_name] = t.view(s)
+                    # resharded_metadata = [{}] * num_output_shards
+                    continue
+            if flatten_weights:
+                all_weights = shard_weights[0]
                 names, shapes, numels, _ = param_info.values()
-                assert sum(numels) == unsharded_weights.size(0)
-                for n, t, s in zip(names, unsharded_weights.split(numels), shapes):
+                # get each relevant tensor, flatten it, and concat all, save as full_key
+                gathered = []
+                for n in names:
                     param_name = ".".join([fsdp_path, n]) if fsdp_path else n
-                    resharded_weights[0][param_name] = t.view(s)
-                resharded_metadata = [{}] * num_output_shards
-                continue
+                    t = all_weights[param_name]
+                    gathered.append(t.view(-1))
+                unsharded_weights = torch.cat(gathered, dim=0)
+                # resharded_weights[0][full_key] = torch.cat(gathered, dim=0)
+                print(names)
+                print(unsharded_weights.size)
+                # print(resharded_weights[0][full_key].size)
+                # assert sum(numels) == resharded_weights[0][full_key].size(0)
+
 
             # Otherwise, reshard weights by chunking the unsharded tensor
             weights, paddings = _shard_and_pad_tensor(
@@ -237,6 +265,6 @@ if __name__ == "__main__":
         python -m metaseq.scripts.reshard_fsdp \
         --input-glob-pattern "opt-2.7b/raw/checkpoint_last-model_part-0-shard*.pt" \
         --output-shard-name "opt-2.7b/reshard/reshard-model_part-0.pt" \
-        --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
+        --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True --flatten-weights False
     """
     fire.Fire(reshard_fsdp_checkpoints)

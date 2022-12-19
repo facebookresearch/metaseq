@@ -479,10 +479,11 @@ class Trainer(object):
                     )
                     del state["criterion"]
 
-            except Exception:
+            except Exception as e:
                 raise Exception(
-                    "Cannot load model parameters from checkpoint {}; "
-                    "please ensure that the architectures match.".format(filename)
+                    "Cannot load model parameters from checkpoint ; "
+                    "please ensure that the architectures match."
+                    f"{e}"
                 )
             extra_state = state["extra_state"]
             self._optim_history = state["optimizer_history"]
