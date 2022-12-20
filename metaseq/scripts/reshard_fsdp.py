@@ -169,7 +169,7 @@ def reshard_fsdp_model_weights(
                     gathered.append(t.view(-1))
                 unsharded_weights = torch.cat(gathered, dim=0)
                 print(names)
-                print(unsharded_weights.size)
+                print(unsharded_weights.shape)
 
 
 
