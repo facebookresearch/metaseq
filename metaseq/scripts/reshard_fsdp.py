@@ -133,7 +133,6 @@ def reshard_fsdp_model_weights(
         fsdp_path = param_metadata["fsdp_path"]
         for flat_name, param_info in param_metadata["params"].items():
             full_key = ".".join([fsdp_path, flat_name]) if fsdp_path else flat_name
-            # import pdb; pdb.set_trace()
 
             if not flatten_weights:
                 if full_key not in shard_weights[0]:
@@ -169,11 +168,9 @@ def reshard_fsdp_model_weights(
                     t = all_weights[param_name]
                     gathered.append(t.view(-1))
                 unsharded_weights = torch.cat(gathered, dim=0)
-                # resharded_weights[0][full_key] = torch.cat(gathered, dim=0)
                 print(names)
                 print(unsharded_weights.size)
-                # print(resharded_weights[0][full_key].size)
-                # assert sum(numels) == resharded_weights[0][full_key].size(0)
+
 
 
             # Otherwise, reshard weights by chunking the unsharded tensor
