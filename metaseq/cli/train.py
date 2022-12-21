@@ -312,42 +312,56 @@ def train(
     skip_batches = None
     if len(cfg.dataset.skip_batches) > 0:
         skip_batches = get_skip_batches(cfg.dataset.skip_batches)
-    for i, samples in enumerate(progress):
-        current_step = trainer.get_num_updates() + 1
-        if (
-            skip_batches is not None
-            and current_step in skip_batches
-            and skip_batches[current_step] > 0
-        ):
-            skip_batches[current_step] -= 1
-            logger.info(
-                f"Skipping batches starting from step {current_step} with "
-                f"{skip_batches[current_step]} batches left to skip"
-            )
-            continue
 
-        if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
-            logger.info("STARTING PROFILER")
-            with profiler.profile(
-                profile_memory=True, with_stack=True, record_shapes=True
-            ) as prof:
-                valid_losses, should_stop = train(i, samples)
-            torch.cuda.synchronize()
-            with open(
-                os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
-            ) as sourceFile:
-                print(
-                    prof.key_averages(group_by_stack_n=5).table(
-                        sort_by="self_cuda_memory_usage", row_limit=10
-                    ),
-                    file=sourceFile,
+    progress_iter = iter(progress)
+    # for i, samples in enumerate(progress):
+    i = 0
+    while True:
+        try:
+            with metrics.aggregate("train_inner"):
+                metrics.log_start_time("time_sample_fetch", round=4)
+                samples = next(progress_iter)
+                metrics.log_stop_time("time_sample_fetch")
+
+            current_step = trainer.get_num_updates() + 1
+            if (
+                skip_batches is not None
+                and current_step in skip_batches
+                and skip_batches[current_step] > 0
+            ):
+                skip_batches[current_step] -= 1
+                logger.info(
+                    f"Skipping batches starting from step {current_step} with "
+                    f"{skip_batches[current_step]} batches left to skip"
                 )
-            prof.export_chrome_trace(
-                os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
-            )
-        else:
-            valid_losses, should_stop = train(i, samples)
-        if should_stop:
+                continue
+
+            if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
+                logger.info("STARTING PROFILER")
+                with profiler.profile(
+                    profile_memory=True, with_stack=True, record_shapes=True
+                ) as prof:
+                    valid_losses, should_stop = train(i, samples)
+                torch.cuda.synchronize()
+                with open(
+                    os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
+                ) as sourceFile:
+                    print(
+                        prof.key_averages(group_by_stack_n=5).table(
+                            sort_by="self_cuda_memory_usage", row_limit=10
+                        ),
+                        file=sourceFile,
+                    )
+                prof.export_chrome_trace(
+                    os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
+                )
+            else:
+                valid_losses, should_stop = train(i, samples)
+            if should_stop:
+                break
+
+            i += 1
+        except StopIteration:
             break
 
     # reset epoch-level meters
