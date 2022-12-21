@@ -265,7 +265,6 @@ def train(
     logger.info("Start iterating over samples")
 
     def train(
-        i,
         samples,
     ):
         with metrics.aggregate("train_inner"):
@@ -314,7 +313,6 @@ def train(
         skip_batches = get_skip_batches(cfg.dataset.skip_batches)
 
     progress_iter = iter(progress)
-    # for i, samples in enumerate(progress):
     i = 0
     while True:
         try:
@@ -341,7 +339,7 @@ def train(
                 with profiler.profile(
                     profile_memory=True, with_stack=True, record_shapes=True
                 ) as prof:
-                    valid_losses, should_stop = train(i, samples)
+                    valid_losses, should_stop = train(samples)
                 torch.cuda.synchronize()
                 with open(
                     os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
@@ -356,7 +354,7 @@ def train(
                     os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
                 )
             else:
-                valid_losses, should_stop = train(i, samples)
+                valid_losses, should_stop = train(samples)
             if should_stop:
                 break
 
