@@ -103,7 +103,7 @@ def reshard_model_parallel_parts(
         state_dict = {"model": sharded_dict}
         # Copy other values from rank 0
         for key in ["cfg", "extra_state", "optimizer_history", "args"]:
-            state_dict[key] = rank0_state_dict[key]
+            state_dict[key] = rank0_state_dict.get(key, None)
         state_dict["cfg"]["model"].model_parallel_size = M
 
         output_file = output.format(i=i)

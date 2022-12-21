@@ -36,8 +36,8 @@ To consolidate the 992 shards into 8 files model-parallel evaluation, run the `m
 ```bash
 for j in {0..7}; do
     python -m metaseq.scripts.reshard_fsdp \
-    --input-glob-pattern "/path/to/raw/checkpoints/checkpoint_last-model_part-$j-shard*.pt" \
-    --output-shard-name "/path/to/resharded/checkpoints/reshard-model_part-$j.pt" \
+    --input "/path/to/raw/checkpoints/checkpoint_last-model_part-$j-shard*.pt" \
+    --output "/path/to/resharded/checkpoints/reshard-model_part-$j.pt" \
     --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
 done
 ```
