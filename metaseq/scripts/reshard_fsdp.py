@@ -18,12 +18,20 @@ logging.basicConfig(format="%(asctime)s | %(name)s | %(message)s", level=logging
 logger: logging.Logger = logging.getLogger("metaseq.scripts.reshard_fsdp")
 
 
+_STRING_TO_DTYPE: Dict[str, torch.dtype] = {
+    "fp32": torch.float32,
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16,
+}
+
+
 def reshard_fsdp_checkpoints(
-    input_glob_pattern: str,
-    output_shard_name: str,
+    input: str,
+    output: str,
     num_output_shards: int = 1,
     unflatten_weights: bool = True,
     skip_optimizer_state: bool = False,
+    output_dtype: Optional[str] = None,
 ) -> None:
     """
     Reshard FSDP checkpoints and write outputs to files. The model weights and optimizer states
@@ -31,17 +39,21 @@ def reshard_fsdp_checkpoints(
     checkpoints are expected to contain shard metadata.
 
     Args:
-        :param input_glob_pattern: A glob pattern specifying the path names of the input shards.
+        :param input: A glob pattern specifying the path names of the input shards.
             (e.g. "checkpoints/2.7B/raw/checkpoint_last-model_part-0-shard*.pt").
-        :param output_shard_name: A string pattern specifying the path names of the output shards.
+        :param output: A string pattern specifying the path names of the output shards.
             Shard indices can be included in the path names if the pattern includes `{i}`.
             (e.g. "checkpoints/2.7B/reshard/reshard-model_part-0-shard{i}.pt").
         :param num_output_shards: The number of output shards.
         :param unflatten_weights: Specifies whether the weights in the input shards should be
             unflattened. This option is only applicable when the number of output shards is 1.
         :param skip_optimizer_state: Specifies whether to skip the optimizer states from the input shards.
+        :param output_dtype: Specifies the weight dtype of output shards (e.g. "fp32", "fp16", "bf16").
+            By default, output_dtype is None and no dtype conversion is applied.
     """
-    files = glob(input_glob_pattern)
+    if output_dtype and output_dtype not in _STRING_TO_DTYPE:
+        raise ValueError(f"The specified output dtype {output_dtype} is not supported.")
+    files = glob(input)
     if len(files) == 0:
         raise ValueError("The glob pattern doesn't match any sharded checkpoints.")
     files = sorted(files, key=lambda x: list(map(int, re.findall(r"\d+", x))))
@@ -55,9 +67,10 @@ def reshard_fsdp_checkpoints(
         num_output_shards=num_output_shards,
         unflatten_weights=unflatten_weights,
         skip_optimizer_state=skip_optimizer_state,
+        dtype=_STRING_TO_DTYPE.get(output_dtype, None),
     )
     for shard_idx, state_dict in enumerate(resharded_state_dicts):
-        output_file = output_shard_name.format(i=shard_idx)
+        output_file = output.format(i=shard_idx)
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         logger.info(f"Writing a resharded state dict to {output_file}")
         torch.save(state_dict, output_file)
@@ -68,6 +81,7 @@ def reshard_fsdp_state_dicts(
     num_output_shards: int = 1,
     unflatten_weights: bool = True,
     skip_optimizer_state: bool = False,
+    dtype: Optional[torch.dtype] = None,
 ) -> List[Dict[str, Any]]:
     logger.info(f"Resharding state dicts into {num_output_shards} shard(s)")
     # Unshard model weights
@@ -76,6 +90,7 @@ def reshard_fsdp_state_dicts(
         shard_metadata=[s["shard_metadata"] for s in shard_state_dicts],
         num_output_shards=num_output_shards,
         unflatten_weights=unflatten_weights,
+        dtype=dtype,
     )
     resharded_state_dicts = [{} for _ in range(num_output_shards)]
     for shard_idx, (weight, metadata) in enumerate(
@@ -97,6 +112,7 @@ def reshard_fsdp_state_dicts(
             shard_optim_states=[s["last_optimizer_state"] for s in shard_state_dicts],
             shard_optim_padding=dict(enumerate(param_padding)),
             num_output_shards=num_output_shards,
+            dtype=dtype,
         )
         for shard_idx, optim_state in enumerate(reshared_optim_states):
             resharded_state_dicts[shard_idx]["last_optimizer_state"] = optim_state
@@ -115,6 +131,7 @@ def reshard_fsdp_model_weights(
     shard_metadata: List[Dict[str, Any]],
     num_output_shards: int = 1,
     unflatten_weights: bool = False,
+    dtype: Optional[torch.dtype] = None,
 ) -> List[Dict[str, torch.Tensor]]:
     logger.info(f"Resharding model weights into {num_output_shards} shard(s)")
     if len(shard_weights) != len(shard_metadata):
@@ -135,7 +152,8 @@ def reshard_fsdp_model_weights(
             sharded_weights = []
             for weight, metadata in zip(shard_weights, shard_metadata):
                 pad = metadata["param_metadata"][idx]["params"][flat_name]["padding"]
-                sharded_weights.append(_unpad_tensor(weight[full_key], pad))
+                sharded_weight = _maybe_type(weight[full_key], dtype)
+                sharded_weights.append(_unpad_tensor(sharded_weight, pad))
             unsharded_weights = torch.cat(sharded_weights, dim=0)
 
             # For single shard output, tensor weights can be unflattened
@@ -168,7 +186,9 @@ def reshard_fsdp_model_weights(
         if buffer_name not in shard_weights[0]:
             raise ValueError(f"No buffer found for buffer name {buffer_name}.")
         for shard_idx in range(num_output_shards):
-            resharded_weights[shard_idx][buffer_name] = shard_weights[0][buffer_name]
+            resharded_weights[shard_idx][buffer_name] = _maybe_type(
+                shard_weights[0][buffer_name], dtype
+            )
 
     return resharded_weights, resharded_metadata
 
@@ -177,6 +197,7 @@ def reshard_fsdp_optim_state(
     shard_optim_states: List[Dict[str, Any]],
     shard_optim_padding: Optional[Dict[str, int]] = None,
     num_output_shards: int = 1,
+    dtype: Optional[torch.dtype] = None,
 ) -> List[Dict[str, Any]]:
     logger.info(f"Resharding optimizer states into {num_output_shards} shard(s)")
     if any("state" not in s for s in shard_optim_states):
@@ -190,15 +211,19 @@ def reshard_fsdp_optim_state(
         for key, value in wrapped_state_dict.items():
             #  Copy non-tensor objects to outputs (e.g. step)
             if not torch.is_tensor(value) or value.dim() == 0:
+                sharded_value = _maybe_type(value, dtype)
                 for shard_idx in range(num_output_shards):
-                    resharded_state_dict[shard_idx]["state"][idx][key] = value
+                    resharded_state_dict[shard_idx]["state"][idx][key] = sharded_value
                 continue
 
-            unsharded_value = _unpad_tensor(
-                torch.cat([s["state"][idx][key] for s in shard_optim_states]),
+            unsharded_value = torch.cat(
+                [_maybe_type(s["state"][idx][key], dtype) for s in shard_optim_states]
+            )
+            unpadded_value = _unpad_tensor(
+                tensor=unsharded_value,
                 pad=shard_optim_padding.get(key, 0) if shard_optim_padding else 0,
             )
-            chunks, _ = _shard_and_pad_tensor(unsharded_value, num_output_shards)
+            chunks, _ = _shard_and_pad_tensor(unpadded_value, num_output_shards)
             for shard_idx, chunk in enumerate(chunks):
                 resharded_state_dict[shard_idx]["state"][idx][key] = chunk
 
@@ -206,7 +231,9 @@ def reshard_fsdp_optim_state(
     for key in shard_optim_states[0]:
         for shard_idx in range(num_output_shards):
             if key != "state":
-                resharded_state_dict[shard_idx][key] = shard_optim_states[0][key]
+                resharded_state_dict[shard_idx][key] = _maybe_type(
+                    shard_optim_states[0][key], dtype
+                )
     return resharded_state_dict
 
 
@@ -231,12 +258,16 @@ def _unpad_tensor(shard: torch.Tensor, pad: int) -> torch.Tensor:
     return shard
 
 
+def _maybe_type(input: torch.Tensor, dtype: Optional[torch.dtype] = None):
+    return input.type(dtype) if dtype is not None else input
+
+
 if __name__ == "__main__":
     """
     Example usage:
         python -m metaseq.scripts.reshard_fsdp \
-        --input-glob-pattern "opt-2.7b/raw/checkpoint_last-model_part-0-shard*.pt" \
-        --output-shard-name "opt-2.7b/reshard/reshard-model_part-0.pt" \
+        --input "opt-2.7b/raw/checkpoint_last-model_part-0-shard*.pt" \
+        --output "opt-2.7b/reshard/reshard-model_part-0.pt" \
         --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
     """
     fire.Fire(reshard_fsdp_checkpoints)
