@@ -180,9 +180,10 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         seq_len, bsz, embed_dim_per_partition = q.size()
 
         if xf_eff_attn:
-            q = q.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-            k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-            v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+            num_heads = embed_dim_per_partition // head_dim
+            q = q.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
+            k = k.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
+            v = v.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
 
             attn = (
                 xops.memory_efficient_attention_forward(
@@ -195,8 +196,9 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                     op=xf_op[0],
                 )
                 .transpose(0, 1)
-                .view(seq_len, -1, head_dim)
+                .reshape(seq_len, bsz, num_heads*head_dim)
             )
+            # TODO: Reshape q/k/v back to original?
         else:
             q = q.view(seq_len, -1, head_dim)
             k = k.view(seq_len, -1, head_dim)
@@ -401,6 +403,12 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         # recalculate attention
         if xf_eff_attn:
             # TODO: reshape q/k/v?
+            # q = q.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+            # k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+            # v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
+
+            num_heads = embed_dim_per_partition // head_dim
+
             attn, lse = xops.memory_efficient_attention_forward_requires_grad(
                 q,
                 k,
@@ -411,7 +419,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 op=xf_op[0],
             )
             out = attn
-            attn = attn.transpose(0, 1).reshape(seq_len, -1, head_dim).contiguous()
+            attn = attn.transpose(0, 1).reshape(seq_len, bsz, num_heads*head_dim).contiguous()
         else:
             attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
                 q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
@@ -432,7 +440,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         if xf_eff_attn:
             grad_out_proj_input = grad_out_proj_input.reshape(
                 seq_len, bsz, -1, head_dim
-            )
+            ).transpose(0,1)
             d_q, d_k, d_v = xops.memory_efficient_attention_backward(
                 grad=grad_out_proj_input,
                 output=out,
@@ -445,7 +453,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 scale=None,
                 op=xf_op[1],
             )
-            # bmhk => m bh k
+            # bmhk => m b hk
             d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
             d_k = d_k.transpose(0, 1).view(seq_len, bsz, -1)
             d_v = d_v.transpose(0, 1).view(seq_len, bsz, -1)
@@ -455,8 +463,6 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
             )
 
-            print(f"Diana Debug: shape of dq in std = {grad_kvq_proj_output[2].shape}")
-            print(f"Diana Debug: seq_len={seq_len}, bsz={bsz}, head_dim={head_dim}")
 
         (
             mha_layer_norm_output,

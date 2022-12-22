@@ -63,7 +63,7 @@ class TestParity(unittest.TestCase):
             sequence_parallel=True,
             decoder_embed_dim=64,
             dropout=0.0,
-            decoder_attention_heads=1,
+            decoder_attention_heads=2,
             decoder_ffn_embed_dim=64,
             decoder_layers=1,
             attention_dropout=0.0,
@@ -85,19 +85,23 @@ class TestParity(unittest.TestCase):
         args.attn_variant = xf_attn_variant
         reset_seeds()
         xf_decoder = ModelParallelTransformerDecoderLayer(args).cuda()
+        reset_seeds()
         xf_result = xf_decoder(x)
 
         # std attn
         args.attn_variant = std_attn_variant
         reset_seeds()
         decoder = ModelParallelTransformerDecoderLayer(args).cuda()
+        reset_seeds()
         result = decoder(x_)
 
         torch.distributed.barrier()
         _assert_allclose(xf_result, result, atol=atol, rtol=rtol)
 
         # Test Backwards
+        reset_seeds()
         xf_result.backward(torch.ones_like(x))
+        reset_seeds()
         result.backward(torch.ones_like(x_))
 
         torch.distributed.barrier()
