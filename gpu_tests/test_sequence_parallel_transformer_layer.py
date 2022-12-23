@@ -52,18 +52,23 @@ class TestParity(unittest.TestCase):
         if "xformers" not in sys.modules:
             raise unittest.SkipTest("xformers not available, skipping test")
 
-        atol = 4e-3
-        rtol = 4e-4
+        fw_atol = 4e-3
+        fw_rtol = 4e-4
+
+        bw_atol = 9e-2
+        bw_rtol = 2e-2
 
         _distributed_init()
         tensor_model_parallel_size_ = 1
         initialize_model_parallel(tensor_model_parallel_size_)
 
+        S, B, E = 8, 16, 64
+        H = 2
         args = SimpleNamespace(
             sequence_parallel=True,
-            decoder_embed_dim=64,
+            decoder_embed_dim=E,
             dropout=0.0,
-            decoder_attention_heads=2,
+            decoder_attention_heads=H,
             decoder_ffn_embed_dim=64,
             decoder_layers=1,
             attention_dropout=0.0,
@@ -96,7 +101,7 @@ class TestParity(unittest.TestCase):
         result = decoder(x_)
 
         torch.distributed.barrier()
-        _assert_allclose(xf_result, result, atol=atol, rtol=rtol)
+        _assert_allclose(xf_result, result, atol=fw_atol, rtol=fw_rtol)
 
         # Test Backwards
         reset_seeds()
@@ -105,7 +110,7 @@ class TestParity(unittest.TestCase):
         result.backward(torch.ones_like(x_))
 
         torch.distributed.barrier()
-        _assert_allclose(x.grad, x_.grad, atol=atol, rtol=rtol)
+        _assert_allclose(x.grad, x_.grad, atol=bw_atol, rtol=bw_rtol)
 
         # Reset groups
         destroy_model_parallel()
