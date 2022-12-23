@@ -30,7 +30,6 @@ try:
     )
     from megatron.mpu.utils import split_tensor_along_last_dim
     from megatron.model.fused_softmax import scaled_upper_triang_masked_softmax_cuda
-    from megatron.mpu import get_tensor_model_parallel_world_size
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -434,7 +433,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         if xf_eff_attn:
             grad_out_proj_input = grad_out_proj_input.reshape(
                 seq_len, bsz, -1, head_dim
-            ).transpose(0,1)
+            ).transpose(0, 1)
             d_q, d_k, d_v = xops.memory_efficient_attention_backward(
                 grad=grad_out_proj_input,
                 output=out,
@@ -456,7 +455,6 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_kvq_proj_output = SequeuceParallelTransformerBlock.backward_mha(
                 grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
             )
-
 
         (
             mha_layer_norm_output,
