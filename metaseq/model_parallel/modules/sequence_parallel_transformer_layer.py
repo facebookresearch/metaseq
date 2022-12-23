@@ -195,7 +195,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                     op=xf_op[0],
                 )
                 .transpose(0, 1)
-                .reshape(seq_len, bsz, num_heads*head_dim)
+                .reshape(seq_len, bsz, num_heads * head_dim)
             )
             # TODO: Reshape q/k/v back to original?
         else:
@@ -413,7 +413,11 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 op=xf_op[0],
             )
             out = attn
-            attn = attn.transpose(0, 1).reshape(seq_len, bsz, num_heads*head_dim).contiguous()
+            attn = (
+                attn.transpose(0, 1)
+                .reshape(seq_len, bsz, num_heads * head_dim)
+                .contiguous()
+            )
         else:
             attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
                 q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
