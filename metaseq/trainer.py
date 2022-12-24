@@ -1033,6 +1033,30 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
+            if True:
+                # When we finish an epoch some dataloaders run short on data one iteration before others.
+                # We want to check that the data loaders that are running short are returning correct data
+                # on all their previous iterations.
+
+                # If they are returning the correct data, then we can rule out a lot of reasons why they would
+                # run short.
+
+                ipt = sample['net_input']['src_tokens']
+                if not hasattr(self, 'input_errors'):
+                    self.input_errors = torch.tensor(0, dtype=torch.int, device=ipt.device)
+
+                min_ipt = ipt.clone()
+
+                torch.distributed.all_reduce(
+                    min_ipt, op=torch.distributed.ReduceOp.MIN, group=distributed_utils.get_model_parallel_group()
+                )
+
+                self.input_errors += (min_ipt != ipt).any()
+
+                if self.get_num_updates() % self.cfg.common.log_interval == 0:
+                    if int(self.input_errors) > 0:
+                        logger.error(f"Data {self.data_parallel_rank} Model {distributed_utils.get_model_parallel_rank()} has {self.input_errors} data mismatch errors!")
+
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
