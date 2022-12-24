@@ -398,13 +398,12 @@ class Trainer(object):
                 def perform_save():
                     try:
                         logger.info(f"Beginning asynchronous torch.save to {filename}")
-                        torch.save(state_dict, filename)
                         if async_callback_fn is not None:
                             async_callback_fn(filename)
                         logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
-
+                torch.save(state_dict, filename)
                 self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
@@ -1033,7 +1032,7 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
-            if True:
+            if False: # turn on to double-check we do not have data loader issues
                 # When we finish an epoch some dataloaders run short on data one iteration before others.
                 # We want to check that the data loaders that are running short are returning correct data
                 # on all their previous iterations.
