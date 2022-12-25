@@ -7,7 +7,7 @@ A codebase for working with [Open Pre-trained Transformers](projects/OPT).
 
 ### Using OPT with 🤗 Transformers
 
-The OPT 125M--66B models are now available in [HuggingFace Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0). You can access them under the `facebook` organization on the [Hugging Face Hub](https://huggingface.co/facebook)
+The OPT 125M--66B models are now available in [Hugging Face Transformers](https://github.com/huggingface/transformers/releases/tag/v4.19.0). You can access them under the `facebook` organization on the [Hugging Face Hub](https://huggingface.co/facebook)
 
 ### Using OPT-175B with Alpa
 
