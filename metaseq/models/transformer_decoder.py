@@ -88,7 +88,8 @@ class TransformerDecoder(IncrementalDecoder):
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.use_alibi: bool = getattr(args, "alibi", False)
+        self.use_alibi: bool = getattr(args, "alibi", True)
+        logger.error(f"Using alibi {self.use_alibi}")
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
         )
@@ -104,10 +105,11 @@ class TransformerDecoder(IncrementalDecoder):
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
                 truncate_init=getattr(args, "truncate_init", False),
             )
+            .to(device)
+            .to(dtype)
             if args.decoder_learned_pos and not self.use_alibi
             else None
         )
-        self.embed_positions.to(device).to(dtype)
 
         self.layers = nn.ModuleList([])
         layers = []
@@ -184,43 +186,18 @@ class TransformerDecoder(IncrementalDecoder):
             )
 
         if self.use_alibi:
-            self.alibi = self._build_alibi_tensor(
+            alibi = self._build_alibi_tensor(
                 self.max_positions(), args.decoder_attention_heads
             )
+            if initialize_params_on_gpu:
+                alibi = alibi.cuda()
+            self.alibi = torch.nn.Parameter(alibi)
 
     @staticmethod
     def _build_alibi_tensor(max_seq_len: int, n_attention_heads: int):
-        """Returns tensor shaped (n_head, 1, max_seq_len)"""
+        """Returns tensor shaped (n_head, max_seq_len, max_seq_len)"""
 
-        def get_slopes(n):
-            # In the paper, we only train models that have 2^a heads for some a. This function has some good
-            # properties that only occur when the input is a power of 2. To maintain that even when the number of
-            # heads is not a power of 2, we use this workaround.
-            def get_slopes_power_of_2(n):
-                start = 2 ** (-(2 ** -(math.log2(n) - 3)))
-                ratio = start
-                return [start * ratio**i for i in range(n)]
-
-            if math.log2(n).is_integer():
-                return get_slopes_power_of_2(n)
-            else:
-                closest_power_of_2 = 2 ** math.floor(math.log2(n))
-                return (
-                    get_slopes_power_of_2(closest_power_of_2)
-                    + get_slopes(2 * closest_power_of_2)[0::2][: n - closest_power_of_2]
-                )
-
-        slopes = torch.Tensor(get_slopes(n_attention_heads))
-        # In the next line, the part after the * is what constructs the diagonal matrix (right matrix in Figure 3 in
-        # the paper).
-        # It doesn't exactly print out the same matrix as we have in Figure 3, but one where all rows are identical.
-        # This works because the softmax operation is invariant to translation, and our bias functions are always
-        # linear.
-        alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len).unsqueeze(
-            0
-        ).unsqueeze(0).expand(n_attention_heads, -1, -1)
-        alibi = alibi.view(n_attention_heads, 1, max_seq_len)
-        return alibi
+        return torch.randn(n_attention_heads, max_seq_len, max_seq_len)
 
     def build_base_decoder_layer(self, args):
         return TransformerDecoderLayer(args)
@@ -476,13 +453,14 @@ class TransformerDecoder(IncrementalDecoder):
                 doc_id_indices = (
                     (input_tokens == self.self_attn_doc_sep).nonzero().tolist()
                 )
+                # TODO: this is probably extremely slow
                 for indices in doc_id_indices:
                     self._future_mask[
                         indices[0], indices[1] + 1 :, : indices[1] + 1
                     ] = float("-inf")
 
             if self.use_alibi:
-                alibi = self.alibi.repeat(batch_size, 1, 1)  # batch_size, 1, 1
+                alibi = self.alibi.unsqueeze(0)  # [batch_size, n_heads, 1, seqlen]
                 self._future_mask = self._future_mask.unsqueeze(0) + alibi
 
         self._future_mask = self._future_mask.to(tensor)
