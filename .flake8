@@ -1,6 +1,6 @@
 [flake8]
 extend-ignore =
-    # E203 whitespace with black
+    # E203: whitespace with black
     E203
     # E741: "l" is ambiguous
     E741
