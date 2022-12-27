@@ -422,7 +422,7 @@ class TransformerDecoder(IncrementalDecoder):
 
     def buffered_future_mask(self, tensor, input_tokens=None):
         cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
-        max_seq_len = self.max_positions()
+        cur_seq_len = max_seq_len = self.max_positions()
         need_to_make_new_mask = (
             self._future_mask.size(0) == 0
             or (not self._future_mask.device == tensor.device)
@@ -459,18 +459,16 @@ class TransformerDecoder(IncrementalDecoder):
                         indices[0], indices[1] + 1 :, : indices[1] + 1
                     ] = float("-inf")
 
-            if self.use_alibi:
-                alibi = self.alibi.unsqueeze(0)  # [batch_size, n_heads, 1, seqlen]
-                self._future_mask = self._future_mask.unsqueeze(0) + alibi
-
         self._future_mask = self._future_mask.to(tensor)
-        if self.use_alibi:
-            return self._future_mask[
-                : batch_size * self.args.decoder_attention_heads,
-                :cur_seq_len,
-                :cur_seq_len,
-            ]
-        elif self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
+        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             return self._future_mask
+        elif self.use_alibi:
+            from metaseq.distributed.utils import (
+                get_model_parallel_rank as gmpr,
+                get_model_parallel_world_size as gmpws,
+            )
+
+            alibi = self.alibi[gmpr() :: gmpws()]
+            return (self._future_mask.unsqueeze(0) + alibi).repeat(batch_size, 1, 1)
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]

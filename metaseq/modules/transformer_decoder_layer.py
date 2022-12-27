@@ -216,6 +216,7 @@ class TransformerDecoderLayer(nn.Module):
                 self.self_attn.out_proj.weight,
                 self.fc1.weight,
                 self.fc2.weight,
+                self_attn_mask,
                 self.self_attn.head_dim,
                 recompute_fc1,
                 self.activation_fn_name,
