@@ -8,6 +8,7 @@ from typing import Optional
 
 from metaseq.logging.progress_bar.base_progress_bar import logger
 from metaseq.logging.progress_bar.json_progress_bar import JsonProgressBar
+from metaseq.logging.progress_bar.syslog_progress_bar import SyslogProgressBar
 from metaseq.logging.progress_bar.tensorboard_progress_bar import (
     TensorboardProgressBarWrapper,
 )
@@ -28,6 +29,7 @@ def get_progress_bar(
     aim_repo: Optional[str] = None,
     aim_run_hash: Optional[str] = None,
     aim_param_checkpoint_dir: Optional[str] = None,
+    syslog_tag: Optional[str] = None,
 ):
     if log_file is not None:
         handler = logging.FileHandler(filename=log_file)
@@ -47,5 +49,8 @@ def get_progress_bar(
         bar = AimProgressBarWrapper(
             bar, aim_repo, aim_run_hash, aim_param_checkpoint_dir
         )
+
+    if syslog_tag:
+        bar = SyslogProgressBar(bar, syslog_tag)
 
     return bar

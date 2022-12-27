@@ -122,6 +122,10 @@ class CommonConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "Log scalars to AzureML context"},
     )
+    syslog_tag: Optional[str] = field(
+        default=None,
+        metadata={"help": "Tag to use for logging to syslog"},
+    )
     seed: int = field(
         default=1, metadata={"help": "pseudo random number generator seed"}
     )
