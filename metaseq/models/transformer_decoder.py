@@ -188,32 +188,25 @@ class TransformerDecoder(IncrementalDecoder):
         if self.use_alibi:
             alibi = self._build_alibi_tensor(
                 self.max_positions(), args.decoder_attention_heads
-            )
+            ).to(dtype)
             if initialize_params_on_gpu:
-                alibi = alibi.cuda()
+                alibi = alibi.to(device)
             self.alibi = torch.nn.Parameter(alibi)
         if self.use_alibi and self.use_alibi_relative:
-            from metaseq.distributed.utils import (
-                get_model_parallel_rank as gmpr,
-                get_model_parallel_world_size as gmpws,
-            )
-
+            L = self.max_target_positions
             self._alibi_relative_indices = (
-                (
-                    (
-                        (
-                            torch.arange(self.max_target_positions).unsqueeze(1)
-                            - torch.arange(self.max_target_positions).unsqueeze(0)
-                        ).relu()
-                    )
-                    + self.max_target_positions
-                    * torch.arange(self.args.decoder_attention_heads).view(-1, 1, 1)
-                )[gmpr() :: gmpws()]
-                .reshape(-1)
-                .contiguous()
+                (torch.arange(L).unsqueeze(1) - torch.arange(L).unsqueeze(0))
+                .relu()
+                .to(dtype)
+                .unsqueeze(0)  # [1, L, L]
             )
+            bias = torch.randn(args.decoder_attention_heads, 1, 1).to(dtype)
+            if initialize_params_on_gpu:
+                bias = bias.to(device)
+            self.alibi_bias = torch.nn.Parameter(bias)
             if initialize_params_on_gpu:
                 self._alibi_relative_indices = self._alibi_relative_indices.to(device)
+                self.alibi_bias = self.alibi_bias.to(device)
         logger.error(
             f"Using alibi {self.use_alibi}, relative = {self.use_alibi_relative}"
         )
@@ -222,7 +215,7 @@ class TransformerDecoder(IncrementalDecoder):
         """Returns tensor shaped (n_head, max_seq_len, max_seq_len)"""
 
         if self.use_alibi_relative:
-            return torch.randn(n_attention_heads * max_seq_len)
+            return torch.randn(n_attention_heads, 1, 1)
         else:
             return torch.randn(n_attention_heads, max_seq_len, max_seq_len)
 
@@ -490,15 +483,18 @@ class TransformerDecoder(IncrementalDecoder):
         if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             return self._future_mask
         elif self.use_alibi:
+            mp_rank = distributed_utils.get_model_parallel_rank()
+            mp_size = distributed_utils.get_model_parallel_world_size()
             if self.use_alibi_relative:
-                alibi = self.alibi[self._alibi_relative_indices].view(
-                    -1,
-                    max_seq_len,
-                    max_seq_len,
+                # lazily convert to compute time dtype
+                self._alibi_relative_indices = self._alibi_relative_indices.type_as(
+                    tensor
                 )
+                alibi = self.alibi * self._alibi_relative_indices + self.alibi_bias
             else:
                 alibi = self.alibi
-            alibi = alibi
-            return (alibi).repeat(batch_size, 1, 1).contiguous()
+            # only the heads for this MP rank
+            alibi = alibi[mp_rank::mp_size]
+            return alibi.repeat(batch_size, 1, 1)
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]
