@@ -67,11 +67,15 @@ def main(cfg: DictConfig) -> None:
 
     checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
-    if distributed_utils.is_master(cfg.distributed_training):
+    if distributed_utils.is_master(cfg.distributed_training) and os.environ.get(
+        "METASEQ_SAVE_DIR"
+    ):
         # save a (vaguely human readable) copy of the training config
+        # TODO(roller): only works when launched with a sweep script
+        # should fix that
         OmegaConf.save(
             config=_flatten_config(cfg),
-            f=os.path.join(cfg.checkpoint.save_dir, "config.yml"),
+            f=os.path.join(os.environ["METASEQ_SAVE_DIR"], "config.yml"),
         )
 
     if (
