@@ -18,7 +18,7 @@ Complete all of the setup as mentioned in [the Setup doc](setup.md).
 - Reshard the FSDP checkpoints using the script `metaseq/scripts/reshard_fsdp.py`. For example, we can merge all FSDP shards within each of the 8 model parallel parts of OPT-175B using the following command:
   ```bash
   for j in {0..7}; do
-      python -m metaseq.scripts.reshard_fsdp
+      python -m metaseq.scripts.reshard_fsdp \
       --input-glob-pattern "/path/to/raw/checkpoints/checkpoint_last-model_part-$j-shard*.pt" \
       --output-shard-name "/path/to/resharded/checkpoints/reshard-model_part-$j.pt" \
       --num-output-shards 1 --skip-optimizer-state True --unflatten-weights True
