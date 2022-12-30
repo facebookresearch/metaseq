@@ -58,8 +58,10 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         )
         # attn_probs = matmul_result
         scale_t = torch.tensor([1.0])
+        if self_attn_mask is not None:
+            matmul_result = matmul_result + self_attn_mask
         attn_probs = scaled_upper_triang_masked_softmax_cuda.forward(
-            matmul_result + self_attn_mask, scale_t[0]
+            matmul_result, scale_t[0]
         )
         attn = torch.bmm(attn_probs, v)
         attn = attn.transpose(0, 1).contiguous().view(seq_len, bsz, -1)
@@ -82,7 +84,7 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         grad_attn_probs_in = scaled_upper_triang_masked_softmax_cuda.backward(
             grad_attn_probs_out, attn_probs, 1.0
         )
-        grad_self_attn_mask = grad_attn_probs_in
+        grad_self_attn_mask = grad_attn_probs_in if self_attn_mask is not None else None
         grad_q = torch.bmm(
             math.sqrt(scaling) * grad_attn_probs_in,
             math.sqrt(scaling) * k.transpose(0, 1),

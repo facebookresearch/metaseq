@@ -88,7 +88,7 @@ class TransformerDecoder(IncrementalDecoder):
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.use_alibi: bool = getattr(args, "alibi", True)
+        self.use_alibi: bool = getattr(args, "alibi", False)
         self.use_alibi_relative: bool = getattr(args, "alibi_relative", True)
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
@@ -443,46 +443,7 @@ class TransformerDecoder(IncrementalDecoder):
     def buffered_future_mask(self, tensor, input_tokens=None):
         cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
         max_seq_len = self.max_positions()
-        need_to_make_new_mask = (
-            self._future_mask.size(0) == 0
-            or (not self._future_mask.device == tensor.device)
-            or self._future_mask.size(1) < max_seq_len
-            or (
-                self.use_alibi
-                and self._future_mask.size(0)
-                != (batch_size * self.args.decoder_attention_heads)
-            )
-            or (self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP)
-        )
-
-        # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
-        if need_to_make_new_mask:
-            self._future_mask = torch.triu(
-                utils.fill_with_neg_inf(
-                    torch.zeros([max_seq_len, max_seq_len], device=tensor.device)
-                ),
-                1,
-            )
-            if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
-                # Code to accomodate dynamic attention when document seperator is used
-                assert input_tokens is not None
-                self._future_mask = self._future_mask[:cur_seq_len, :cur_seq_len]
-                self._future_mask = self._future_mask.unsqueeze(0).repeat(
-                    batch_size, 1, 1
-                )
-                doc_id_indices = (
-                    (input_tokens == self.self_attn_doc_sep).nonzero().tolist()
-                )
-                # TODO: this is probably extremely slow
-                for indices in doc_id_indices:
-                    self._future_mask[
-                        indices[0], indices[1] + 1 :, : indices[1] + 1
-                    ] = float("-inf")
-
-        self._future_mask = self._future_mask.to(tensor)
-        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
-            return self._future_mask
-        elif self.use_alibi:
+        if self.use_alibi:
             mp_rank = distributed_utils.get_model_parallel_rank()
             mp_size = distributed_utils.get_model_parallel_world_size()
             if self.use_alibi_relative:
@@ -495,6 +456,10 @@ class TransformerDecoder(IncrementalDecoder):
                 alibi = self.alibi
             # only the heads for this MP rank
             alibi = alibi[mp_rank::mp_size]
+            # we specify the causal softmax kernel in model/sequence parallel
+            # transformers
             return alibi.repeat(batch_size, 1, 1)
         else:
-            return self._future_mask[:cur_seq_len, :cur_seq_len]
+            # we specify the causal softmax kernel in model/sequence parallel
+            # transformers
+            return None
