@@ -15,5 +15,6 @@ from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBloc
 __all__ = [
     "ModelParallelMultiheadAttention",
     "ModelParallelTransformerDecoderLayer",
+    "ModelParallelTransformerEncoderLayer",
     "SequeuceParallelTransformerBlock",
 ]
