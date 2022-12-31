@@ -5,16 +5,16 @@
 """isort:skip_file"""
 
 from .multihead_attention import ModelParallelMultiheadAttention
-from .transformer_layer import (
-    ModelParallelTransformerEncoderLayer,
+from .transformer_decoder_layer import (
     ModelParallelTransformerDecoderLayer,
 )
+from .transformer_encoder_layer import ModelParallelTransformerEncoderLayer
 
 from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBlock
 
 __all__ = [
     "ModelParallelMultiheadAttention",
-    "ModelParallelTransformerEncoderLayer",
     "ModelParallelTransformerDecoderLayer",
+    "ModelParallelTransformerEncoderLayer",
     "SequeuceParallelTransformerBlock",
 ]
