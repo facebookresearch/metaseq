@@ -148,7 +148,7 @@ def main(cfg: DictConfig) -> None:
             task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
     # Build trainer
-    trainer = Trainer(cfg, task, model, criterion, cfg.common.model_parallel_size)
+    trainer = Trainer(cfg, task, model, criterion)
     logger.info(
         "training on {} devices (GPUs/TPUs)".format(
             cfg.distributed_training.distributed_world_size

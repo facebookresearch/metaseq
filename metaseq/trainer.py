@@ -51,12 +51,12 @@ class Trainer(object):
     communication of the gradients across workers.
     """
 
-    def __init__(self, cfg, task, model, criterion, model_parallel_size=1):
+    def __init__(self, cfg, task, model, criterion):
         self.cfg = cfg
         self.task = task
-        self.model_parallel_size = model_parallel_size
+        self.model_parallel_size = cfg.common.model_parallel_size
 
-        if model_parallel_size > 1:
+        if self.model_parallel_size > 1:
             if not has_megatron_submodule:
                 raise ImportError(
                     "\n\nPlease install megatron using the setup instructions!"
