@@ -990,8 +990,12 @@ class Trainer(object):
                 skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
             )
         else:
+
             def _aggregate_model_parallel_grad_norm(norm_type, total_norm):
-                norm_type2_reduce_op = {"l2": dist.ReduceOp.SUM, "inf": dist.ReduceOp.MAX}
+                norm_type2_reduce_op = {
+                    "l2": dist.ReduceOp.SUM,
+                    "inf": dist.ReduceOp.MAX,
+                }
                 reduce_op = norm_type2_reduce_op[norm_type]
                 if norm_type == "l2":
                     total_norm.pow_(2)
