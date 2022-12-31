@@ -7,10 +7,8 @@ import logging
 
 from metaseq.model_parallel.modules import (
     ModelParallelTransformerDecoderLayer,
-    ModelParallelTransformerEncoderLayer,
 )
 from metaseq.models.transformer_decoder import TransformerDecoder
-from metaseq.models.transformer_encoder import TransformerEncoder
 
 try:
     from megatron import mpu
@@ -24,22 +22,6 @@ except (ImportError, ModuleNotFoundError):
 
 
 logger = logging.getLogger(__name__)
-
-
-class ModelParallelTransformerEncoder(TransformerEncoder):
-    """
-    Model parallel Transformer encoder consisting of *args.encoder_layers* layers. Each layer
-    is a :class:`ModelParallelTransformerEncoderLayer`.
-    """
-
-    def __init__(self, args, dictionary, embed_tokens):
-        super().__init__(args, dictionary, embed_tokens)
-
-        if args.no_final_layer_norm:
-            self.layer_norm = None
-
-    def build_encoder_layer(self, args):
-        return ModelParallelTransformerEncoderLayer(args)
 
 
 class ModelParallelTransformerDecoder(TransformerDecoder):
@@ -73,7 +55,7 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
             False,  # async_grad_allreduce
             is_sequence_parallel,  # sequence_parallel
         )
-        # Gather output if model in in inference mode (i.e. evallm or generation) cause both are not yet compatible with
+        # Gather output if model is in inference mode (i.e. evallm or generation) cause both are not yet compatible with
         # parallel vocab embeddings
         if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
             self, "inference", False
