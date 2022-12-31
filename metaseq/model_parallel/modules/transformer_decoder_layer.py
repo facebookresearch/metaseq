@@ -45,6 +45,11 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         disable_bias=False,
         truncate_init=False,
     ):
+        if not has_megatron_submodule:
+            raise ImportError(
+                "\n\nPlease install megatron using the setup instructions!"
+            )
+
         def _init_method_bias(bias):
             fan_in = input_dim
             bound = 1 / math.sqrt(fan_in)
@@ -87,6 +92,11 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
         disable_bias=False,
         truncate_init=False,
     ):
+        if not has_megatron_submodule:
+            raise ImportError(
+                "\n\nPlease install megatron using the setup instructions!"
+            )
+
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = utils.scaled_init_method_normal(
