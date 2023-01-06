@@ -46,7 +46,7 @@ users may find it easier to eliminate model parallelism. The checkpoints can be 
 to eliminate use of MP with the `consolidate_fsdp_shards.py` script:
 
 ```bash
-python metaseq.scripts.consolidate_fsdp_shards ${FOLDER_PATH}/checkpoint_last --new-arch-name transformer_lm_gpt --save-prefix ${FOLDER_PATH}/consolidated
+python -m metaseq.scripts.consolidate_fsdp_shards ${FOLDER_PATH}/checkpoint_last --new-arch-name transformer_lm_gpt --save-prefix ${FOLDER_PATH}/consolidated
 ```
 
 ### md5sum check
