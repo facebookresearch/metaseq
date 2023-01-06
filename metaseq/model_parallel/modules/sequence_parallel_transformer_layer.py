@@ -197,7 +197,6 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
                 .transpose(0, 1)
                 .reshape(seq_len, bsz, num_heads * head_dim)
             )
-            # TODO: Reshape q/k/v back to original?
         else:
             q = q.view(seq_len, -1, head_dim)
             k = k.view(seq_len, -1, head_dim)
@@ -396,11 +395,6 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         # recalculate attention
         if xf_eff_attn:
-            # TODO: reshape q/k/v?
-            # q = q.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-            # k = k.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-            # v = v.view(seq_len, bsz, -1, head_dim).transpose(0, 1)
-
             num_heads = embed_dim_per_partition // head_dim
 
             attn, lse = xops.memory_efficient_attention_forward_requires_grad(
