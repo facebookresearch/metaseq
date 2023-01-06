@@ -440,6 +440,26 @@ class CheckpointConfig(MetaseqDataclass):
     # save_dir: str = field(
     #     default="None", metadata={"help": "path to save checkpoints"}
     # )
+    local_checkpoints_dir: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "local directory for checkpoints"
+            ),
+        },
+    )
+
+
+    cloud_upload_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Upload checkpoints asynchronously in a separate "
+                "thread to blob store. NOTE: This feature is currently being tested."
+            ),
+        },
+    )
+
     restore_file: Optional[str] = field(
         default=None,  # Used to be: "checkpoint_last.pt"
         metadata={"help": "filename from which to load checkpoint"},
@@ -544,15 +564,7 @@ class CheckpointConfig(MetaseqDataclass):
             ),
         },
     )
-    # cloud_upload_path: Optional[str] = field(
-    #     default=None,
-    #     metadata={
-    #         "help": (
-    #             "Upload checkpoints asynchronously in a separate "
-    #             "thread to blob store. NOTE: This feature is currently being tested."
-    #         ),
-    #     },
-    # )
+
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
     cluster_env: str = field(

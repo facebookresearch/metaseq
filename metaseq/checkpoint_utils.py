@@ -13,14 +13,12 @@ import traceback
 import socket
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
-
 
 import torch
 from omegaconf import OmegaConf
 
 from metaseq.dataclass.configs import CheckpointConfig
-from metaseq.dataclass.utils import overwrite_args_by_name
+from metaseq.dataclass.utils import overwrite_args_by_name, CheckpointPath
 from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
@@ -790,11 +788,3 @@ def _get_pad_info(state_dict: Dict) -> Dict[str, int]:
             assert full_key not in res, f"collision: {full_key} already in {res}"
             res[full_key] = v["padding"]
     return res
-
-
-@dataclass
-class CheckpointPath:
-    path: str
-    storage_type: str
-    priority: float = 0
-    run_before_loading: list = field(default_factory=list)
