@@ -14,7 +14,7 @@ from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.distributed import utils as distributed_utils, fsdp_wrap
-from metaseq.models import BaseDecoder
+from metaseq.models import IncrementalDecoder
 from metaseq.modules import (
     Dropout,
     LayerNorm,
@@ -53,7 +53,7 @@ def _log_weight_stats(tensor, name):
     )
 
 
-class TransformerDecoder(BaseDecoder):
+class TransformerDecoder(IncrementalDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`TransformerDecoderLayer`.
@@ -315,7 +315,7 @@ class TransformerDecoder(BaseDecoder):
                 tokens, incremental_state=incremental_state, positions=positions
             )
 
-        # see BaseDecoder for important information about
+        # see IncrementalDecoder for important information about
         # incremental state
         if incremental_state:
             tokens = tokens[:, -1:]
@@ -369,7 +369,7 @@ class TransformerDecoder(BaseDecoder):
                 - a dictionary with any model-specific outputs
         """
 
-        # see BaseDecoder for important information about
+        # see IncrementalDecoder for important information about
         # incremental state
         x, extra = self.extract_features(
             prev_output_tokens,
@@ -405,7 +405,7 @@ class TransformerDecoder(BaseDecoder):
             prev_output_tokens, token_embeddings, incremental_state
         )
 
-        # see BaseDecoder for important information about
+        # see IncrementalDecoder for important information about
         # incremental state. Note that it may be an empty dictionary.
         if not incremental_state:
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
