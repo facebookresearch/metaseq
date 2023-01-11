@@ -51,7 +51,7 @@ class TestModelParallel(unittest.TestCase):
         # check that the achieved loss is correct
         self.assertAlmostEqual(
             last_epoch_mp1_loss, 10.318, 1
-        )  # 1 decimal point precision
+        )  # one decimal point precision
 
     def test_model_parallel_mp2(self):
         # run a 8M model with 2 multiprocessors (mp2)
@@ -85,7 +85,7 @@ class TestModelParallel(unittest.TestCase):
         # check that the achieved loss is correct
         self.assertAlmostEqual(
             last_epoch_mp2_loss, 10.48, 1
-        )  # 1 decimal point precision
+        )  # one decimal point precision
 
 
 if __name__ == "__main__":
