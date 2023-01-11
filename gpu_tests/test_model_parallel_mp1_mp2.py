@@ -12,12 +12,13 @@ from metaseq.dataclass.configs import DistributedTrainingConfig
     "test requires 4 GPUs",
 )
 class TestModelParallel(unittest.TestCase):
-    '''
+    """
     These tests will verify that the model can be trained with
     model_parallel = 1 and model_parallel = 2
     The tests checks hat the number of trianing steps performed is correct
     and that the required loss is achieved on the last iteration
-    '''
+    """
+
     def test_model_parallel_mp1(self):
         # run a 8M model with 1 multiprocessor (mp1)
         mp1_results = subprocess.Popen(
@@ -40,16 +41,18 @@ class TestModelParallel(unittest.TestCase):
             universal_newlines=True,
         )
         _, _ = cleanup_checkpoints.communicate()
-        
+
         # mp1: check that the training was successfull
         training_mp1_log_events = re.findall(r'{"epoch.*"}', mp1_stdout)
-        last_epoch_mp1_loss = float(json.loads(training_mp1_log_events[-1])['loss'])
-        
+        last_epoch_mp1_loss = float(json.loads(training_mp1_log_events[-1])["loss"])
+
         # check that number of steps performed is correct
         self.assertEqual(len(training_mp1_log_events), 10)
         # check that the achieved loss is correct
-        self.assertAlmostEqual(last_epoch_mp1_loss, 10.318, 1) # 1 decimal point precision
-    
+        self.assertAlmostEqual(
+            last_epoch_mp1_loss, 10.318, 1
+        )  # 1 decimal point precision
+
     def test_model_parallel_mp2(self):
         # run a 8M model with 2 multiprocessors (mp2)
         mp2_results = subprocess.Popen(
@@ -75,12 +78,15 @@ class TestModelParallel(unittest.TestCase):
 
         # mp2: check that the training was successfull
         training_mp2_log_events = re.findall(r'{"epoch.*"}', mp2_stdout)
-        last_epoch_mp2_loss = float(json.loads(training_mp2_log_events[-1])['loss'])
-        
+        last_epoch_mp2_loss = float(json.loads(training_mp2_log_events[-1])["loss"])
+
         # check that number of steps performed is correct
         self.assertEqual(len(training_mp2_log_events), 10)
         # check that the achieved loss is correct
-        self.assertAlmostEqual(last_epoch_mp2_loss, 10.48, 1) # 1 decimal point precision
+        self.assertAlmostEqual(
+            last_epoch_mp2_loss, 10.48, 1
+        )  # 1 decimal point precision
+
 
 if __name__ == "__main__":
     unittest.main()
