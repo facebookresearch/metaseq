@@ -20,7 +20,7 @@ class TestModelParallel(unittest.TestCase):
     """
 
     def test_model_parallel_mp1(self):
-        # run a 8M model with 1 multiprocessor (mp1)
+        # run a 8M model with 1 model parallel (mp1)
         mp1_results = subprocess.Popen(
             "python3 metaseq/launcher/opt_baselines.py \
             --prefix train.8m --model-size 8m_mp1 --checkpoints-dir ./test-checkpoint \
@@ -54,7 +54,7 @@ class TestModelParallel(unittest.TestCase):
         )  # one decimal point precision
 
     def test_model_parallel_mp2(self):
-        # run a 8M model with 2 multiprocessors (mp2)
+        # run a 8M model with 2 model parallels (mp2)
         mp2_results = subprocess.Popen(
             "python3 metaseq/launcher/opt_baselines.py \
             --prefix train.8m --model-size 8m --checkpoints-dir ./test-checkpoint \
