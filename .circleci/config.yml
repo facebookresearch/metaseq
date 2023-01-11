@@ -166,10 +166,10 @@ commands:
           name: Run Unit Tests
           command: |
             source activate metaseq
+            export PYTHONUNBUFFERED=1
             python -m pytest -vvv -log_cli=true --junitxml=test-results/junit.xml gpu_tests/test_model_parallel_mp1_mp2.py
       - store_test_results:
           path: test-results
-
 
 # -------------------------------------------------------------------------------------
 # Jobs to run
