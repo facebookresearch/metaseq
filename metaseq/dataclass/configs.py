@@ -508,7 +508,7 @@ class CheckpointConfig(MetaseqDataclass):
     local_save_interval_updates: int = field(
         default=0,
         metadata={
-            "help": "save a checkpoint (and validate) every N updates to local SSD."
+            "help": "save a checkpoint (and validate) every N updates to local SSD. "
             "Only applicable when copying to NFS asynchronously"
         },
     )
