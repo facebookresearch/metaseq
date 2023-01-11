@@ -63,13 +63,15 @@ def save_checkpoint(
         and epoch % cfg.save_interval_epochs == 0
     )
 
-    save_locally = cfg.local_save_interval_updates > 0 and updates % cfg.local_save_interval_updates == 0
-    save_to_NFS = cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0
-
-    save_for_updates = (
-        not end_of_epoch
-        and (save_to_NFS or save_locally)
+    save_locally = (
+        cfg.local_save_interval_updates > 0
+        and updates % cfg.local_save_interval_updates == 0
     )
+    save_to_NFS = (
+        cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0
+    )
+
+    save_for_updates = not end_of_epoch and (save_to_NFS or save_locally)
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
