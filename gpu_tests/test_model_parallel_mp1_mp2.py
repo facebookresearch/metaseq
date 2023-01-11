@@ -4,6 +4,7 @@ import json
 import unittest
 import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
+import logging
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires 4 GPUs, none found")
@@ -56,6 +57,9 @@ class TestModelParallel(unittest.TestCase):
     def test_model_parallel_mp2(self):
         # self.assertEqual(1,1)
         # run a 8M model with 2 model parallels (mp2)
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"LOGGING BEGINS <><>")
         mp2_results = subprocess.Popen(
             "python3 metaseq/launcher/opt_baselines.py \
             --prefix train.8m --model-size 8m --checkpoints-dir ./test-checkpoint \
@@ -66,7 +70,18 @@ class TestModelParallel(unittest.TestCase):
             stderr=subprocess.PIPE,
             universal_newlines=True,
         )
-        mp2_stdout, _ = mp2_results.communicate()
+        mp2_stdout, mp2_stderr = mp2_results.communicate()
+        print("mp2_stdout: ", mp2_stdout)
+        print("mp2_stderr: ", mp2_stderr)
+
+        logger.info(f"mp2_stdout: {mp2_stdout}")
+        logger.info(f"mp2_stderr: {mp2_stderr}")
+
+        logger.debug(f"mp2_stdout: {mp2_stdout}")
+        logger.debug(f"mp2_stderr: {mp2_stderr}")
+
+        logger.error(f"mp2_stdout: {mp2_stdout}")
+        logger.error(f"mp2_stderr: {mp2_stderr}")
 
         # cleanup generated checkpoints files
         cleanup_checkpoints = subprocess.Popen(
