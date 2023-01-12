@@ -60,7 +60,6 @@ class TestModelParallel(unittest.TestCase):
 
         logger = logging.getLogger(__name__)
         logger.info(f"LOGGING BEGINS <><>")
-        self.assertEqual(1,1)
 
         command = ["python3", "metaseq/launcher/opt_baselines.py",
             "--prefix", "train.8m",
@@ -76,7 +75,8 @@ class TestModelParallel(unittest.TestCase):
             "--disable-validation",
             "--max-epoch", "5",
             "--max-update", "5",
-            "--benchmark"]
+            "--benchmark",
+            "--full-azure-upload-path", "https://myaccount.blob.core.windows.net/test"]
 
         mp2_results = subprocess.Popen(command,
             stdout=subprocess.PIPE,
