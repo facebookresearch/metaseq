@@ -11,7 +11,6 @@ from metaseq.dataclass.configs import DistributedTrainingConfig
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-
 class TestModelParallel(unittest.TestCase):
     """
     These tests will verify that the model can be trained with
@@ -53,6 +52,7 @@ class TestModelParallel(unittest.TestCase):
         self.assertAlmostEqual(
             last_epoch_mp1_loss, 10.48, 1
         )  # one decimal point precision
+
 
 if __name__ == "__main__":
     unittest.main()
