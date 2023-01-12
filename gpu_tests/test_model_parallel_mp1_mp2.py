@@ -1,6 +1,7 @@
 import re
 import subprocess
 import json
+import multiprocessing
 import unittest
 from unittest.mock import patch
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
@@ -14,6 +15,18 @@ import logging
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
+
+def run_training(events, max_update):
+    argv_injection = (
+        "python3 metaseq/launcher/opt_baselines.py   "
+        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
+        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
+        "--num-gpus 4 --num-nodes 1   --seed 1   "
+        "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
+    )
+    with patch("sys.argv", argv_injection.split()[1:]):
+        sweep_cli_main()
+
 class TestModelParallel(unittest.TestCase):
     """
     These tests will verify that the model can be trained with
@@ -21,18 +34,35 @@ class TestModelParallel(unittest.TestCase):
     The tests checks hat the number of trianing steps performed is correct
     and that the required loss is achieved on the last iteration
     """
-    def test_model_parallel_mp1(self):
-        argv_injection = (
-        "python3 metaseq/launcher/opt_baselines.py   "
-        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
-        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-        "--num-gpus 4 --num-nodes 1   --seed 1   "
-        "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-        # "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
+    def test_model_parallel_mp0(self):
+        max_update_first_run = 20
+        multiprocessing.set_start_method("spawn", force=True)
+        with torch.multiprocessing.Manager() as manager:
+            events = manager.list()
+            p = multiprocessing.Process(
+                target=run_training,
+                args=(
+                    events,
+                    max_update_first_run,
+                ),
+            )
+            p.start()
+            p.join()
+            events_first_run = list(events)
+
+            # cleanup generated checkpoints files
+        cleanup_checkpoints = subprocess.Popen(
+            "rm -r ./test-checkpoint".split(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
         )
-        with patch("sys.argv", argv_injection.split()[1:]):
-            sweep_cli_main()
-        
+        _, _ = cleanup_checkpoints.communicate()
+
+        self.assertEqual(1,1)
+
+
+    def test_model_parallel_mp1(self):
         self.assertEqual(1,1)
         # # run a 8M model with 1 model parallel (mp1)
         # mp1_results = subprocess.Popen(
@@ -88,14 +118,14 @@ class TestModelParallel(unittest.TestCase):
         #     "--disable-validation",
         #     "--max-epoch", "5",
         #     "--max-update", "5",
-        #     "--benchmark",
-        #     "--full-azure-upload-path", "https://myaccount.blob.core.windows.net/test"]
+        #     "--benchmark"]
 
         # mp2_results = subprocess.Popen(command,
         #     stdout=subprocess.PIPE,
         #     stderr=subprocess.PIPE,
         #     universal_newlines=True,
         # )
+
         # mp2_stdout, mp2_stderr = mp2_results.communicate()
         # print("mp2_stdout: ", mp2_stdout)
         # print("mp2_stderr: ", mp2_stderr)
