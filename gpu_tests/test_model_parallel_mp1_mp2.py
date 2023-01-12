@@ -78,7 +78,10 @@ def run_training(events, max_update):
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
         "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
     )
-    with patch("sys.argv", argv_injection.split()[1:]), patch.dict(
+    with patch("sys.argv", argv_injection.split()[1:]), patch(
+        "metaseq.launcher.slurm.local_run",
+        partial(local_run_mock, max_update=max_update, events=events),
+    ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
         {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
     ):
