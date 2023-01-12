@@ -57,7 +57,7 @@ class TestModelParallel(unittest.TestCase):
             for event in events_first_run
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
-        self.assertEqual(1, 1)
+        self.assertEqual(1, 2, "FROM test_model_parallel_mp2")
 
         # cleanup
         cleanup_checkpoints = subprocess.Popen(
