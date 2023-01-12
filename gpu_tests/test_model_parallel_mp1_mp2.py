@@ -20,6 +20,13 @@ class TestModelParallel(unittest.TestCase):
     and that the required loss is achieved on the last iteration
     """
     def test_model_parallel_mp1(self):
+        mp2_results = subprocess.Popen(
+            "ls -la".split(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
         self.assertEqual(1,1)
         # # run a 8M model with 1 model parallel (mp1)
         # mp1_results = subprocess.Popen(
@@ -61,7 +68,7 @@ class TestModelParallel(unittest.TestCase):
         logger = logging.getLogger(__name__)
         logger.info(f"LOGGING BEGINS <><>")
         mp2_results = subprocess.Popen(
-            "python3 metaseq/launcher/opt_baselines.py \
+            "metaseq/launcher/opt_baselines.py \
             --prefix train.8m --model-size 8m --checkpoints-dir ./test-checkpoint \
             --tensorboard-logdir ./test-checkpoint --num-trials 1 --azure \
             --num-gpus 4 --num-nodes 1 --seed 1 \
