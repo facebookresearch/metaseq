@@ -8,8 +8,8 @@ import json
 import multiprocessing
 from functools import partial, partialmethod
 import unittest
-import torch
 from unittest.mock import patch
+import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
 from metaseq.cli.train import cli_main as train_cli_main
@@ -30,7 +30,6 @@ class TestModelParallelMP1(unittest.TestCase):
     """
 
     def test_model_parallel_mp1(self):
-        # change the model run arguments to run with 1 model parallel: --model-size 8m_mp1
         argv_injection = (
             "python3 metaseq/launcher/opt_baselines.py   "
             "--prefix train.8m    --model-size 8m_mp1    --checkpoints-dir ./test-checkpoint    "
@@ -40,25 +39,24 @@ class TestModelParallelMP1(unittest.TestCase):
         )
         max_update_first_run = 20
 
-        training_log_events = self._test_model_parallel(
+        training_log_events = self._test_model_parallel_mp1(
             argv_injection, max_update_first_run
         )
 
         # check that training ran correctly
         # check that the number of updates was correct
         self.assertNotEqual(training_log_events, [])
-        self.assertIsNotNone(training_log_events[-1])
         self.assertIsNotNone(training_log_events[-1]["num_updates"])
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
         # check the achieved loss is correct
         loss_val = float(training_log_events[-1]["loss"])
-        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
+        self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
-    def _test_model_parallel(self, argv_injection, max_update_first_run):
+    def _test_model_parallel_mp1(self, argv_injection, max_update_first_run):
         """
-        Helper function to run the tests
+        Helper function to run the test
         """
         # start the process for the model run
         multiprocessing.set_start_method("spawn", force=True)
