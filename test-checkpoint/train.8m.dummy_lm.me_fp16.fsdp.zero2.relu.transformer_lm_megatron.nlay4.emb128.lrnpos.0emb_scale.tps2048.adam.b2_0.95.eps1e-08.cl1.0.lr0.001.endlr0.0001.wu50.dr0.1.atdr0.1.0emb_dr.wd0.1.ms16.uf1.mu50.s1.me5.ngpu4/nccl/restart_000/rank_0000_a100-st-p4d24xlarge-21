@@ -1,0 +1,177 @@
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO Bootstrap : Using ens32:10.200.89.140<0>
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/Plugin: Failed to find ncclCollNetPlugin_v5 symbol.
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/Plugin: Failed to find ncclCollNetPlugin_v4 symbol.
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/OFI Using aws-ofi-nccl 1.4.0aws
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/OFI Running on p4d.24xlarge platform, Setting NCCL_TOPO_FILE environment variable to /fsx/users/nikbash/conda/envs/sor/share/aws-ofi-nccl/xml/p4d-24xl-topo.xml
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/OFI Setting FI_EFA_FORK_SAFE environment variable to 1
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO NET/OFI Selected Provider is efa
+a100-st-p4d24xlarge-21:85508:85508 [3] NCCL INFO Using network AWS Libfabric
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Setting affinity for GPU 1 to a10a100-st-p4d24xlarge-21:85508:85997 [3] NCCL INFO Trees [0] -1/-1/-1->3->2 [1] -1/-1/-1->3->2 [2] -1/-1/-1->3->2 [3] -1/-1/-1->3->2 [4] -1/-1/-1->3->2 [5] -1/-1/-1->3->2 [6] -1/-1/-1->3->2 [7] -1/-1/-1->3->2 [8] -1/-1/-1->3->2 [9] -1/-1/-1->3->2 [10] -1/-1/-1->3->2 [11] -1/-1/-1->3->2 [12] -1/-1/-1->3->2 [13] -1/-1/-1->3->2 [14] -1/-1/-1->3->2 [15] -1/-1/-1->3->2 [16] -1/-1/-1->3->2 [17] -1/-1/-1->3->2 [18] -1/-1/-1->3->2 [19] -1/-1/-1->3->2 [20] -1/-1/-1->3->2 [21] -1/-1/-1->3->2 [22] -1/-1/-1->3a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 00 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 01 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 02 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 03 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:85997 [3] NCCL INFO Channel 04 : 3[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:85997 [3] NCCL INFO Channel 05 : 3[201d0] -> 0[a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 06 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 07 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 08 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 09 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 10 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 11 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 12 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 13 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 14 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 15 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 16 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 17 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 18 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 19 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 20 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 21 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 22 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 23 : 2[201c0] -> 3[201d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:85997 [3] NCCL Ia100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 00 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 01 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 02 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 03 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 04 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 05 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 06 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 07 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 08 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 09 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 10 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 11 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 12 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 13 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 14 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 15 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 16 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:85996 [2] NCCL INFO Channel 17 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 18 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 19 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:85995 [1] NCCL INFO Channel 20 : 1[101d0] a100-st-p4d24xlarge-21:85486:85994 [0] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85486:85994 [0] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 8/8/512
+a100-st-p4d24xlarge-21:85486:85994 [0] NCCL INFO 24 coll channels, 32 p2p channels, 32 p2p channels per peer
+a100-st-p4d24xlarge-21:85486:85994 [0] NCCL INFO comm 0x7fd4fc002f70 rank 0 nranks 4 cudaDev 0 busId 101c0 - Init COMPLETE
+a100-st-p4d24xlarge-21:85486:85486 [0] NCCL INFO Launch mode Parallel
+a100-st-p4d24xlarge-21:85486:86120 [0] NCCL INFO Setting affinity for GPU 0 to 01
+a100-st-p4d24xlarge-21:85486:86120 [0] NCCL INFO Channel 00/24 :    0   1
+a100-st-p4d24xlarge-21:85486:86120 [0] NCCL INFO Channel 01/24 :    0   1
+a100-st-p4d24xlarge-21:85486:86120 [0] NCCL INFO Channel 02/24 :    0   1
+a100-st-p4d24xlarge-21:85486:86120a100-st-p4d24xlarge-21:8550a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0 [2] -1/-1/-1->1->0 [3] -1/-1/-1->1->0 [4] -1/-1/-1->1->0 [5] -1/-1/-1->1->0 [6] -1/-1/-1->1->0 [7] -1/-1/-1->1->0 [8] -1/-1/-1->1->0 [9] -1/-1/-1->1->0 [10] -1/-1/-1->1->0 [11] -1/-1/-1->1->0 [12] -1/-1/-1->1->0 [13] -1/-1/-1->1->0 [14] -1/-1/-1->1->0 [15] -1/-1/-1->1->0 [16] -1/-1/-1->1->0 [17] -1/-1/-1->1->0 [18] -1/-1/-1->1->0 [19] -1/-1/-1->1->0 [20] -1/-1/-1->1->0 [21] -1/-1/-1->1->0 [22] -1/-1/-1->1a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 00 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 01 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 02 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 03 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 04 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 05 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 06 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 07 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 08 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 09 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 10 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 11 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 12 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 13 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 14 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 15 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 16 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 17 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 18 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 19 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 20 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 21 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 22 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Channel 23 : 1[201d0] -> 0[a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Connected all rings
+a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO threadThresholds 8/8a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO 24 coll channels, 32 p2p channels, 3a100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86123 [3] NCCL INFO comm 0x7fcbe8002f70 rank 1 nranks 2 cudaDev 3 busIa100-st-p4d24xlarge-21:8a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Settina100-st-p4d24xlarge-21:8550a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0 [2] -1/-1/-1->1->0 [3] -1/-1/-1->1->0 [4] -1/-1/-1->1->0 [5] -1/-1/-1->1->0 [6] -1/-1/-1->1->0 [7] -1/-1/-1->1->0 [8] -1/-1/-1->1->0 [9] -1/-1/-1->1->0 [10] -1/-1/-1->1->0 [11] -1/-1/-1->1->0 [12] -1/-1/-1->1->0 [13] -1/-1/-1->1->0 [14] -1/-1/-1->1->0 [15] -1/-1/-1->1->0 [16] -1/-1/-1->1->0 [17] -1/-1/-1->1->0 [18] -1/-1/-1->1->0 [19] -1/-1/-1->1->0 [20] -1/-1/-1->1->0 [21] -1/-1/-1->1->0 [22] -1/-1/-1->1->0 [23] -1/-1/-1->1->0
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 00 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 01 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 02 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 03 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 04 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 05 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 06 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 07 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 08 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 09 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 10 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 11 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 12 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 13 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 14 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 15 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 16 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 17 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 18 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 19 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 20 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 21 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 22 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Channel 23 : 1[201d0] -> 0[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Connected all rings
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 8/8/512
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO 24 coll channels, 32 p2p channels, 32 p2p channels per peer
+a100-st-p4d24xlarge-21:85508:86189 [3] NCCL INFO comm 0x7fcbe80085e0 rank 1 nranks 2 cudaDev 3 busId 201d0 - Init COMPLETE
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Setting affinity for GPU 3 to 01
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Trees [0] -1/-1/-1->3->2 [1] -1/-1/-1->3->2 [2] -1/-1/-1->3->2 [3] -1/-1/-1->3->2 [4] -1/-1/-1->3->2 [5] -1/-1/-1->3->2 [6] -1/-1/-1->3->2 [7] -1/-1/-1->3->2 [8] -1/-1/-1->3->2 [9] -1/-1/-1->3->2 [10] -1/-1/-1->3->2 [11] -1/-1/-1->3->2 [12] -1/-1/-1->3->2 [13] -1/-1/-1->3->2 [14] -1/-1/-1->3->2 [15] -1/-1/-1->3->2 [16] -1/-1/-1->3->2 [17] -1/-1/-1->3->2 [18] -1/-1/-1->3->2 [19] -1/-1/-1->3->2 [20] -1/-1/-1->3->2 [21] -1/-1/-1->3->2 [22] -1/-1/-1->3->2 [23] -1/-1/-1->3->2
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 00 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 01 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 02 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 03 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 04 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 05 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 06 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 07 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 08 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 09 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 10 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 11 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 12 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 13 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 14 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 15 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 16 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 17 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 18 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 19 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 20 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 21 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 22 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 23 : 3[201d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Connected all rings
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 00 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 01 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 02 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 03 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 04 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 05 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 06 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 07 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 08 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 09 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 10 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 11 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 12 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 13 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 14 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 15 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 16 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 17 : 3[201d0] -> 2[201c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Channel 18 : 3[201d0] -> 2[2a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 00 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 01 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 02 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 03 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 04 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 8/8/512
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO 24 coll channels, 32 p2p channels, 32 p2p channels per peer
+a100-st-p4d24xlarge-21:85508:86271 [3] NCCL INFO comm 0x7fcb28002f70 rank 3 nranks 4 cudaDev 3 busId 201d0 - Init COMPLETE
+ge-21:85507:86270 [2] NCCL INFO Channel 09 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 10 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 11 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 12 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 13 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 14 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 15 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 16 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Channel 17 : 2[201c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 18 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 19 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 20 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 21 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 22 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO Channel 23 : 1[101d0] -> 0[101c0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 8/8/512
+a100-st-p4d24xlarge-21:85507:86270 [2] NCCL INFO 24 coll channels, 32 p2p channels, 32 p2p channels per peer
+a100-st-p4d24xlarge-21:85506:86272 [1] NCCL INFO comm 0x7f2c14002f70 rank 1 nranks 4 cudaDev 1 busId 101d0 - Init COMPLETE
+[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 18 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 19 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 20 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 21 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 22 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Channel 23 : 0[101c0] -> 1[101d0] via P2P/IPC/read
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Connected all rings
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO Connected all trees
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 8/8/512
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO 24 coll channels, 32 p2p channels, 32 p2p channels per peer
+a100-st-p4d24xlarge-21:85486:86269 [0] NCCL INFO comm 0x7fd338002f70 rank 0 nranks 4 cudaDev 0 busId 101c0 - Init COMPLETE
+a100-st-p4d24xlarge-21:85486:85486 [0] NCCL INFO Launch mode Parallel
