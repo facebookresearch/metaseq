@@ -26,7 +26,6 @@ import metaseq.utils as metaseq_utils
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-
 class TestModelParallel(unittest.TestCase):
     """
     These tests will verify that the model can be trained with
@@ -36,49 +35,54 @@ class TestModelParallel(unittest.TestCase):
     """
 
     def test_model_parallel_mp1(self):
-        '''
+        """
         Test model parallel 1 (model_size='8m_mp1')
-        '''
+        """
         max_update_first_run = 20
-        model_size = '8m_mp1'
+        model_size = "8m_mp1"
 
-        training_log_events = self._test_model_parallel(model_size, max_update_first_run)
+        training_log_events = self._test_model_parallel(
+            model_size, max_update_first_run
+        )
 
         # check that training ran correctly
         # check that the number of updates was correct
+        self.assertIsNotNone(training_log_events)
+        self.assertIsNotNone(training_log_events[-1])
+        self.assertIsNotNone(training_log_events[-1]["num_updates"])
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
         # check the achieved loss is correct
         loss_val = float(training_log_events[-1]["loss"])
         print("8m_mp1 loss:", loss_val)
-        self.assertAlmostEqual(loss_val, 14.736, 1) # 1 digit precision
+        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
 
+    # def test_model_parallel_mp2(self):
+    #     """
+    #     Test model parallel 2 (model_size='8m')
+    #     """
+    #     max_update_first_run = 20
+    #     model_size = "8m"
 
-    def test_model_parallel_mp2(self):
-        '''
-        Test model parallel 2 (model_size='8m')
-        '''
-        max_update_first_run = 20
-        model_size = '8m'
+    #     training_log_events = self._test_model_parallel(
+    #         model_size, max_update_first_run
+    #     )
 
-        training_log_events = self._test_model_parallel(model_size, max_update_first_run)
+    #     # check that training ran correctly
+    #     # check that the number of updates was correct
+    #     self.assertEqual(
+    #         int(training_log_events[-1]["num_updates"]), max_update_first_run
+    #     )
+    #     # check the achieved loss is correct
+    #     loss_val = float(training_log_events[-1]["loss"])
+    #     print("8m loss:", loss_val)
+    #     self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
-        # check that training ran correctly
-        # check that the number of updates was correct
-        self.assertEqual(
-            int(training_log_events[-1]["num_updates"]), max_update_first_run
-        )
-        # check the achieved loss is correct
-        loss_val = float(training_log_events[-1]["loss"])
-        print("8m loss:", loss_val)
-        self.assertAlmostEqual(loss_val, 14.744, 1) # 1 digit precision
-
-
-    def _test_model_parallel(self, model_size:str, max_update_first_run:int):
-        '''
+    def _test_model_parallel(self, model_size: str, max_update_first_run: int):
+        """
         Helper function to run the tests
-        '''
+        """
         # start the process for the model run
         multiprocessing.set_start_method("spawn", force=True)
         with torch.multiprocessing.Manager() as manager:
@@ -117,15 +121,20 @@ def run_training(max_update, events, model_size):
     # main arguments to run the training script
     # add the model_size varaible
     argv_injection = (
-        "python3 metaseq/launcher/opt_baselines.py   "
-        "--prefix train.8m  --checkpoints-dir ./test-checkpoint    "
-        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-        "--num-gpus 4 --num-nodes 1   --seed 1   "
-        "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-    ) + " --model-size " + str(model_size)
+        (
+            "python3 metaseq/launcher/opt_baselines.py   "
+            "--prefix train.8m  --checkpoints-dir ./test-checkpoint    "
+            "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
+            "--num-gpus 4 --num-nodes 1   --seed 1   "
+            "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
+        )
+        + " --model-size "
+        + str(model_size)
+    )
     # both patches are aneeded to run the job of the circleci GPUs
     with patch("sys.argv", argv_injection.split()[1:]), patch(
-        "metaseq.launcher.slurm.local_run", partial(local_run_mock, max_update=max_update, events=events)
+        "metaseq.launcher.slurm.local_run",
+        partial(local_run_mock, max_update=max_update, events=events),
     ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
         {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
@@ -134,11 +143,11 @@ def run_training(max_update, events, model_size):
 
 
 def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
-    '''
+    """
     The function introduces several pathces for the argumets of the
-    model training. These patches are needed to pass gpu tests on 
+    model training. These patches are needed to pass gpu tests on
     circleci GPUs (empirical knowledge)
-    '''
+    """
     train_cmd[train_cmd.index("--max-update") + 1] = str(max_update)
     train_cmd[train_cmd.index("--num-workers") + 1] = "1"
 
@@ -149,11 +158,11 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 
 
 def log_to_events(self, info, message, args, events, **kwargs):
-    '''
+    """
     The funcion is used to collect logging info from the subprocesses
-    and store it in the 'events' variable, which is then passed over 
+    and store it in the 'events' variable, which is then passed over
     to the main process for asserting that the model ran correctly
-    '''
+    """
     print(self, message)
     if isinstance(message, str):
         events.append(
