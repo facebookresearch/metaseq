@@ -166,7 +166,7 @@ commands:
           name: Run Unit Tests
           command: |
             source activate metaseq
-            python -m pytest -v --junitxml=test-results/junit.xml gpu_tests/test_model_parallel_mp1_mp2.py
+            python -m pytest --junitxml=test-results/junit.xml gpu_tests
       - store_test_results:
           path: test-results
 
