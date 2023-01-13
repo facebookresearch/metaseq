@@ -46,7 +46,7 @@ class TestModelParallel(unittest.TestCase):
 
         # check that training ran correctly
         # check that the number of updates was correct
-        self.assertIsNotNone(training_log_events)
+        self.assertNotEqual(training_log_events, [])
         self.assertIsNotNone(training_log_events[-1])
         self.assertIsNotNone(training_log_events[-1]["num_updates"])
         self.assertEqual(
