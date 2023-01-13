@@ -34,53 +34,9 @@ class TestModelParallel(unittest.TestCase):
 
     def test_model_parallel_mp1(self):
         """
-        Test model parallel 1 (model_size='8m_mp1')
-        """
-        max_update_first_run = 20
-        model_size = "8m_mp1"
-
-        training_log_events = self._test_model_parallel(
-            model_size, max_update_first_run
-        )
-
-        # check that training ran correctly
-        # check that the number of updates was correct
-        self.assertIsNotNone(training_log_events)
-        self.assertIsNotNone(training_log_events[-1])
-        self.assertIsNotNone(training_log_events[-1]["num_updates"])
-        self.assertEqual(
-            int(training_log_events[-1]["num_updates"]), max_update_first_run
-        )
-        # check the achieved loss is correct
-        loss_val = float(training_log_events[-1]["loss"])
-        print("8m_mp1 loss:", loss_val)
-        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
-
-    # def test_model_parallel_mp2(self):
-    #     """
-    #     Test model parallel 2 (model_size='8m')
-    #     """
-    #     max_update_first_run = 20
-    #     model_size = "8m"
-
-    #     training_log_events = self._test_model_parallel(
-    #         model_size, max_update_first_run
-    #     )
-
-    #     # check that training ran correctly
-    #     # check that the number of updates was correct
-    #     self.assertEqual(
-    #         int(training_log_events[-1]["num_updates"]), max_update_first_run
-    #     )
-    #     # check the achieved loss is correct
-    #     loss_val = float(training_log_events[-1]["loss"])
-    #     print("8m loss:", loss_val)
-    #     self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
-
-    def _test_model_parallel(self, model_size: str, max_update_first_run: int):
-        """
         Helper function to run the tests
         """
+        max_update_first_run = 20
         # start the process for the model run
         multiprocessing.set_start_method("spawn", force=True)
         with torch.multiprocessing.Manager() as manager:
@@ -90,7 +46,6 @@ class TestModelParallel(unittest.TestCase):
                 args=(
                     max_update_first_run,
                     events,
-                    model_size,
                 ),
             )
             p.start()
@@ -112,22 +67,33 @@ class TestModelParallel(unittest.TestCase):
             for event in events_first_run
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
-        return training_log_events
+        
+        # check that training ran correctly
+        # check that the number of updates was correct
+        self.assertIsNotNone(training_log_events)
+        self.assertIsNotNone(training_log_events[-1])
+        self.assertIsNotNone(training_log_events[-1]["num_updates"])
+        self.assertEqual(
+            int(training_log_events[-1]["num_updates"]), max_update_first_run
+        )
+        # check the achieved loss is correct
+        loss_val = float(training_log_events[-1]["loss"])
+        print("8m_loss:", loss_val)
+        self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
 
-def run_training(max_update, events, model_size):
+def run_training(max_update, events):
     # main arguments to run the training script
-    # add the model_size varaible
     argv_injection = (
         (
             "python3 metaseq/launcher/opt_baselines.py   "
-            "--prefix train.8m  --checkpoints-dir ./test-checkpoint    "
+            "--prefix train.8m  --model-size 8m  --checkpoints-dir ./test-checkpoint    "
             "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
             "--num-gpus 4 --num-nodes 1   --seed 1   "
             "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
         )
-        + " --model-size "
-        + str(model_size)
+        # + " --model-size "
+        # + str(model_size)
     )
     # both patches are aneeded to run the job of the circleci GPUs
     with patch("sys.argv", argv_injection.split()[1:]), patch(
@@ -157,7 +123,7 @@ def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
 
 def log_to_events(self, info, message, args, events, **kwargs):
     """
-    The funcion is used to collect logging info from the subprocesses
+    The function is used to collect logging info from the subprocesses
     and store it in the 'events' variable, which is then passed over
     to the main process for asserting that the model ran correctly
     """
