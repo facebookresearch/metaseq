@@ -33,18 +33,46 @@ class TestModelParallel(unittest.TestCase):
     """
 
     def test_model_parallel_mp1(self):
+        # change the model run arguments to run with 1 model parallel: --model-size 8m_mp1
         argv_injection = (
-            (
-                "python3 metaseq/launcher/opt_baselines.py   "
-                "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
-                "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-                "--num-gpus 4 --num-nodes 1   --seed 1   "
-                "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-            )
+            "python3 metaseq/launcher/opt_baselines.py   "
+            "--prefix train.8m    --model-size 8m_mp1    --checkpoints-dir ./test-checkpoint    "
+            "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
+            "--num-gpus 4 --num-nodes 1   --seed 1   "
+            "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
         )
         max_update_first_run = 20
 
-        training_log_events = self._test_model_parallel_mp1(argv_injection, max_update_first_run)
+        training_log_events = self._test_model_parallel(
+            argv_injection, max_update_first_run
+        )
+
+        # check that training ran correctly
+        # check that the number of updates was correct
+        self.assertIsNotNone(training_log_events)
+        self.assertIsNotNone(training_log_events[-1])
+        self.assertIsNotNone(training_log_events[-1]["num_updates"])
+        self.assertEqual(
+            int(training_log_events[-1]["num_updates"]), max_update_first_run
+        )
+        # check the achieved loss is correct
+        loss_val = float(training_log_events[-1]["loss"])
+        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
+
+    def test_model_parallel_mp2(self):
+        # change the model run arguments to run with 2 model parallel: --model-size 8m
+        argv_injection = (
+            "python3 metaseq/launcher/opt_baselines.py   "
+            "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
+            "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
+            "--num-gpus 4 --num-nodes 1   --seed 1   "
+            "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
+        )
+        max_update_first_run = 20
+
+        training_log_events = self._test_model_parallel(
+            argv_injection, max_update_first_run
+        )
 
         # check that training ran correctly
         # check that the number of updates was correct
@@ -58,7 +86,7 @@ class TestModelParallel(unittest.TestCase):
         loss_val = float(training_log_events[-1]["loss"])
         self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
-    def _test_model_parallel_mp1(self, argv_injection, max_update_first_run):
+    def _test_model_parallel(self, argv_injection, max_update_first_run):
         """
         Helper function to run the tests
         """
@@ -68,11 +96,7 @@ class TestModelParallel(unittest.TestCase):
             events = manager.list()
             p = multiprocessing.Process(
                 target=run_training,
-                args=(
-                    max_update_first_run,
-                    events,
-                    argv_injection
-                ),
+                args=(max_update_first_run, events, argv_injection),
             )
             p.start()
             p.join()
@@ -93,7 +117,7 @@ class TestModelParallel(unittest.TestCase):
             for event in events_first_run
             if event["type"] == "log" and event["message"].startswith('{"epoch"')
         ]
-        
+
         return training_log_events
 
 
