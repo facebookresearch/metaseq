@@ -21,7 +21,7 @@ from metaseq.launcher.opt_job_constants import Size, M
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-class TestModelParallel(unittest.TestCase):
+class TestModelParallelMP1(unittest.TestCase):
     """
     The test will verify that the model can be trained with
     model_parallel = 1
