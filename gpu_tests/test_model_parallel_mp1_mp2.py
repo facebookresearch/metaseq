@@ -38,7 +38,6 @@ class TestModelParallel(unittest.TestCase):
     def test_model_parallel_mp2(self):
         max_update_first_run = 20
         multiprocessing.set_start_method("spawn", force=True)
-
         p = multiprocessing.Process(
             target=run_training,
             args=(
@@ -57,7 +56,6 @@ class TestModelParallel(unittest.TestCase):
         )
         _, _ = cleanup_checkpoints.communicate()
 
-
         # to do
         self.assertEqual(1, 1)
 
@@ -70,7 +68,7 @@ def run_training(max_update):
         "--num-gpus 4 --num-nodes 1   --seed 1   "
         "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
     )
-    # both pathces needed to run the job of the circleci GPUs
+    # both patches are aneeded to run the job of the circleci GPUs
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run", partial(local_run_mock, max_update=max_update)
     ), patch.dict(
@@ -81,11 +79,9 @@ def run_training(max_update):
 
 
 def local_run_mock(args, env, train_cmd, dry_run, max_update):
+    # both patches are aneeded to run the job of the circleci GPUs
     train_cmd[train_cmd.index("--max-update") + 1] = str(max_update)
-    # train_cmd[train_cmd.index("--log-interval") + 1] = "1"
-    # train_cmd[train_cmd.index("--save-interval-updates") + 1] = "18"
     train_cmd[train_cmd.index("--num-workers") + 1] = "1"
-    print("train_cmd: ", train_cmd)
     with patch.dict("os.environ", env, clear=True):
         with patch("sys.argv", train_cmd[1:]):
             train_cli_main()
