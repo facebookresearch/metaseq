@@ -100,7 +100,7 @@ def run_training(max_update, events, argv_injection):
     ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
         # reduce the batch size for CUDA memory optimization
-        {"8m": Size(4, 128, 2, 64, int(0.0078125 * M), 1.0e-3, 2)},
+        {"8m_mp1": Size(4, 128, 2, 64, int(0.0078125 * M), 1.0e-3, 1)},
     ):
         sweep_cli_main()
 
