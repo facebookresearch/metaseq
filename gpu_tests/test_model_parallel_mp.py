@@ -32,7 +32,7 @@ class TestModelParallelMP1(unittest.TestCase):
     def test_model_parallel_mp1(self):
         argv_injection = (
             "python3 metaseq/launcher/opt_baselines.py   "
-            "--prefix train.8m    --model-size 8m_mp1    --checkpoints-dir ./test-checkpoint    "
+            "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
             "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
             "--num-gpus 4 --num-nodes 1   --seed 1   "
             "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
@@ -52,7 +52,7 @@ class TestModelParallelMP1(unittest.TestCase):
         )
         # check the achieved loss is correct
         loss_val = float(training_log_events[-1]["loss"])
-        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
+        self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
     def _test_model_parallel(self, argv_injection, max_update_first_run):
         """
@@ -100,7 +100,7 @@ def run_training(max_update, events, argv_injection):
     ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
         # reduce the batch size for CUDA memory optimization
-        {"8m": Size(4, 128, 2, 64, int(0.0078125 * M), 1.0e-3, 2)},
+        {"8m": Size(4, 128, 2, 64, int(0.03125 * M), 1.0e-3, 2)},
     ):
         sweep_cli_main()
 
