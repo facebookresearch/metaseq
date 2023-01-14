@@ -23,9 +23,9 @@ from metaseq.launcher.opt_job_constants import Size, M
 )
 class TestModelParallelMP1(unittest.TestCase):
     """
-    The test will verify that the model can be trained with
-    model_parallel = 1
-    The test checks hat the number of trianing steps performed is correct
+    The tests verify that the model can be trained with
+    model_parallel = 1 and model_parallel = 2
+    The tests checks hat the number of trianing steps performed is correct
     and that the required loss is achieved on the last iteration
     """
 
