@@ -39,7 +39,7 @@ class TestModelParallelMP1(unittest.TestCase):
         )
         max_update_first_run = 20
 
-        training_log_events = self._test_model_parallel_mp1(
+        training_log_events = self._test_model_parallel(
             argv_injection, max_update_first_run
         )
 
@@ -54,7 +54,7 @@ class TestModelParallelMP1(unittest.TestCase):
         loss_val = float(training_log_events[-1]["loss"])
         self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
-    def _test_model_parallel_mp1(self, argv_injection, max_update_first_run):
+    def _test_model_parallel(self, argv_injection, max_update_first_run):
         """
         Helper function to run the test
         """
@@ -90,6 +90,8 @@ class TestModelParallelMP1(unittest.TestCase):
 
 
 def run_training(max_update, events, argv_injection):
+    # clean any unused cach to reduce CUDA OOM
+    torch.cuda.empty_cache()
     # main arguments to run the training script
     # both patches are aneeded to run the job of the circleci GPUs
     with patch("sys.argv", argv_injection.split()[1:]), patch(
@@ -97,7 +99,8 @@ def run_training(max_update, events, argv_injection):
         partial(local_run_mock, max_update=max_update, events=events),
     ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
-        {"8m": Size(4, 128, 2, 64, int(0.0625 * M), 1.0e-3, 2)},
+        # reduce the batch size for CUDA memory optimization
+        {"8m": Size(4, 128, 2, 64, int(0.03125 * M), 1.0e-3, 2)},
     ):
         sweep_cli_main()
 
