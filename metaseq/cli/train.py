@@ -277,6 +277,7 @@ def train(
             num_updates = trainer.get_num_updates()
             if num_updates % cfg.common.log_interval == 0:
                 stats = get_training_stats(metrics.get_smoothed_values("train_inner"))
+                stats["run_id"] = cfg.common.run_id
                 progress.log(stats, tag="train_inner", step=num_updates)
 
                 # reset mid-epoch stats after each log interval

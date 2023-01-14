@@ -4,6 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 
 import sys
+import datetime
+import time
+import json
+import logging
+
 from dataclasses import _MISSING_TYPE, dataclass, field
 from typing import Any, List, Optional
 
@@ -84,6 +89,7 @@ class CommonConfig(MetaseqDataclass):
     # different jobs. Please append your params to other dataclasses if they
     # were used for a particular purpose or task, such as those dedicated for
     # `distributed training`, `optimization`, etc.
+
     log_interval: int = field(
         default=100,
         metadata={
@@ -124,6 +130,10 @@ class CommonConfig(MetaseqDataclass):
     )
     seed: int = field(
         default=1, metadata={"help": "pseudo random number generator seed"}
+    )
+    run_id: str = field(
+        default=datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"),
+        metadata={"help": "run_id to identify the job"},
     )
     cpu: bool = field(default=False, metadata={"help": "use CPU instead of CUDA"})
     fp16: bool = field(default=False, metadata={"help": "use FP16"})
