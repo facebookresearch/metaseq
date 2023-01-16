@@ -9,7 +9,7 @@ import logging
 import os
 import re
 from argparse import ArgumentError, ArgumentParser, Namespace
-from dataclasses import _MISSING_TYPE, MISSING
+from dataclasses import dataclass, field, _MISSING_TYPE, MISSING
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -473,3 +473,10 @@ def merge_with_parent(dc: MetaseqDataclass, cfg: MetaseqDataclass):
     merged_cfg.__dict__["_parent"] = cfg.__dict__["_parent"]
     OmegaConf.set_struct(merged_cfg, True)
     return merged_cfg
+
+@dataclass
+class CheckpointPath:
+    path: str
+    storage_type: str
+    priority: float = 0
+    run_before_loading: list = field(default_factory=list)
