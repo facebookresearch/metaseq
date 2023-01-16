@@ -21,45 +21,15 @@ from metaseq.launcher.opt_job_constants import Size, M
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-class TestModelParallel(unittest.TestCase):
+class TestSequenceParallel(unittest.TestCase):
     """
-    The tests verify that the model can be trained with
-    model_parallel = 1 and model_parallel = 2
-    The tests checks hat the number of trianing steps performed is correct
-    and that the required loss is achieved on the last iteration
+    The tests check rough equivalence between going through the
+    sequence-parallel code-path with MP 2 vs the current non
+    sequence-parallel run for the 8M model.
     """
 
-    def test_model_parallel_mp1(self):
-        # parameters to train an mp1 model
-        argv_injection = (
-            "python3 metaseq/launcher/opt_baselines.py   "
-            "--prefix train.8m    --model-size 8m_mp1    --checkpoints-dir ./test-checkpoint    "
-            "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-            "--num-gpus 4 --num-nodes 1   --seed 1   "
-            "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-        )
-        max_update_first_run = 20
-        size_patch_dict = {"8m_mp1": Size(4, 128, 2, 64, int(0.03125 * M), 1.0e-3, 1)}
-
-        training_log_events = self._test_model_parallel(
-            max_update_first_run=max_update_first_run,
-            argv_injection=argv_injection,
-            size_patch_dict=size_patch_dict,
-        )
-
-        # check that training ran correctly
-        # check that the number of updates was correct
-        self.assertNotEqual(training_log_events, [])
-        self.assertIsNotNone(training_log_events[-1]["num_updates"])
-        self.assertEqual(
-            int(training_log_events[-1]["num_updates"]), max_update_first_run
-        )
-        # check the achieved loss is correct
-        loss_val = float(training_log_events[-1]["loss"])
-        self.assertAlmostEqual(loss_val, 14.736, 1)  # 1 digit precision
-
-    def test_model_parallel_mp2(self):
-        # parameters to train an mp2 model
+    def test_sequence_parallel(self):
+        # parameters to train an mp2 model with sequence_parallel flag
         argv_injection = (
             "python3 metaseq/launcher/opt_baselines.py   "
             "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
@@ -70,25 +40,48 @@ class TestModelParallel(unittest.TestCase):
         max_update_first_run = 20
         size_patch_dict = {"8m": Size(4, 128, 2, 64, int(0.03125 * M), 1.0e-3, 2)}
 
+        # train model with sequence_parallel flag
+        training_log_events_seq = self._test_model_parallel(
+            max_update_first_run=max_update_first_run,
+            argv_injection=argv_injection,
+            size_patch_dict=size_patch_dict,
+            is_sequence_parallel=True,
+        )
+        # train model without sequence_parallel flag
         training_log_events = self._test_model_parallel(
             max_update_first_run=max_update_first_run,
             argv_injection=argv_injection,
             size_patch_dict=size_patch_dict,
+            is_sequence_parallel=False,
         )
 
         # check that training ran correctly
         # check that the number of updates was correct
+        self.assertNotEqual(training_log_events_seq, [])
         self.assertNotEqual(training_log_events, [])
+        self.assertIsNotNone(training_log_events_seq[-1]["num_updates"])
         self.assertIsNotNone(training_log_events[-1]["num_updates"])
         self.assertEqual(
             int(training_log_events[-1]["num_updates"]), max_update_first_run
         )
-        # check the achieved loss is correct
+        self.assertEqual(
+            int(training_log_events_seq[-1]["num_updates"]), max_update_first_run
+        )
+        # check the achieved loss is similar between seq and non-seq
+        loss_val_seq = float(training_log_events_seq[-1]["loss"])
         loss_val = float(training_log_events[-1]["loss"])
-        self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
+
+        print("loss_val_seq: {} | loss_val: {}".format(loss_val_seq, loss_val))
+        self.assertAlmostEqual(
+            loss_val, loss_val_seq, 1
+        )  # 1 digit precision; 14.702 - seq; 14.735 - non seq
 
     def _test_model_parallel(
-        self, max_update_first_run, argv_injection, size_patch_dict
+        self,
+        max_update_first_run,
+        argv_injection,
+        size_patch_dict,
+        is_sequence_parallel,
     ):
         """
         Helper function to run the test
@@ -99,7 +92,13 @@ class TestModelParallel(unittest.TestCase):
             events = manager.list()
             p = multiprocessing.Process(
                 target=run_training,
-                args=(max_update_first_run, events, argv_injection, size_patch_dict),
+                args=(
+                    max_update_first_run,
+                    events,
+                    argv_injection,
+                    size_patch_dict,
+                    is_sequence_parallel,
+                ),
             )
             p.start()
             p.join()
@@ -124,14 +123,21 @@ class TestModelParallel(unittest.TestCase):
         return training_log_events
 
 
-def run_training(max_update, events, argv_injection, size_patch_dict):
+def run_training(
+    max_update, events, argv_injection, size_patch_dict, is_sequence_parallel
+):
     # clean any unused cach to reduce CUDA OOM
     torch.cuda.empty_cache()
     # main arguments to run the training script
     # both patches are aneeded to run the job of the circleci GPUs
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run",
-        partial(local_run_mock, max_update=max_update, events=events),
+        partial(
+            local_run_mock,
+            max_update=max_update,
+            events=events,
+            is_sequence_parallel=is_sequence_parallel,
+        ),
     ), patch.dict(
         "metaseq.launcher.opt_job_constants.MODEL_SIZES",
         # reduce the batch size for CUDA memory optimization
@@ -140,14 +146,23 @@ def run_training(max_update, events, argv_injection, size_patch_dict):
         sweep_cli_main()
 
 
-def local_run_mock(args, env, train_cmd, dry_run, max_update, events):
+def local_run_mock(
+    args, env, train_cmd, dry_run, max_update, events, is_sequence_parallel
+):
     """
     The function introduces several patches for the argumets of the
     model training. These patches are needed to pass gpu tests on
-    circleci GPUs (empirical knowledge)
+    circleci GPUs and enable sequence_parallel parameter
     """
+    # update the parameters of the model training
     train_cmd[train_cmd.index("--max-update") + 1] = str(max_update)
     train_cmd[train_cmd.index("--num-workers") + 1] = "1"
+    train_cmd[train_cmd.index("--dropout") + 1] = "0.0"
+    train_cmd.remove("--checkpoint-activations")
+    train_cmd.remove("--distribute-checkpointed-activations")
+    # add sequence_parallel argument to the model arguments
+    if is_sequence_parallel:
+        train_cmd.append("--sequence-parallel")
 
     with patch("logging.Logger._log", partialmethod(log_to_events, events=events)):
         with patch.dict("os.environ", env, clear=True):
