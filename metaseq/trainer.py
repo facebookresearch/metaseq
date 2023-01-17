@@ -398,13 +398,13 @@ class Trainer(object):
                 def perform_save():
                     try:
                         logger.info(f"Beginning asynchronous torch.save to {filename}")
-                        if async_callback_fn is not None:
-                            async_callback_fn(filename)
+                        async_callback_fn(filename)
                         logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
                 torch.save(state_dict, filename)
-                self.async_checkpoint.submit(perform_save)
+                if async_callback_fn is not None:
+                    self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(

@@ -505,6 +505,13 @@ class CheckpointConfig(MetaseqDataclass):
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
     )
+    local_save_interval_updates: int = field(
+        default=0,
+        metadata={
+            "help": "save a checkpoint (and validate) every N updates to local SSD. "
+            "Only applicable when copying to NFS asynchronously"
+        },
+    )
     save_last_checkpoint: bool = field(
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},

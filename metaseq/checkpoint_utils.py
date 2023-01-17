@@ -63,11 +63,15 @@ def save_checkpoint(
         and epoch % cfg.save_interval_epochs == 0
     )
 
-    save_for_updates = (
-        not end_of_epoch
-        and cfg.save_interval_updates > 0
-        and updates % cfg.save_interval_updates == 0
+    save_locally = (
+        cfg.local_save_interval_updates > 0
+        and updates % cfg.local_save_interval_updates == 0
     )
+    save_to_NFS = (
+        cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0
+    )
+
+    save_for_updates = not end_of_epoch and (save_to_NFS or save_locally)
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
@@ -82,6 +86,7 @@ def save_checkpoint(
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
     ]
+
     if len(checkpoints) > 0:
         if PathManager.islink(checkpoints[0]):
             PathManager.rm(checkpoints[0])
@@ -90,7 +95,7 @@ def save_checkpoint(
             checkpoints[0],
             extra_state,
             training_finished=training_finished,
-            async_callback_fn=async_callback_fn,
+            async_callback_fn=async_callback_fn if save_to_NFS else None,
         )
 
         write_timer.stop()

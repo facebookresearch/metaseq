@@ -87,6 +87,16 @@ def main(cfg: DictConfig) -> None:
     ), "Must specify batch size either with --max-tokens or --batch-size"
     metrics.reset()
 
+    if cfg.checkpoint.local_save_interval_updates > 0:
+        assert (
+            cfg.checkpoint.save_interval_updates > 0
+        ), "local save must be used with --save-interval-updates > 0"
+        assert (
+            cfg.checkpoint.save_interval_updates
+            % cfg.checkpoint.local_save_interval_updates
+            == 0
+        ), "--save-interval-updates must be a multiple of --local-save-interval-updates"
+
     if cfg.common.log_file is not None:
         handler = logging.FileHandler(filename=cfg.common.log_file)
         logger.addHandler(handler)
@@ -334,7 +344,11 @@ def train(
                 )
                 continue
 
-            if distributed_utils.get_global_rank() == 0 and cfg.common.profile and i == 5:
+            if (
+                distributed_utils.get_global_rank() == 0
+                and cfg.common.profile
+                and i == 5
+            ):
                 logger.info("STARTING PROFILER")
                 with profiler.profile(
                     profile_memory=True, with_stack=True, record_shapes=True
@@ -407,6 +421,17 @@ def validate_and_save(
             f"num_updates: {num_updates} >= max_update: {max_update}"
         )
 
+    save_locally = (
+        cfg.checkpoint.local_save_interval_updates > 0
+        and num_updates > 0
+        and num_updates % cfg.checkpoint.local_save_interval_updates == 0
+    )
+    save_to_NFS = (
+        cfg.checkpoint.save_interval_updates > 0
+        and num_updates > 0
+        and num_updates % cfg.checkpoint.save_interval_updates == 0
+    )
+
     do_save = (
         (
             end_of_epoch
@@ -414,9 +439,7 @@ def validate_and_save(
             and epoch_itr.epoch % cfg.checkpoint.save_interval_epochs == 0
         )
         or (
-            cfg.checkpoint.save_interval_updates > 0
-            and num_updates > 0
-            and num_updates % cfg.checkpoint.save_interval_updates == 0
+            (save_locally or save_to_NFS)
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
         )
