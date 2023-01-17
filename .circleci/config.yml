@@ -74,7 +74,7 @@ install_dep_pt19: &install_dep_pt19
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1+cu117 -f https://download.pytorch.org/whl/torch_stable.html
+        pip install torch==1.12.1+cu116 torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
