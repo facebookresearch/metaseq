@@ -52,7 +52,7 @@ class TestSequenceParallel(unittest.TestCase):
             max_update_first_run=max_update_first_run,
             argv_injection=argv_injection,
             size_patch_dict=size_patch_dict,
-            is_sequence_parallel=False,
+            is_sequence_parallel=True,
         )
 
         # check that training ran correctly
