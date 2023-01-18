@@ -21,85 +21,68 @@ install_dep_common: &install_dep_common
   - run:
       name: Install Common Dependencies
       command: |
-        source activate metaseq
-        # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install setuptools==59.5.0
-        pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
-        python -c 'import torch; print("Torch version:", torch.__version__)'
-        python -m torch.utils.collect_env
+        source activate fairseq-20221101
+        pip install "flake8==3.9.2" "black==22.3.0" "transformers" "pyarrow" "boto3" "pandas" "protobuf==3.20.2" "aim>=3.9.4" "azure-storage-blob" "click==8.0.4" "cython" "dataclasses" "editdistance" "fire" "flask==2.1.1" "hydra-core==1.1.0" "ipdb" "ipython" "Jinja2==3.1.1" "markupsafe" "more_itertools" "mypy" "ninja" "numpy" "omegaconf==2.1.1" "portalocker>=2.5" "pre-commit" "pytest" "pytest-regressions" "regex" "scikit-learn" "sacrebleu" "tensorboard==2.8.0" "timeout-decorator" "tokenizers" "tqdm" "typing_extensions" "bitarray" "sacremoses" "sentencepiece" "pybind11" "pyre-extensions==0.0.23" "typing-inspect==0.8.0" "iopath"
+        
+        # install cudatoolkit to enable sequence_parallel 
+        conda install cudatoolkit
+
         # Need to install ninja build system
         sudo apt-get update
         sudo apt-get install ninja-build
-
 install_dep_fused_ops: &install_dep_fused_ops
   - run:
       name: Install Megatron/Apex Dependencies
       working_directory: ~/
-      # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
       command: |
-        source activate metaseq
+        source activate fairseq-20221101
         if ! python -c 'import apex'; then
-          git clone https://github.com/NVIDIA/apex
+          git clone --recursive https://github.com/NVIDIA/apex.git
           cd apex
-          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
-          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
+          python -m pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
           cd ~/
         fi
         if ! python -c 'import megatron_lm'; then
           git clone --depth=1 --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
           cd Megatron-LM
-          pip install -r requirements.txt
           pip install -e .
           cd ~/
         fi
-
-# Remove this when we get a new fairscale release
+Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
       name: Install Fairscale from Source
       working_directory: ~/
       command: |
-        source activate metaseq
+        source activate fairseq-20221101
         if ! python -c 'import fairscale'; then
             git clone https://github.com/facebookresearch/fairscale.git
             cd fairscale
-            git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
-            pip install .
+            git checkout ngoyal_bf16_changes
+            pip install --no-build-isolation -e .
             cd ~/
         fi
-
 install_dep_pt19: &install_dep_pt19
   - run:
       name: Install Pytorch Dependencies
+      working_directory: ~/
       command: |
-        source activate metaseq
+        source activate fairseq-20221101
         pip install --upgrade setuptools
-        pip install torch==1.12.1+cu116 torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
+        pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
         python -c 'import torch; print("Torch version:", torch.__version__)'
-
-
-install_pytorch_dep: &install_pytorch_dep
-  - parameters:
-        version_str:
-          type: string
-          default: "/dev/non_exist"  # Default to error out
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        echo "<<parameters.version_str>>"
-        pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
-
 install_repo: &install_repo
   - run:
       name: Install Repository
+      working_directory: ~/
       command: |
-        source activate metaseq
-        pip install -e .[dev,few_shot,gpu]
-        python setup.py build_ext --inplace
-
+        source activate fairseq-20221101
+        if ! python -c 'import fairscale'; then
+            git clone git@github.com:facebookresearch/metaseq.git
+            cd metaseq
+            pip install --no-build-isolation -e .
+            cd ~/
+        fi
 
 check_nvidia_driver: &check_nvidia_driver
   - run:
@@ -108,7 +91,6 @@ check_nvidia_driver: &check_nvidia_driver
       command: |
         pyenv versions
         nvidia-smi
-
 create_conda_env: &create_conda_env
   run:
       name: Install and Create Conda Environment
@@ -119,20 +101,21 @@ create_conda_env: &create_conda_env
         rm ~/miniconda.sh
         echo 'export PATH=$HOME/miniconda/bin:$PATH' >> $BASH_ENV
         source $BASH_ENV
-        if [ ! -d ~/miniconda/envs/metaseq ]
+        if [ ! -d ~/miniconda/envs/fairseq-20221101 ]
         then
-          conda create -y -n metaseq python=3.8
+          conda create --name fairseq-20221101 python=3.9 -y
         fi
-        source activate metaseq
+        source activate fairseq-20221101
         python --version
         pip install --upgrade pip
+        conda install -y conda-pack
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
       name: Download and configure a 125m checkpoint with HF dependencies
       working_directory: ~/metaseq/gpu_tests
       command: |
-        source activate metaseq
+        source activate fairseq-20221101
         wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
         tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
         python -m metaseq.scripts.convert_to_singleton ./125m
@@ -160,12 +143,12 @@ commands:
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
-            - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
+            - ~/miniconda/envs/fairseq-20221101/lib/python3.9/site-packages
           key: *cache_key
       - run:
           name: Run Unit Tests
           command: |
-            source activate metaseq
+            source activate fairseq-20221101
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
       - store_test_results:
           path: test-results

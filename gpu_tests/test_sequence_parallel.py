@@ -29,7 +29,7 @@ class TestSequenceParallel(unittest.TestCase):
     """
 
     def test_sequence_parallel(self):
-        # parameters to train an mp2 model with sequence_parallel flag 
+        # parameters to train an mp2 model with sequence_parallel flag
         argv_injection = (
             "python3 metaseq/launcher/opt_baselines.py   "
             "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
