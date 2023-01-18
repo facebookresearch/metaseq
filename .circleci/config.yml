@@ -8,7 +8,7 @@ gpu: &gpu
   environment:
     CUDA_VERSION: "11.6"
   machine:
-    image: ubuntu-2204:2022.10.2 # ubuntu-2004-cuda-11.4:202110-01
+    image: ubuntu-2004-cuda-11.4:202110-01
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -124,6 +124,9 @@ create_conda_env: &create_conda_env
         pip install --upgrade pip
         conda install -y conda-pack
 
+        # check CUDA version
+        nvidia-smi
+
 update_cuda: &update_cuda
   run:
     name: Update cuda version
@@ -140,10 +143,6 @@ update_cuda: &update_cuda
       sudo apt-key add /var/cuda-repo-ubuntu2004-11-6-local/7fa2af80.pub
       sudo apt-get update
       sudo apt-get -y install cuda
-      
-      # check the version
-      nvcc --version
-      nvidia-smi
 
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
