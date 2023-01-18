@@ -140,7 +140,6 @@ update_cuda: &update_cuda
       
       # install cuda
       sudo apt update
-      sudo apt install cuda-toolkit-11.6
       sudo apt install cuda
       
       # set path to point to CUDA binaries
