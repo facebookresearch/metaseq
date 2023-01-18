@@ -70,6 +70,8 @@ install_dep_pt19: &install_dep_pt19
       name: Install Pytorch Dependencies
       working_directory: ~/
       command: |
+        source $BASH_ENV
+        cat $BASH_ENV
         source activate fairseq-20221101
         pip install --upgrade setuptools
         pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
@@ -114,6 +116,7 @@ create_conda_env: &create_conda_env
         python --version
         pip install --upgrade pip
         conda install -y conda-pack
+        cat $BASH_ENV
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
