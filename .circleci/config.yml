@@ -129,23 +129,10 @@ update_cuda: &update_cuda
     name: Update the cuda version
     working_directory: ~/
     command: |    
-      # download and update the keys for cuda repo
-      wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
-      sudo dpkg -i cuda-keyring_1.0-1_all.deb  
-      
-      # download the .pin file to setup cuda
-      sudo wget -O /etc/apt/preferences.d/cuda-repository-pin-600 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-      sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub
-      sudo add-apt-repository "deb http://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /"
-      
-      # install cuda
       sudo apt update
-      sudo apt install cuda
+      sudo apt install nvidia-cuda-toolkit
       
-      # set path to point to CUDA binaries
-      echo 'export PATH=/usr/local/cuda/bin${PATH:+:${PATH}}' >> ~/.bashrc
-      
-      # check th version
+      # check the version
       nvcc --version
       nvidia-smi
       cat ~/.bashrc 
