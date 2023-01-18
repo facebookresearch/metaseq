@@ -42,7 +42,6 @@ install_dep_fused_ops: &install_dep_fused_ops
         if ! python -c 'import apex'; then
           git clone --recursive https://github.com/NVIDIA/apex.git
           cd apex
-          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
           # skip the part of the setup.py code with the warning about
           # cuda versions mismatch
           sed -i '32 i \ \ \ \ return' setup.py
