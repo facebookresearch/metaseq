@@ -6,9 +6,9 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.4"
+    CUDA_VERSION: "11.6"
   machine:
-    image: ubuntu-2004-cuda-11.4:202110-01
+    image: ubuntu-2204:2022.10.2 # ubuntu-2004-cuda-11.4:202110-01
     resource_class: gpu.nvidia.medium.multi
 
 
