@@ -21,6 +21,7 @@ install_dep_common: &install_dep_common
   - run:
       name: Install Common Dependencies
       command: |
+        source $BASH_ENV
         source activate fairseq-20221101
         pip install "flake8==3.9.2" "black==22.3.0" "transformers" "pyarrow" "boto3" "pandas" "protobuf==3.20.2" "aim>=3.9.4" "azure-storage-blob" "click==8.0.4" "cython" "dataclasses" "editdistance" "fire" "flask==2.1.1" "hydra-core==1.1.0" "ipdb" "ipython" "Jinja2==3.1.1" "markupsafe" "more_itertools" "mypy" "ninja" "numpy" "omegaconf==2.1.1" "portalocker>=2.5" "pre-commit" "pytest" "pytest-regressions" "regex" "scikit-learn" "sacrebleu" "tensorboard==2.8.0" "timeout-decorator" "tokenizers" "tqdm" "typing_extensions" "bitarray" "sacremoses" "sentencepiece" "pybind11" "pyre-extensions==0.0.23" "typing-inspect==0.8.0" "iopath"
         
@@ -36,6 +37,7 @@ install_dep_fused_ops: &install_dep_fused_ops
       name: Install Megatron/Apex Dependencies
       working_directory: ~/
       command: |
+        source $BASH_ENV
         source activate fairseq-20221101
         if ! python -c 'import apex'; then
           git clone --recursive https://github.com/NVIDIA/apex.git
@@ -56,6 +58,7 @@ install_fairscale: &install_fairscale
       name: Install Fairscale from Source
       working_directory: ~/
       command: |
+        source $BASH_ENV
         source activate fairseq-20221101
         if ! python -c 'import fairscale'; then
             git clone https://github.com/facebookresearch/fairscale.git
@@ -71,7 +74,6 @@ install_dep_pt19: &install_dep_pt19
       working_directory: ~/
       command: |
         source $BASH_ENV
-        cat $BASH_ENV
         source activate fairseq-20221101
         pip install --upgrade setuptools
         pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
@@ -82,6 +84,7 @@ install_repo: &install_repo
       name: Install Repository
       working_directory: ~/
       command: |
+        source $BASH_ENV
         source activate fairseq-20221101
         if ! python -c 'import fairscale'; then
             git clone git@github.com:facebookresearch/metaseq.git
@@ -116,13 +119,13 @@ create_conda_env: &create_conda_env
         python --version
         pip install --upgrade pip
         conda install -y conda-pack
-        cat $BASH_ENV
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
       name: Download and configure a 125m checkpoint with HF dependencies
       working_directory: ~/metaseq/gpu_tests
       command: |
+        source $BASH_ENV
         source activate fairseq-20221101
         wget https://dl.fbaipublicfiles.com/opt/test_artifacts/125m_with_hf_dependencies.tar.gz
         tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
@@ -156,6 +159,7 @@ commands:
       - run:
           name: Run Unit Tests
           command: |
+            source $BASH_ENV
             source activate fairseq-20221101
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
       - store_test_results:
