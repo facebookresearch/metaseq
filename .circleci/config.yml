@@ -128,7 +128,11 @@ update_cuda: &update_cuda
   run:
     name: Update cuda version
     working_directory: ~/
-    command: |    
+    command: |
+      # clean previous CUDA versions
+      sudo apt clean; sudo apt update; sudo apt purge cuda; sudo apt-get remove nvidia-cuda-*; sudo apt autoremove;
+
+      # install new CUDA
       wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
       sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
       wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-ubuntu2004-11-6-local_11.6.2-510.47.03-1_amd64.deb
