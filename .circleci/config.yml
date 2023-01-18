@@ -122,7 +122,6 @@ create_conda_env: &create_conda_env
         source activate fairseq-20221101
         python --version
         pip install --upgrade pip
-        conda install -y conda-pack
 
         # check CUDA version
         nvidia-smi
