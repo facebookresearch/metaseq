@@ -8,7 +8,7 @@ gpu: &gpu
   environment:
     CUDA_VERSION: "11.1"
   machine:
-    image: ubuntu-1604-cuda-11.1:202012-01
+    image: ubuntu-2004-cuda-11.4:202110-01
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -30,6 +30,7 @@ install_dep_common: &install_dep_common
         # Need to install ninja build system
         sudo apt-get update
         sudo apt-get install ninja-build
+
 install_dep_fused_ops: &install_dep_fused_ops
   - run:
       name: Install Megatron/Apex Dependencies
@@ -48,7 +49,8 @@ install_dep_fused_ops: &install_dep_fused_ops
           pip install -e .
           cd ~/
         fi
-Remove this when we get a new fairscale release
+
+#Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
       name: Install Fairscale from Source
@@ -62,6 +64,7 @@ install_fairscale: &install_fairscale
             pip install --no-build-isolation -e .
             cd ~/
         fi
+
 install_dep_pt19: &install_dep_pt19
   - run:
       name: Install Pytorch Dependencies
@@ -71,6 +74,7 @@ install_dep_pt19: &install_dep_pt19
         pip install --upgrade setuptools
         pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
         python -c 'import torch; print("Torch version:", torch.__version__)'
+
 install_repo: &install_repo
   - run:
       name: Install Repository
@@ -91,6 +95,7 @@ check_nvidia_driver: &check_nvidia_driver
       command: |
         pyenv versions
         nvidia-smi
+
 create_conda_env: &create_conda_env
   run:
       name: Install and Create Conda Environment
