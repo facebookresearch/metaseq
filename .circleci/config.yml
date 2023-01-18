@@ -129,11 +129,11 @@ update_cuda: &update_cuda
     name: Update the cuda version
     working_directory: ~/
     command: |
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-11-6_11.6.2-1_amd64.deb
-    sudo dpkg -i cuda-11-6_11.6.2-1_amd64.deb
-    sudo apt-get update
-    sudo apt-get --yes --force-yes install cuda
-    nvidia-smi
+      wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-11-6_11.6.2-1_amd64.deb
+      sudo dpkg -i cuda-11-6_11.6.2-1_amd64.deb
+      sudo apt-get update
+      sudo apt-get --yes --force-yes install cuda
+      nvidia-smi
 
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
