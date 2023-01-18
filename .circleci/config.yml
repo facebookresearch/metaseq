@@ -6,9 +6,9 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.1"
+    CUDA_VERSION: "11.6"
   machine:
-    image: ubuntu-1604-cuda-11.1:202012-01
+    image: ubuntu-2204-cuda-11.6:current
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -42,7 +42,6 @@ install_dep_fused_ops: &install_dep_fused_ops
         if ! python -c 'import apex'; then
           git clone --recursive https://github.com/NVIDIA/apex.git
           cd apex
-          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
           # skip the part of the setup.py code with the warning about
           # cuda versions mismatch
           sed -i '32 i \ \ \ \ return' setup.py
