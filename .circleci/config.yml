@@ -58,9 +58,9 @@ install_dep_pt19: &install_dep_pt19
         pip install --upgrade setuptools
 
         # install PyTorch from source
-        conda install -y astunparse numpy ninja pyyaml setuptools cmake cffi typing_extensions six requests dataclasses
-        conda install -y mkl mkl-include
-        conda install -c -y pytorch magma-cuda111
+        conda install astunparse numpy ninja pyyaml setuptools cmake cffi typing_extensions six requests dataclasses -y
+        conda install mkl mkl-include -y
+        conda install -c pytorch magma-cuda111 -y
 
         git clone --recursive https://github.com/pytorch/pytorch
         cd pytorch
