@@ -144,14 +144,20 @@ update_cuda: &update_cuda
       sudo apt-get -y install cuda
 
       # reload CUDA
-      # unload nvidia kernel
-      sudo rmmod nvidia
+      # stop other processes that might use CUDA
+      sudo service lightdm stop
+      sudo service gdm stop
       # remove the existing Nvidia kernel module
       modprobe -r nvidia nvidia_uvm
       # reload the systemd units
       systemctl daemon-reload
+      # unload nvidia kernel
+      sudo rmmod nvidia
       # build and load the new kernel module
       systemctl restart cuda-driver
+
+      # check CUDA version
+      nvidia-smi
 
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
