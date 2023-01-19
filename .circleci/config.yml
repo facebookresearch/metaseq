@@ -6,9 +6,9 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.6"
+    CUDA_VERSION: "11.1"
   machine:
-    image: ubuntu-2004-cuda-11.4:202110-01
+    image: ubuntu-1604-cuda-11.1:202012-01
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -79,7 +79,8 @@ install_dep_pt19: &install_dep_pt19
         source $BASH_ENV
         source activate fairseq-20221101
         pip install --upgrade setuptools
-        pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+        # the only difference to prod fairseq-20221101 env is the cu111 VS cu116
+        pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu111
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 install_repo: &install_repo
@@ -126,39 +127,6 @@ create_conda_env: &create_conda_env
         # check CUDA version
         nvidia-smi
 
-update_cuda: &update_cuda
-  run:
-    name: Update cuda version
-    working_directory: ~/
-    command: |
-      # clean previous CUDA versions
-      sudo apt clean; sudo apt update; sudo apt purge cuda; sudo apt-get remove nvidia-cuda-*; sudo apt autoremove;
-
-      # install new CUDA
-      wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-      sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-      wget https://developer.download.nvidia.com/compute/cuda/11.6.2/local_installers/cuda-repo-ubuntu2004-11-6-local_11.6.2-510.47.03-1_amd64.deb
-      sudo dpkg -i cuda-repo-ubuntu2004-11-6-local_11.6.2-510.47.03-1_amd64.deb
-      sudo apt-key add /var/cuda-repo-ubuntu2004-11-6-local/7fa2af80.pub
-      sudo apt-get update
-      sudo apt-get -y install cuda
-
-      # reload CUDA
-      # stop other processes that might use CUDA
-      sudo service lightdm stop
-      sudo service gdm stop
-      # remove the existing Nvidia kernel module
-      modprobe -r nvidia nvidia_uvm
-      # reload the systemd units
-      systemctl daemon-reload
-      # unload nvidia kernel
-      sudo rmmod nvidia
-      # build and load the new kernel module
-      systemctl restart cuda-driver
-
-      # check CUDA version
-      nvidia-smi
-
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
@@ -181,7 +149,6 @@ commands:
           command: sudo mount -t tmpfs tmpfs ~/
       - checkout
       - <<: *check_nvidia_driver
-      - <<: *update_cuda
       - <<: *create_conda_env
       - restore_cache:
           key: *cache_key
