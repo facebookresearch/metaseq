@@ -60,7 +60,7 @@ install_fairscale: &install_fairscale
         if ! python -c 'import fairscale'; then
             git clone https://github.com/facebookresearch/fairscale.git
             cd fairscale
-            git checkout 1bc96fa8c69def6d990e42bfbd75f86146ce29bd
+            git checkout ngoyal_bf16_changes
             pip install .
             cd ~/
         fi
