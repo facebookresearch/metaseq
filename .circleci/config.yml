@@ -23,7 +23,7 @@ install_dep_common: &install_dep_common
       command: |
         source activate metaseq
         # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install --upgrade setuptools
+        pip install setuptools==59.5.0
         pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
@@ -71,7 +71,7 @@ install_dep_pt19: &install_dep_pt19
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch==1.10.2+cu111 torchvision==0.11.3+cu111 torchaudio==0.10.2+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+        pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 install_pytorch_dep: &install_pytorch_dep
   - parameters:
@@ -112,7 +112,7 @@ create_conda_env: &create_conda_env
         source $BASH_ENV
         if [ ! -d ~/miniconda/envs/metaseq ]
         then
-          conda create -y -n metaseq python=3.9
+          conda create -y -n metaseq python=3.8
         fi
         source activate metaseq
         python --version
@@ -149,7 +149,7 @@ commands:
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
-            - ~/miniconda/envs/metaseq/lib/python3.9/site-packages
+            - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
           key: *cache_key
       - run:
           name: Run Unit Tests
