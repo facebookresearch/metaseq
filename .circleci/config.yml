@@ -57,6 +57,10 @@ install_dep_pt19: &install_dep_pt19
         source activate fairseq-20221101
         pip install --upgrade setuptools
 
+        # add CUDA path to the PATH environment variable
+        export PATH=$PATH:/usr/local/cuda/bin
+        export CUDACXX=/usr/local/cuda-11.1/bin/nvcc
+
         # install PyTorch from source
         conda install astunparse numpy ninja pyyaml setuptools cmake cffi typing_extensions six requests dataclasses -y
         conda install mkl mkl-include -y
