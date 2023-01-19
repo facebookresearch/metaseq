@@ -144,6 +144,8 @@ update_cuda: &update_cuda
       sudo apt-get -y install cuda
 
       # reload CUDA
+      # unload nvidia kernel
+      sudo rmmod nvidia
       # remove the existing Nvidia kernel module
       modprobe -r nvidia nvidia_uvm
       # reload the systemd units
