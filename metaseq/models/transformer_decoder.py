@@ -14,7 +14,7 @@ from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.distributed import utils as distributed_utils, fsdp_wrap
-from metaseq.models import IncrementalDecoder
+from metaseq.models import BaseDecoder
 from metaseq.modules import (
     Dropout,
     LayerNorm,
@@ -53,7 +53,7 @@ def _log_weight_stats(tensor, name):
     )
 
 
-class TransformerDecoder(IncrementalDecoder):
+class TransformerDecoder(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`TransformerDecoderLayer`.
@@ -101,6 +101,7 @@ class TransformerDecoder(IncrementalDecoder):
                 learned=args.decoder_learned_pos,
                 learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
                 full_megatron_init=getattr(args, "full_megatron_init", False),
+                pos_init_scalar=getattr(args, "pos_init_scalar", 1.0),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
                 truncate_init=getattr(args, "truncate_init", False),
             )
@@ -314,7 +315,7 @@ class TransformerDecoder(IncrementalDecoder):
                 tokens, incremental_state=incremental_state, positions=positions
             )
 
-        # see IncrementalDecoder for important information about
+        # see BaseDecoder for important information about
         # incremental state
         if incremental_state:
             tokens = tokens[:, -1:]
@@ -368,7 +369,7 @@ class TransformerDecoder(IncrementalDecoder):
                 - a dictionary with any model-specific outputs
         """
 
-        # see IncrementalDecoder for important information about
+        # see BaseDecoder for important information about
         # incremental state
         x, extra = self.extract_features(
             prev_output_tokens,
@@ -404,7 +405,7 @@ class TransformerDecoder(IncrementalDecoder):
             prev_output_tokens, token_embeddings, incremental_state
         )
 
-        # see IncrementalDecoder for important information about
+        # see BaseDecoder for important information about
         # incremental state. Note that it may be an empty dictionary.
         if not incremental_state:
             self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)

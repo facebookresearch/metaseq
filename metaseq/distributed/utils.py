@@ -165,7 +165,10 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
-    if cfg.common.model_parallel_size > 1:
+    if (
+        getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
+        or cfg.common.model_parallel_size > 1
+    ):
         try:
             from megatron.mpu import (
                 initialize_model_parallel,

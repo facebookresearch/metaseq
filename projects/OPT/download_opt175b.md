@@ -43,26 +43,29 @@ done
 ```
 Note that most of our models expect to run with Model (Tensor) Parallelism. For smaller models, some
 users may find it easier to eliminate model parallelism. The checkpoints can be converted
-to eliminate use of MP with the `consolidate_fsdp_shards.py` script:
+to eliminate use of MP with the `reshard_mp.py` script:
 
 ```bash
-python metaseq.scripts.consolidate_fsdp_shards ${FOLDER_PATH}/checkpoint_last --new-arch-name transformer_lm_gpt --save-prefix ${FOLDER_PATH}/consolidated
+python -m metaseq.scripts.reshard_mp \
+    --input "/path/to/resharded/checkpoints/reshard-model_part-*.pt" \
+    --output "/path/to/mp/resharded/checkpoints/reshard-model_part-{i}.pt" \
+    --num-output-parts 1
 ```
 
 ### md5sum check
-Once you have consolidated the shards, you should have the following checksums:
+Once you have consolidated the FSDP shards, you should have the following checksums with the options `--skip-optimizer-state True` and `--unflatten-weights True`:
 ```
 934def0c596e01dfb849fa65b73e01aa  dict.txt
 75a37753dd7a28a2c5df80c28bf06e4e  gpt2-merges.txt
 cf410ee085c5c69c957bb1f6d8456596  gpt2-vocab.json
-7e71cb65c4be784aa0b2889ac6039ee8  reshard-model_part-0.pt
-c8123da04f2c25a9026ea3224d5d5022  reshard-model_part-1.pt
-45e5d10896382e5bc4a7064fcafd2b1e  reshard-model_part-2.pt
-abb7296c4d2fc17420b84ca74fc3ce64  reshard-model_part-3.pt
-05dcc7ac6046f4d3f90b3d1068e6da15  reshard-model_part-4.pt
-d24dd334019060ce1ee7e625fcf6b4bd  reshard-model_part-5.pt
-fb1615ce0bbe89cc717f3e5079ee2655  reshard-model_part-6.pt
-2f3124432d2dbc6aebfca06be4b791c2  reshard-model_part-7.pt
+343a4ac67acf952e3287a270d4bc430c  reshard-model_part-0.pt
+becb3f4d6bbc9a7e48539f0007a8ffa1  reshard-model_part-1.pt
+1dac146a02256b0ca1dd482e3bf3e8e4  reshard-model_part-2.pt
+d4806579a1cd8980ed6d626add9bd68c  reshard-model_part-3.pt
+c5054a509eac01d78f1486feb00589f8  reshard-model_part-4.pt
+bf24e54c033dc4712602f1222c9ef453  reshard-model_part-5.pt
+9a705f5ca36996adfe08e9ef82f4a340  reshard-model_part-6.pt
+91e7f6b87c802a6c8ed9a34a4be9d7e7  reshard-model_part-7.pt
 ```
 
 
