@@ -23,7 +23,7 @@ install_dep_common: &install_dep_common
       command: |
         source activate metaseq
         # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install setuptools==59.5.0
+        pip install --upgrade setuptools
         pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
@@ -71,7 +71,7 @@ install_dep_pt19: &install_dep_pt19
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch==1.10.2+cu111 torchvision torchaudio -f https://download.pytorch.org/whl/cu111
+        pip install torch==1.10.2+cu111 torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 install_pytorch_dep: &install_pytorch_dep
   - parameters:
