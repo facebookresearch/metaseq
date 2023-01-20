@@ -160,7 +160,7 @@ def get_all_checkpoints_from_directory(
 
 
 def get_recent_checkpoint_from_azure_blob(
-    blob_url, suffix, add_priority
+    blob_url: str, suffix: str, add_priority: float
 ) -> List[CheckpointPath]:
     file_to_load = azure_utils.get_most_recent_ckpt(blob_url, suffix)
     if file_to_load is None:
@@ -195,13 +195,6 @@ def get_checkpoint_to_finetune(
         run_before_loading=[reset_for_finetuning],
     )
 
-
-        has_metaseq_internal = True
-    except ImportError:
-        has_metaseq_internal = False
-        logger.warning(
-        "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
-    )
 
 
 def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
