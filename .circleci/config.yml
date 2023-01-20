@@ -23,6 +23,8 @@ install_dep_common: &install_dep_common
       command: |
         source activate metaseq
         # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
+        # need this version of setuptools to enable distutils
+        pip install setuptools==59.5.0
         pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
@@ -92,6 +94,18 @@ install_repo: &install_repo
         source activate metaseq
         pip install -e .[dev,few_shot,gpu]
         python setup.py build_ext --inplace
+
+upgrade_pytorch: &upgrade_pytorch
+  - run:
+      name: Upgrade Pytorch
+      working_directory: ~/
+      command: |
+        source activate metaseq
+        pip uninstall torch -y
+        pip install torch==1.10.2+cu111 torchvision==0.11.3+cu111 torchaudio==0.10.2+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+        pip install setuptools==59.5.0
+        python -c 'import torch; print("Torch version:", torch.__version__)'
+
 check_nvidia_driver: &check_nvidia_driver
   - run:
       name: Check NVIDIA Driver
@@ -145,6 +159,7 @@ commands:
       - <<: *install_fairscale
       - <<: *install_dep_fused_ops
       - <<: *install_repo
+      - <<: *upgrade_pytorch
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
