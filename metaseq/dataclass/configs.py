@@ -594,7 +594,7 @@ class CheckpointConfig(MetaseqDataclass):
 
 @dataclass
 class GenerationConfig(MetaseqDataclass):
-    beam_list: List[int] = field(
+    beam: int = field(
         default=5,
         metadata={"help": "beam size"},
     )
@@ -614,17 +614,17 @@ class GenerationConfig(MetaseqDataclass):
         default=1,
         metadata={"help": "minimum generation length"},
     )
-    sampling_list: List[bool] = field(
+    sampling: bool = field(
         default=False,
         metadata={"help": "sample hypotheses instead of using beam search"},
     )
-    sampling_topp_list: List[float] = field(
+    sampling_topp: float = field(
         default=-1.0,
         metadata={
             "help": "sample from the smallest set whose cumulative probability mass exceeds p for next words"
         },
     )
-    temperature_list: List[float] = field(
+    temperature:float = field(
         default=1.0,
         metadata={"help": "temperature for generation"},
     )

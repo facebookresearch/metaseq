@@ -341,8 +341,8 @@ class BaseTask(object):
         from metaseq.sequence_generator import SequenceGenerator
 
         # Choose search strategy.
-        sampling_list = getattr(args, "sampling_list")
-        sampling_topp_list = getattr(args, "sampling_topp_list")
+       # sampling_list = getattr(args, "sampling_list")
+       # sampling_topp_list = getattr(args, "sampling_topp_list")
         #assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
         if getattr(args, "sampling_topk", False):
@@ -357,12 +357,12 @@ class BaseTask(object):
         return seq_gen_cls(
             models,
             self.target_dictionary,
-            beam_size_list=getattr(args, "beam_list"),
+            #beam_size_list=getattr(args, "beam_list"),
             max_len_a=getattr(args, "max_len_a", 0),
             max_len_b=getattr(args, "max_len_b", 200),
             min_len=getattr(args, "min_len", 1),
-            temperature_list=getattr(args, "temperature_list"),
-            topp_list=sampling_topp_list,
+            #temperature_list=getattr(args, "temperature_list"),
+            #topp_list=sampling_topp_list,
             **extra_gen_cls_kwargs,
         )
 

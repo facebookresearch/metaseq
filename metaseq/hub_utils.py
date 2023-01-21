@@ -232,29 +232,29 @@ class GeneratorInterface:
         total_generation_time = 0
 
         # Initialize generator
-        self.cfg.generation.beam_list = []
+        gen_beam_list = []
         assert len(best_of_list) == len(n_list)
         for i, best_of in enumerate(best_of_list):
             if not best_of:
                 best_of = n_list[i]
-            assert best_of >= n
-            assert best_of == 1, "streaming is not supported with beam search"
-            self.cfg.generation.beam_list.append(best_of)
+            assert best_of >= n_list[i]
+            # assert best_of == 1, "streaming is not supported with beam search"
+            gen_beam_list.append(best_of)
 
-        self.cfg.generation.sampling_topp_list = []
-        self.cfg.generation.sampling_list = []
+        gen_sampling_topp_list = []
+        gen_sampling_list = []
         for top_p in top_p_list:
-            self.cfg.generation.sampling_topp_list.append(top_p if top_p > 0 else -1)
-            self.cfg.generation.sampling_list.append(top_p > 0.0)
+            gen_sampling_topp_list.append(top_p if top_p > 0 else -1)
+            gen_sampling_list.append(top_p > 0.0)
 
-        self.cfg.generation.temperature_list = []
+        gen_temperature_list = []
         for i, temperature in enumerate(temperature_list):
             if temperature > 0:
-                self.cfg.generation.temperature_list.append(temperature)
+                gen_temperature_list.append(temperature)
             elif temperature == 0:
-                self.cfg.generation.sampling_list[i] = False
-                self.cfg.generation.temperature_list.append(1.0)
-                self.cfg.generation.sampling_topp_list[i] = -1
+                gen_sampling_list[i] = False
+                gen_temperature_list.append(1.0)
+                gen_sampling_topp_list[i] = -1
             elif temperature < 0:
                 raise ValueError("temperature must be >= 0 and <= 1")
 
@@ -300,7 +300,7 @@ class GeneratorInterface:
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs={"stop_list": stop_list, "need_logprobs": need_logprobs},
+                extra_gen_cls_kwargs={"beam_size_list": gen_beam_list, "temperature_list": gen_temperature_list, "topp_list": gen_sampling_topp_list, "stop_list": stop_list, "need_logprobs": need_logprobs},
             )
 
             # okay actually generate
@@ -317,7 +317,7 @@ class GeneratorInterface:
                 retval = []
                 all_tokens = translations_so_far["tokens"][: len(inputs)]
                 all_scores = translations_so_far["scores"][: len(inputs)]
-                if logprobs > 0:
+                if need_logprobs > 0:
                     all_distributions = translations_so_far["distributions"][: len(inputs)]
                 else:
                     all_distributions = None
@@ -325,11 +325,11 @@ class GeneratorInterface:
                 # actually turn everything into strings
                 for i in range(all_tokens.size(0)):
                     beams = []
-                    for j in range(n):
+                    for j in range(n_list[i]):
                         # first beam is always the highest scoring
                         tokens = all_tokens[i, j].tolist()
                         scores = all_scores[i, j].tolist()
-                        distributions = all_distributions[i, j] if logprobs > 0 else None
+                        distributions = all_distributions[i, j] if logprobs_list[i] > 0 else None
 
                         prompt_len = lengths[i]
 
@@ -341,21 +341,21 @@ class GeneratorInterface:
                             distributions,
                         )
 
-                        if echo:
+                        if echo_list[i]:
                             # don't cut off prompt
                             pass
                         else:
                             # cut off prompt
                             tokens = tokens[prompt_len + 1 :][: max_tokens[i]]
                             scores = scores[prompt_len + 1 :][: max_tokens[i]]
-                            if logprobs > 0:
+                            if logprobs_list[i] > 0:
                                 distributions = distributions[prompt_len + 1 :][
                                     : max_tokens[i]
                                 ]
 
                         # cut off the starting token
-                        tokens_no_eos = tokens[1:] if echo else tokens
-                        scores_with_eos = [None] + scores[1:] if echo else scores
+                        tokens_no_eos = tokens[1:] if echo_list[i] else tokens
+                        scores_with_eos = [None] + scores[1:] if echo_list[i] else scores
                         # turn it into a string
                         text = self.bpe.bpe.decode(tokens_no_eos)
                         # re-encode it so we get offsets
@@ -369,14 +369,14 @@ class GeneratorInterface:
                             "text_offset": token_offsets,
                             "token_scores": scores_with_eos,
                         }
-                        if logprobs > 0:
+                        if logprobs_list[i] > 0:
                             # final result is a List[Dict[str, float]]
                             # where each item in the list corresponds to a token in the
                             # sequence, and the dict provides the probabilities of the
                             # top-k tokens at that timestep.
                             out_logprobs = []
                             all_top_toks, all_top_scores = distributions.topk(
-                                k=logprobs, dim=-1
+                                k=logprobs_list[i], dim=-1
                             )
                             for top_scores, top_toks in zip(all_top_toks, all_top_scores):
                                 lp = {
@@ -395,7 +395,7 @@ class GeneratorInterface:
 
                         beams.append(result)
                     retval.append(beams)
-                    yield retval
+                yield retval
 
         logger.info(
             "Total time: {:.3f} seconds; generation time: {:.3f}".format(

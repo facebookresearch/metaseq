@@ -61,11 +61,9 @@ class SequenceGenerator(nn.Module):
         self.stop_list = []
         for stop in stop_list:
             self.stop_list.append(stop if stop is not None else [])
-        if topp is None:
-            topp = 0.0
         self.sampling_topp_list = []
         for topp in topp_list:
-             self.sampling_topp_list = max(0, topp)
+             self.sampling_topp_list.append(max(0.0, topp))
         self.temperature_list = temperature_list
         #assert temperature >= 0, "--temperature must be >=0"
 
@@ -131,8 +129,8 @@ class SequenceGenerator(nn.Module):
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size_list[0]
-        for size in beam_size_list:
-            assert beam_size == size, "different beam sizes not supported".
+        for size in self.beam_size_list:
+            assert beam_size == size, "different beam sizes not supported"
 
         max_len = min(self.model.max_decoder_positions(), self.max_len_b or 1e99)
         min_len = min(max_len, self.min_len or 0)
@@ -219,7 +217,7 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
-        assert beam_size == 1, "streaming is not supported with beam search"
+        # assert beam_size == 1, "streaming is not supported with beam search"
 
         for step in range(start_step, max_len + 1):
             if step < min_len:
@@ -243,17 +241,19 @@ class SequenceGenerator(nn.Module):
 
             # find our next tokens and record them
             # protect this step for the last token so we don't overflow
-            next_scores, next_toks = self._sample_topp(lprobs)
-            if step < max_len:
-                tokens[:, step] = next_toks
-                scores[:, step] = next_scores
-                if self.need_logprobs:
-                    all_lprobs[:, step] = lprobs
+            for i, sampling_topp in enumerate(self.sampling_topp_list):
+                next_scores, next_toks = self._sample_topp(lprobs[i * beam_size : (i + 1) * beam_size], self.temperature_list[i], sampling_topp)
 
-            eos_mask |= next_toks == self.eos
-            for stop_token in self.stop:
-                # if there are other early stopping tokens, allow those to trigger stop
-                eos_mask |= next_toks == stop_token
+                if step < max_len:
+                    tokens[i * beam_size : (i + 1) * beam_size, step] = next_toks
+                    scores[i * beam_size : (i + 1) * beam_size, step] = next_scores
+                    if self.need_logprobs:
+                        all_lprobs[i * beam_size : (i + 1) * beam_size, step] = lprobs
+
+                eos_mask[i * beam_size : (i + 1) * beam_size] |= next_toks == self.eos
+                for stop_token in self.stop_list[i]:
+                    # if there are other early stopping tokens, allow those to trigger stop
+                    eos_mask[i * beam_size : (i + 1) * beam_size] |= next_toks == stop_token
 
             if torch.all(eos_mask):
                 break
@@ -304,7 +304,7 @@ class SequenceGenerator(nn.Module):
             )
         yield retval
 
-    def _sample_topp(self, lprobs):
+    def _sample_topp(self, lprobs, temperature, sampling_topp):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
         See `"The Curious Case of Neural Text Degeneration"
         (Holtzman et al., 2019) <https://arxiv.org/abs/1904.09751>`_.
@@ -318,13 +318,13 @@ class SequenceGenerator(nn.Module):
             truncated_indices: (bsz x input_beam_size x ?)
                 the indices of the chosen elements.
         """
-        if self.temperature == 0.0 or self.sampling_topp == 0.0:
+        if temperature == 0.0 or sampling_topp == 0.0:
             # greedy search
             return tuple(lprobs.max(dim=-1))
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        mask = (sprobs.cumsum(dim=-1) - sprobs) >= sampling_topp
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
