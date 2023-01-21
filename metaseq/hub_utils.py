@@ -192,18 +192,19 @@ class GeneratorInterface:
 
         return models
 
+    @torch.no_grad()
     def generate(
         self,
         inputs: List[List[int]],
         min_tokens: List[int] = None,
         max_tokens: List[int] = None,
-        temperature: float = 1.0,
-        top_p: float = -1.0,
-        logprobs: int = 0,
-        n: int = 1,
-        best_of: Optional[int] = None,
-        echo: bool = False,
-        stop: Optional[List[int]] = None,
+        temperature_list: List[float] = 1.0,
+        top_p_list: List[float] = -1.0,
+        logprobs_list: List[int] = 0,
+        n_list: List[int] = 1,
+        best_of_list: List[Optional[int]] = None,
+        echo_list: List[bool] = False,
+        stop_list: List[Optional[List[int]]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
     ):
@@ -231,27 +232,37 @@ class GeneratorInterface:
         total_generation_time = 0
 
         # Initialize generator
-        if not best_of:
-            best_of = n
-        assert best_of >= n
-        self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
-        self.cfg.generation.sampling = top_p > 0.0
-        self.cfg.generation.beam = best_of
-        if temperature > 0:
-            self.cfg.generation.temperature = temperature
-        elif temperature == 0:
-            self.cfg.generation.sampling = False
-            self.cfg.generation.temperature = 1.0
-            self.cfg.generation.sampling_topp = -1
-        elif temperature < 0:
-            raise ValueError("temperature must be >= 0 and <= 1")
+        self.cfg.generation.beam_list = []
+        assert len(best_of_list) == len(n_list)
+        for i, best_of in enumerate(best_of_list):
+            if not best_of:
+                best_of = n_list[i]
+            assert best_of >= n
+            assert best_of == 1, "streaming is not supported with beam search"
+            self.cfg.generation.beam_list.append(best_of)
+
+        self.cfg.generation.sampling_topp_list = []
+        self.cfg.generation.sampling_list = []
+        for top_p in top_p_list:
+            self.cfg.generation.sampling_topp_list.append(top_p if top_p > 0 else -1)
+            self.cfg.generation.sampling_list.append(top_p > 0.0)
+
+        self.cfg.generation.temperature_list = []
+        for i, temperature in enumerate(temperature_list):
+            if temperature > 0:
+                self.cfg.generation.temperature_list.append(temperature)
+            elif temperature == 0:
+                self.cfg.generation.sampling_list[i] = False
+                self.cfg.generation.temperature_list.append(1.0)
+                self.cfg.generation.sampling_topp_list[i] = -1
+            elif temperature < 0:
+                raise ValueError("temperature must be >= 0 and <= 1")
 
         MAX_SEQ_LEN = utils.resolve_max_positions(
             self.task.max_positions(), *[model.max_positions() for model in self.models]
         )
 
         # TODO(roller): simplify
-        retval = []
         tokens = [torch.LongTensor(t) for t in inputs]
         lengths = [len(t) for t in inputs]
         batches = self.task.get_batch_iterator(
@@ -262,6 +273,7 @@ class GeneratorInterface:
             ignore_invalid_inputs=False,
             skip_remainder_batch=False,
         ).next_epoch_itr(shuffle=False)
+        assert len(batches) == 1, "streaming doesn't support mini-batches"
         for batch in batches:
             src_tokens = batch["net_input"]["src_tokens"]
             src_lengths = batch["net_input"]["src_lengths"]
@@ -282,11 +294,13 @@ class GeneratorInterface:
             self.cfg.generation.max_len_a = 0
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
-            need_logprobs = True if logprobs > 0 else False
+            need_logprobs = False
+            for logprobs in logprobs_list:
+                need_logprobs = True if logprobs > 0 else False
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
+                extra_gen_cls_kwargs={"stop_list": stop_list, "need_logprobs": need_logprobs},
             )
 
             # okay actually generate
@@ -299,93 +313,96 @@ class GeneratorInterface:
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
 
-            all_tokens = translations["tokens"].cpu()[: len(inputs)]
-            all_scores = translations["scores"].cpu()[: len(inputs)]
-            if logprobs > 0:
-                all_distributions = translations["distributions"].cpu()[: len(inputs)]
-            else:
-                all_distributions = None
+            for translations_so_far in translations:
+                retval = []
+                all_tokens = translations_so_far["tokens"][: len(inputs)]
+                all_scores = translations_so_far["scores"][: len(inputs)]
+                if logprobs > 0:
+                    all_distributions = translations_so_far["distributions"][: len(inputs)]
+                else:
+                    all_distributions = None
 
-            # actually turn everything into strings
-            for i in range(all_tokens.size(0)):
-                beams = []
-                for j in range(n):
-                    # first beam is always the highest scoring
-                    tokens = all_tokens[i, j].tolist()
-                    scores = all_scores[i, j].tolist()
-                    distributions = all_distributions[i, j] if logprobs > 0 else None
+                # actually turn everything into strings
+                for i in range(all_tokens.size(0)):
+                    beams = []
+                    for j in range(n):
+                        # first beam is always the highest scoring
+                        tokens = all_tokens[i, j].tolist()
+                        scores = all_scores[i, j].tolist()
+                        distributions = all_distributions[i, j] if logprobs > 0 else None
 
-                    prompt_len = lengths[i]
+                        prompt_len = lengths[i]
 
-                    tokens, scores, distributions = self._filter_special(
-                        self._pad_token_ind,
-                        self._special_token_inds,
-                        tokens,
-                        scores,
-                        distributions,
-                    )
-
-                    if echo:
-                        # don't cut off prompt
-                        pass
-                    else:
-                        # cut off prompt
-                        tokens = tokens[prompt_len + 1 :][: max_tokens[i]]
-                        scores = scores[prompt_len + 1 :][: max_tokens[i]]
-                        if logprobs > 0:
-                            distributions = distributions[prompt_len + 1 :][
-                                : max_tokens[i]
-                            ]
-
-                    # cut off the starting token
-                    tokens_no_eos = tokens[1:] if echo else tokens
-                    scores_with_eos = [None] + scores[1:] if echo else scores
-                    # turn it into a string
-                    text = self.bpe.bpe.decode(tokens_no_eos)
-                    # re-encode it so we get offsets
-                    token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
-
-                    result = {
-                        "text": text,
-                        "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
-                        # text offset is useful for cutting off prompts or prefixes
-                        # or evaluating PPL on just a subset of tokens
-                        "text_offset": token_offsets,
-                        "token_scores": scores_with_eos,
-                    }
-                    if logprobs > 0:
-                        # final result is a List[Dict[str, float]]
-                        # where each item in the list corresponds to a token in the
-                        # sequence, and the dict provides the probabilities of the
-                        # top-k tokens at that timestep.
-                        out_logprobs = []
-                        all_top_toks, all_top_scores = distributions.topk(
-                            k=logprobs, dim=-1
+                        tokens, scores, distributions = self._filter_special(
+                            self._pad_token_ind,
+                            self._special_token_inds,
+                            tokens,
+                            scores,
+                            distributions,
                         )
-                        for top_scores, top_toks in zip(all_top_toks, all_top_scores):
-                            lp = {
-                                self.bpe.bpe.decode([t.item()]): s.item()
-                                for t, s in zip(top_toks, top_scores)
-                            }
-                            out_logprobs.append(lp)
+
                         if echo:
-                            # use null instead of giving bunk probs for EOS token
-                            result["top_logprobs"] = [None] + out_logprobs[1:]
+                            # don't cut off prompt
+                            pass
                         else:
-                            result["top_logprobs"] = out_logprobs
+                            # cut off prompt
+                            tokens = tokens[prompt_len + 1 :][: max_tokens[i]]
+                            scores = scores[prompt_len + 1 :][: max_tokens[i]]
+                            if logprobs > 0:
+                                distributions = distributions[prompt_len + 1 :][
+                                    : max_tokens[i]
+                                ]
 
-                    else:
-                        result["top_logprobs"] = None
+                        # cut off the starting token
+                        tokens_no_eos = tokens[1:] if echo else tokens
+                        scores_with_eos = [None] + scores[1:] if echo else scores
+                        # turn it into a string
+                        text = self.bpe.bpe.decode(tokens_no_eos)
+                        # re-encode it so we get offsets
+                        token_offsets = [s for s, e in self.bpe.bpe.encode(text).offsets]
 
-                    beams.append(result)
-                retval.append(beams)
+                        result = {
+                            "text": text,
+                            "tokens": [self.bpe.bpe.decode([t]) for t in tokens],
+                            # text offset is useful for cutting off prompts or prefixes
+                            # or evaluating PPL on just a subset of tokens
+                            "text_offset": token_offsets,
+                            "token_scores": scores_with_eos,
+                        }
+                        if logprobs > 0:
+                            # final result is a List[Dict[str, float]]
+                            # where each item in the list corresponds to a token in the
+                            # sequence, and the dict provides the probabilities of the
+                            # top-k tokens at that timestep.
+                            out_logprobs = []
+                            all_top_toks, all_top_scores = distributions.topk(
+                                k=logprobs, dim=-1
+                            )
+                            for top_scores, top_toks in zip(all_top_toks, all_top_scores):
+                                lp = {
+                                    self.bpe.bpe.decode([t.item()]): s.item()
+                                    for t, s in zip(top_toks, top_scores)
+                                }
+                                out_logprobs.append(lp)
+                            if echo:
+                                # use null instead of giving bunk probs for EOS token
+                                result["top_logprobs"] = [None] + out_logprobs[1:]
+                            else:
+                                result["top_logprobs"] = out_logprobs
+
+                        else:
+                            result["top_logprobs"] = None
+
+                        beams.append(result)
+                    retval.append(beams)
+                    yield retval
 
         logger.info(
             "Total time: {:.3f} seconds; generation time: {:.3f}".format(
                 time.time() - start_time, total_generation_time
             )
         )
-        return retval
+        # return retval
 
     @staticmethod
     def _filter_special(

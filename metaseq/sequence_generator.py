@@ -19,14 +19,14 @@ class SequenceGenerator(nn.Module):
         self,
         models,
         tgt_dict,
-        beam_size: int = 1,
+        beam_size_list: List[int] = None,
         max_len_a: int = 0,
         max_len_b: int = 200,
         min_len: int = 1,
-        temperature: float = 1.0,
+        temperature_list: List[float] = None,
         need_logprobs: bool = False,
-        stop: Optional[List[int]] = None,
-        topp: float = -1,
+        stop_list: List[Optional[List[int]]] = None,
+        topp_list: List[float] = None,
         profile=False,
     ):
         """Generates translations of a given source sentence.
@@ -51,19 +51,23 @@ class SequenceGenerator(nn.Module):
         self.unk = tgt_dict.unk()
         self.eos = tgt_dict.eos()
         self.vocab_size = len(tgt_dict)
-        self.beam_size = beam_size
+        self.beam_size_list = beam_size_list
         # the max beam size is the dictionary size - 1, since we never select pad
-        self.beam_size = min(beam_size, self.vocab_size - 1)
+        # self.beam_size = min(beam_size, self.vocab_size - 1)
         self.max_len_a = max_len_a
         self.max_len_b = max_len_b
         self.min_len = min_len
         self.need_logprobs = need_logprobs
-        self.stop = stop if stop is not None else []
+        self.stop_list = []
+        for stop in stop_list:
+            self.stop_list.append(stop if stop is not None else [])
         if topp is None:
             topp = 0.0
-        self.sampling_topp = max(0, topp)
-        self.temperature = temperature
-        assert temperature >= 0, "--temperature must be >=0"
+        self.sampling_topp_list = []
+        for topp in topp_list:
+             self.sampling_topp_list = max(0, topp)
+        self.temperature_list = temperature_list
+        #assert temperature >= 0, "--temperature must be >=0"
 
         self.model.eval()
         self.profile = profile
@@ -85,8 +89,9 @@ class SequenceGenerator(nn.Module):
     @torch.no_grad()
     def generate(self, models, sample: Dict[str, Dict[str, Tensor]], **kwargs):
         """Generate translations. Match the api of other metaseq generators."""
-        return self._generate(sample, **kwargs)
+        yield from self._generate(sample, **kwargs)
 
+    @torch.no_grad()
     def _generate(
         self,
         sample: Dict[str, Dict[str, Tensor]],
@@ -125,7 +130,9 @@ class SequenceGenerator(nn.Module):
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]
-        beam_size = self.beam_size
+        beam_size = self.beam_size_list[0]
+        for size in beam_size_list:
+            assert beam_size == size, "different beam sizes not supported".
 
         max_len = min(self.model.max_decoder_positions(), self.max_len_b or 1e99)
         min_len = min(max_len, self.min_len or 0)
@@ -175,8 +182,9 @@ class SequenceGenerator(nn.Module):
         # Avoid dividing by 1.0 to prevent unnecessary numerical instability
         # and always log in float
         model_predictions = model_out[0].float()
-        if self.temperature > 0 and self.temperature != 1.0:
-            model_predictions.div_(self.temperature)
+        for i, temperature in enumerate(self.temperature_list):
+            if temperature > 0 and temperature != 1.0:
+                model_predictions[i * beam_size : (i + 1) * beam_size].div_(temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
         lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
@@ -184,8 +192,9 @@ class SequenceGenerator(nn.Module):
         # don't allow generation of eos/pad
         model_predictions[:, :, self.eos] = -math.inf
         model_predictions[:, :, self.pad] = -math.inf
-        for stop_token in self.stop:
-            model_predictions[:, :, stop_token] = -math.inf
+        for i, stop in enumerate(self.stop_list):
+            for stop_token in stop:
+                model_predictions[i * beam_size : (i + 1) * beam_size, :, stop_token] = -math.inf
 
         if self.need_logprobs:
             all_lprobs[:, 1:start_step] = lprobs[:, :-1].type_as(all_lprobs)
@@ -210,12 +219,15 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
+        assert beam_size == 1, "streaming is not supported with beam search"
+
         for step in range(start_step, max_len + 1):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
-                for stop_token in self.stop:
-                    lprobs[:, stop_token] = -math.inf
+                for stop in self.stop_list:
+                    for stop_token in stop:
+                        lprobs[i * beam_size : (i + 1) * beam_size, stop_token] = -math.inf
 
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
             lprobs[:, self.pad] = -math.inf  # never select pad
@@ -245,6 +257,17 @@ class SequenceGenerator(nn.Module):
 
             if torch.all(eos_mask):
                 break
+            
+            # copy_t = tokens.clone().detach()
+            retval = {
+                "tokens": tokens.view(bsz, beam_size, -1),
+                "scores": scores.view(bsz, beam_size, -1),
+            }
+            if all_lprobs is not None:
+                retval["distributions"] = all_lprobs.view(
+                    bsz, beam_size, -1, self.vocab_size
+                )
+            yield retval
 
             # forward through the next pass
             model_out = self.model.decoder(
@@ -253,8 +276,9 @@ class SequenceGenerator(nn.Module):
             )
             # see above for why this must remain float
             model_predictions = model_out[0].float()
-            if self.temperature > 0 and self.temperature != 1.0:
-                model_predictions.div_(self.temperature)
+            for i, temperature in enumerate(self.temperature_list):
+                if temperature > 0 and temperature != 1.0:
+                    model_predictions[i * beam_size : (i + 1) * beam_size].div_(temperature)
             lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
             lprobs = lprobs[:, -1, :]
 
@@ -268,6 +292,7 @@ class SequenceGenerator(nn.Module):
         scores = scores[sorted_indices]
 
         # prepare the return value
+        # yield [t.tolist() for i, t in enumerate(tokens[:, :curr_pos+1])]
         retval = {
             "tokens": tokens.view(bsz, beam_size, -1),
             "scores": scores.view(bsz, beam_size, -1),
@@ -277,7 +302,7 @@ class SequenceGenerator(nn.Module):
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
-        return retval
+        yield retval
 
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.

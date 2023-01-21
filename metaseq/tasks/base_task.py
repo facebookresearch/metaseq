@@ -341,9 +341,9 @@ class BaseTask(object):
         from metaseq.sequence_generator import SequenceGenerator
 
         # Choose search strategy.
-        sampling = getattr(args, "sampling", False)
-        sampling_topp = getattr(args, "sampling_topp", -1.0)
-        assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
+        sampling_list = getattr(args, "sampling_list")
+        sampling_topp_list = getattr(args, "sampling_topp_list")
+        #assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
 
         if getattr(args, "sampling_topk", False):
             logger.warning(
@@ -357,12 +357,12 @@ class BaseTask(object):
         return seq_gen_cls(
             models,
             self.target_dictionary,
-            beam_size=getattr(args, "beam", 5),
+            beam_size_list=getattr(args, "beam_list"),
             max_len_a=getattr(args, "max_len_a", 0),
             max_len_b=getattr(args, "max_len_b", 200),
             min_len=getattr(args, "min_len", 1),
-            temperature=getattr(args, "temperature", 1.0),
-            topp=sampling_topp,
+            temperature_list=getattr(args, "temperature_list"),
+            topp_list=sampling_topp_list,
             **extra_gen_cls_kwargs,
         )
 
@@ -423,7 +423,7 @@ class BaseTask(object):
 
     def inference_step(self, generator, models, sample, prefix_tokens=None):
         with torch.no_grad():
-            return generator.generate(models, sample, prefix_tokens=prefix_tokens)
+            yield from generator.generate(models, sample, prefix_tokens=prefix_tokens)
 
     def begin_epoch(self, epoch, model):
         """Hook function called before the start of each epoch."""
