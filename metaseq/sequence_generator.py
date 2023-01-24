@@ -88,7 +88,7 @@ class SequenceGenerator(nn.Module):
             topp = 0.0
         self.sampling_topp = max(0, topp)
         self.temperature = temperature
-        assert temperature > 0, "--temperature must be greater than 0"
+        assert temperature >= 0, "--temperature must be >=0"
 
         self.model.eval()
         self.profile = profile
@@ -390,14 +390,11 @@ class SequenceGenerator(nn.Module):
 
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
-
         See `"The Curious Case of Neural Text Degeneration"
         (Holtzman et al., 2019) <https://arxiv.org/abs/1904.09751>`_.
-
         Args:
             lprobs: (bsz x input_beam_size x vocab_size)
                 the model's log-probabilities over the vocabulary at the current step
-
         Return: A tuple of (trimed_probs, truncated_indices) where:
             trimed_probs: (bsz x input_beam_size x ?)
                 the model's probabilities over the elements selected to sample from. The

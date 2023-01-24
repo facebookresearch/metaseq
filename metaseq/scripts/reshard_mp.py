@@ -2,172 +2,128 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
 import logging
-import sys
-from pathlib import Path
-from typing import List
+import os
+import re
+from glob import glob
 
+import fire
 import torch
-import torch.nn.functional as F
-from fire import Fire
-from tqdm import tqdm
 
-from metaseq.checkpoint_utils import (
-    get_paths_to_load,
-    _merge_flat_fsdp_shards,
-    OPT_KEY,
-    is_singleton_tensor,
-)
-from metaseq.file_io import torch_load_cpu
-
-logging.basicConfig(
-    format="%(asctime)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
-)
-logger = logging.getLogger("mp_reshard")
+logging.basicConfig(format="%(asctime)s | %(name)s | %(message)s", level=logging.INFO)
+logger: logging.Logger = logging.getLogger("metaseq.scripts.reshard_mp")
 
 
-def reshard_all_parts(
-    save_prefix, save_dir, mpart=16, target_ddp_size=512, no_pad=False
-):
-    for i in range(mpart):
-        try:
-            reshard_mp(
-                save_prefix,
-                save_dir,
-                part=i,
-                target_ddp_size=target_ddp_size,
-                no_pad=no_pad,
-            )
-        except FileNotFoundError:
-            logger.info(f"Resharded {i} model parts")
-            return
+def reshard_model_parallel_parts(
+    input: str, output: str, num_output_parts: int = 1, eps: float = 1e-8
+) -> None:
+    """
+    Reshard model parallel (MP) parts and write outputs to files. The model weights
+    are merged from the input parts before the resharding logic applies. The model
+    parallel parts in the input are expected to contain unflattened, FSDP-consolidated
+    model weights (see the script `reshard_fsdp.py` for related information.)
 
+    Args:
+        :param input: A glob pattern specifying the path names of the input shards.
+            (e.g. "checkpoints/opt-2.7b/reshard_no_os/reshard-model_part-*.pt").
+        :param output: A string pattern specifying the path names of the output shards.
+            Shard indices can be included in the path names if the pattern includes `{i}`.
+            (e.g. "checkpoints/opt-2.7b/reshard_no_os_mp8/reshard-model_part-{i}.pt").
+        :param num_output_parts: The number of output model parallel parts.
+        :param eps: A tolerance threshold for the maximum discrepancy between MP parts.
+    """
+    files = glob(input)
+    N, M = len(files), num_output_parts
+    if N == 0:
+        raise ValueError("The glob pattern doesn't match any model parallel parts.")
+    files = sorted(files, key=lambda x: list(map(int, re.findall(r"\d+", x))))
+    logger.info(f"Found {len(files)} model parallel parts ({files[0]} to {files[-1]})")
 
-def _save_shards_to_disk(
-    local_state_dicts,
-    dummy_model_state,
-    state,
-    save_dir,
-    middle,
-    local_opt_states=None,
-    target_ddp_size=512,
-):
-    Path(save_dir).mkdir(exist_ok=True)
-    for i, local_state_dict in tqdm(
-        enumerate(local_state_dicts),
-        desc=f"Saving to {save_dir}/reshard-{middle}-shard[i].pt",
-    ):
-        if target_ddp_size == 1:
-            save_path = f"{save_dir}/reshard-{middle}.pt"
-        else:
-            save_path = f"{save_dir}/reshard-{middle}-shard{i}.pt"
-        local_state_dict.update(dummy_model_state)
-        full_state = {"model": local_state_dict}
-
-        full_state.update(state)
-        if local_opt_states is not None:
-            full_state[OPT_KEY] = local_opt_states[i]
-        torch.save(full_state, save_path)
-
-
-def reshard_mp(
-    save_prefix,
-    save_dir,
-    part=0,
-    target_ddp_size=512,
-    no_pad=False,
-    drop_optimizer_state=False,
-):
-    middle = f"model_part-{part}"
-    do_pad = not no_pad
-    if not Path(f"{save_prefix}-{middle}-shard0.pt").exists():
-        raise FileNotFoundError(f"{save_prefix}-{middle}-shard0.pt")
-    paths_to_load = get_paths_to_load(
-        f"{save_prefix}-{middle}-shard0.pt", suffix="-shard"
-    )
-    logger.info(
-        f"Loading {len(paths_to_load)} paths for MP part{part}. Will shard into {target_ddp_size} files."
-    )
-    state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
-    model_state = state.pop("model")
-
-    dummy_model_state = {}  # for decoder.version and other useless keys
-
-    local_state_dicts: List[dict] = [{} for _ in range(target_ddp_size)]
-    for k, v in model_state.items():
-        if "flat_param" not in k:
-            dummy_model_state[k] = v
-            continue
-        chunks = list(torch.flatten(v).chunk(target_ddp_size))
-        assert len(chunks) == target_ddp_size
-        num_to_pad = chunks[0].numel() - chunks[-1].numel()
-
-        # Same logic as https://tinyurl.com/fairscale but there is no padding allowed!
-        # Notes on padding: https://github.com/fairinternal/fairseq-py/issues/2894
-        for rank, param in enumerate(chunks):
-            # This clone is essential. Not sure why.
-            local_state_dicts[rank][k] = param.clone()
-        if num_to_pad > 0 and do_pad:
-            local_state_dicts[-1][k] = F.pad(local_state_dicts[-1][k], [0, num_to_pad])
-            logger.info(f"Padding {k} with {num_to_pad} zeros")
-    state.pop("shard_metadata")  # TODO: update shard metadata to be accurate
-    # DO OPT STATE HERE
-    if drop_optimizer_state and OPT_KEY in state:
-        state.pop(OPT_KEY)
-
-    if OPT_KEY not in state:
-        _save_shards_to_disk(
-            local_state_dicts, dummy_model_state, state, save_dir, middle
-        )
-        return
-
-    merged_opt_state = state.pop(OPT_KEY)
-    local_opt_states: List[dict] = [{"state": {}} for _ in range(target_ddp_size)]
-    for k in merged_opt_state["state"].keys():
-        # 0,1,2,3... if each layer wrapped, else 0
-        for k2 in merged_opt_state["state"][k].keys():
-            for i in range(target_ddp_size):
-                if k not in local_opt_states[i]["state"]:
-                    local_opt_states[i]["state"][k] = {}
-            catted = merged_opt_state["state"][k][k2]
-            if not torch.is_tensor(catted) or is_singleton_tensor(catted):
-                for i in range(target_ddp_size):
-
-                    local_opt_states[i]["state"][k][k2] = catted
-            else:
-                chunks = list(torch.flatten(catted).chunk(target_ddp_size))
-                assert len(chunks) == target_ddp_size
-                num_to_pad = chunks[0].numel() - chunks[-1].numel()
-                for rank, param in enumerate(chunks):
-                    # This clone is essential. Not sure why.
-                    local_opt_states[rank]["state"][k][k2] = param.clone()
-                if num_to_pad > 0 and do_pad:
-                    local_opt_states[-1]["state"][k][k2] = F.pad(
-                        local_opt_states[-1]["state"][k][k2], [0, num_to_pad]
-                    )
-    # Update Opt keys that arent state
-    for k in merged_opt_state.keys():
-        if k == "state":
-            continue
-        for i in range(target_ddp_size):
-            local_opt_states[i][k] = merged_opt_state[k]
-    _save_shards_to_disk(
-        local_state_dicts,
-        dummy_model_state,
-        state,
-        save_dir,
-        middle,
-        local_opt_states=local_opt_states,
-        target_ddp_size=target_ddp_size,
+    rank0_state_dict = torch.load(files[0], torch.device("cpu"))
+    dim0_shard_regex = re.compile("embed_tokens|ffn_layernorm|fc1|(k|q|v)_proj")
+    dim1_shard_regex = re.compile("(fc2|out_proj).weight")
+    shared_regex = re.compile(
+        "embed_positions|layer_norm|(fc2|out_proj).bias|output_projection|version"
     )
 
+    unsharded_dict = {}
+    logger.info("Allocating memory for unsharded checkpoint")
+    for key, value in rank0_state_dict["model"].items():
+        d0, d1 = value.size()[0], value.size()[1:]
+        if "qkv" in key:
+            unsharded_dict[key] = value.new_zeros(3, N * d0 // 3, *d1)
+        elif dim0_shard_regex.search(key):
+            unsharded_dict[key] = value.new_zeros(N * d0, *d1)
+        elif dim1_shard_regex.search(key):
+            assert len(d1) > 0
+            unsharded_dict[key] = value.new_zeros(d0, N * d1[0])
 
-"""
-python scripts/reshard_mp.py $model_dir/checkpoint_last  125_mp_reshard --mpart 0
-"""
+    # Iteratively load checkpoints to avoid OOM issues
+    for i, file in enumerate(files):
+        logger.info(f"Merging {file} into unsharded checkpoint")
+        state_dict = torch.load(file, torch.device("cpu"))
+        for key, value in state_dict["model"].items():
+            d0, d1 = value.size()[0], value.size()[1:]
+            if "qkv" in key:
+                # Split and copy QKV weights
+                unsharded_dict[key][:, i * d0 // 3 : (i + 1) * d0 // 3].copy_(
+                    value.view(3, d0 // 3, *d1)
+                )
+            elif dim0_shard_regex.search(key):
+                # Concatenate along dim 0 (e.g. embed_tokens, fc1.weight, fc1.bias)
+                unsharded_dict[key][i * d0 : (i + 1) * d0].copy_(value)
+            elif dim1_shard_regex.search(key):
+                # Concatenate along dim 1 (e.g. fc2.weight, out_proj.weight)
+                unsharded_dict[key][:, i * d1[0] : (i + 1) * d1[0]].copy_(value)
+            elif shared_regex.search(key):
+                # Copy from rank 0 (e.g. embed_positions, final_layer_norm, fc2.bias, out_proj.bias)
+                unsharded_dict[key] = value
+                diff = _max_diff(rank0_state_dict["model"][key], value)
+                if diff > eps:
+                    logger.warning(f"Max value discrepancy for key '{key}': {diff:.4e}")
+
+    for i in range(M):
+        sharded_dict = {}
+        logger.info(f"Resharding state dict for model parallel part {i}")
+        for key, value in rank0_state_dict["model"].items():
+            if "qkv" in key:
+                # Merge QKV weights after chunking unsharded weight
+                sharded_dict[key] = unsharded_dict[key].chunk(M, dim=1)[i].flatten(0, 1)
+            elif dim0_shard_regex.search(key):
+                #  Cloning is needed as torch.save always writes unsliced tensors
+                sharded_dict[key] = unsharded_dict[key].chunk(M)[i].clone()
+            elif dim1_shard_regex.search(key):
+                sharded_dict[key] = unsharded_dict[key].chunk(M, dim=1)[i].clone()
+            elif all(p in key for p in ("embed_positions", "_float_tensor")):
+                # Assume embed positions are not learned (e.g. sinusoidal)
+                sharded_dict[key] = value.new_zeros(1)
+            elif shared_regex.search(key):
+                sharded_dict[key] = value.clone()
+
+        state_dict = {"model": sharded_dict}
+        # Copy other values from rank 0
+        for key in ["cfg", "extra_state", "optimizer_history", "args"]:
+            state_dict[key] = rank0_state_dict[key]
+        state_dict["cfg"]["model"].model_parallel_size = M
+
+        output_file = output.format(i=i)
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        logger.info(f"Writing a resharded state dict to {output_file}")
+        torch.save(state_dict, output_file)
+    logger.info("Done!")
+
+
+def _max_diff(tensor1: torch.Tensor, tensor2: torch.Tensor) -> float:
+    assert tensor1.size() == tensor2.size()
+    return (tensor1 - tensor2).abs().max().item()
+
 
 if __name__ == "__main__":
-    Fire(reshard_mp)
+    """
+    Example usage:
+        python -m metaseq.scripts.reshard_mp \
+        --input "opt-2.7b/reshard_no_os/reshard-model_part-*.pt" \
+        --output "opt-2.7b/reshard_no_os_mp8/reshard-model_part-{i}.pt" \
+        --num-output-parts 8
+    """
+    fire.Fire(reshard_model_parallel_parts)

@@ -148,9 +148,6 @@ def parse_args_and_arch(
 
     for registry_name, REGISTRY in REGISTRIES.items():
         choice = getattr(args, registry_name, None)
-        # hack since we don't want to call "fixed" LR scheduler
-        if choice == "fixed":
-            choice = "inverse_sqrt"
         if choice is not None:
             cls = REGISTRY["registry"][choice]
             if hasattr(cls, "add_args"):

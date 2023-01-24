@@ -18,7 +18,7 @@ from omegaconf import DictConfig
     LR_SCHEDULER_REGISTRY,
     LR_SCHEDULER_DATACLASS_REGISTRY,
 ) = registry.setup_registry(
-    "--lr-scheduler", base_class=BaseLRScheduler, default="fixed"
+    "--lr-scheduler", base_class=BaseLRScheduler, default="inverse_sqrt"
 )
 
 

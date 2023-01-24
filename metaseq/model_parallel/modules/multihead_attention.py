@@ -11,8 +11,16 @@ import torch
 from torch import Tensor, nn
 
 from metaseq import utils
+from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
+
+try:
+    import xformers.ops as xops
+
+    has_xformers = True
+except (ImportError, ModuleNotFoundError):
+    has_xformers = False
 
 try:
     from megatron.mpu import (
@@ -26,7 +34,6 @@ try:
         ScaledUpperTriangMaskedSoftmax,
         ScaledMaskedSoftmax,
     )
-    from megatron.model import utils as megatron_utils
 
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
@@ -54,12 +61,15 @@ class ModelParallelMultiheadAttention(nn.Module):
         dropout=0.0,
         bias=True,
         self_attention=False,
-        encoder_decoder_attention=False,
         use_cpu_initialization=True,
         full_megatron_init=False,
+        full_megatron_init_scalar=1.0,
         megatron_init_sigma=None,
         num_layers=None,
         dtype=torch.float32,
+        attn_variant=False,
+        xf_attn_op=None,
+        truncate_init=False,
     ):
         super().__init__()
         if not has_megatron_submodule:
@@ -70,9 +80,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-
         self.model_parallel_size = get_tensor_model_parallel_world_size()
-
         self.num_heads_partition = num_heads // self.model_parallel_size
         assert (
             self.num_heads_partition * self.model_parallel_size == num_heads
@@ -84,14 +92,13 @@ class ModelParallelMultiheadAttention(nn.Module):
             self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
         self.scaling = self.head_dim**-0.5
-
         self.self_attention = self_attention
-        self.encoder_decoder_attention = encoder_decoder_attention
 
         assert (
             not self.self_attention or self.qkv_same_dim
         ), "Self-attention requires query, key and value to be of the same size"
 
+        # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
         self.combine_qkv_proj = True
         if self.combine_qkv_proj:
 
@@ -171,8 +178,9 @@ class ModelParallelMultiheadAttention(nn.Module):
 
             if full_megatron_init:
                 assert megatron_init_sigma is not None
-                init_method_weights = megatron_utils.init_method_normal(
-                    megatron_init_sigma
+                # Note we do not apply full_megatron_init_scalar here; only out_proj is changed
+                init_method_weights = utils.init_method_normal(
+                    megatron_init_sigma, truncate_init=truncate_init
                 )
                 init_method_bias = None
             else:
@@ -249,8 +257,10 @@ class ModelParallelMultiheadAttention(nn.Module):
         if full_megatron_init:
             assert megatron_init_sigma is not None
             assert num_layers is not None
-            init_method_weights = megatron_utils.scaled_init_method_normal(
-                megatron_init_sigma, num_layers
+            init_method_weights = utils.scaled_init_method_normal(
+                megatron_init_sigma * full_megatron_init_scalar,
+                num_layers,
+                truncate_init=truncate_init,
             )
         self.out_proj = RowParallelLinear(
             embed_dim,
@@ -262,6 +272,17 @@ class ModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
+        self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        self.xf_op = None
+        if self.xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+        if self.xf_eff_attn and xf_attn_op is not None:
+            try:
+                self.xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
 
     def forward(
         self,
@@ -270,7 +291,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
         **unused_kwargs,
     ) -> Tuple[Tensor, Optional[Tensor]]:
@@ -296,12 +316,6 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_kv:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    key = value = None
         else:
             saved_state = None
 
@@ -316,16 +330,6 @@ class ModelParallelMultiheadAttention(nn.Module):
                 q, _ = self.q_proj(query)
                 k, _ = self.k_proj(query)
                 v, _ = self.v_proj(query)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            q, _ = self.q_proj(query)
-            if key is None:
-                assert value is None
-                k = v = None
-            else:
-                k = self.k_proj(key)
-                v = self.v_proj(key)
-
         else:
             assert key is not None and value is not None
             q, _ = self.q_proj(query)
@@ -337,7 +341,28 @@ class ModelParallelMultiheadAttention(nn.Module):
         # we have seq_lens not power of 2.
         CHANGES = not getattr(self, "inference", False)
 
-        if CHANGES:
+        if self.xf_eff_attn:
+            q = q.view(
+                tgt_len, bsz * self.num_heads_partition, self.head_dim
+            ).transpose(0, 1)
+            if k is not None:
+                k = k.view(-1, bsz * self.num_heads_partition, self.head_dim).transpose(
+                    0, 1
+                )
+            if v is not None:
+                v = (
+                    v.contiguous()
+                    .view(-1, bsz * self.num_heads_partition, self.head_dim)
+                    .transpose(0, 1)
+                )
+            attn = xops.memory_efficient_attention(
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                op=self.xf_op,
+            )
+        elif CHANGES:
             output_size = (
                 q.size(1),
                 self.num_heads_partition,
@@ -392,7 +417,20 @@ class ModelParallelMultiheadAttention(nn.Module):
                     output_size[0] * output_size[1], output_size[2], output_size[3]
                 )
             else:
-                attn_probs = ScaledUpperTriangMaskedSoftmax.apply(matmul_result, 1.0)
+                try:
+                    attn_probs = ScaledUpperTriangMaskedSoftmax.apply(
+                        matmul_result, 1.0
+                    )
+                except RuntimeError as e:
+                    raise RuntimeError(
+                        "Looks like you may have hit the feared INTERNAL ASSERT "
+                        "ERROR. You can either ensure your sequences are padded "
+                        "to a nice length (usually a power of 2), or you can make "
+                        "sure you call model.make_generation_fast_() at load. See "
+                        "interactive_hosted.py for an example.\n\n"
+                        f"Original Exception: {e}"
+                    )
+
             with get_cuda_rng_tracker().fork():
                 attn_probs = self.dropout_module(attn_probs)
 
@@ -425,11 +463,8 @@ class ModelParallelMultiheadAttention(nn.Module):
                     prev_key = _prev_key.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
                     )
-                    if static_kv:
-                        k = prev_key
-                    else:
-                        assert k is not None
-                        k = torch.cat([prev_key, k], dim=1)
+                    assert k is not None
+                    k = torch.cat([prev_key, k], dim=1)
                     src_len = k.size(1)
                 if "prev_value" in saved_state:
                     _prev_value = saved_state["prev_value"]
@@ -437,11 +472,8 @@ class ModelParallelMultiheadAttention(nn.Module):
                     prev_value = _prev_value.view(
                         bsz * self.num_heads_partition, -1, self.head_dim
                     )
-                    if static_kv:
-                        v = prev_value
-                    else:
-                        assert v is not None
-                        v = torch.cat([prev_value, v], dim=1)
+                    assert v is not None
+                    v = torch.cat([prev_value, v], dim=1)
                 saved_state["prev_key"] = k.view(
                     bsz, self.num_heads_partition, -1, self.head_dim
                 )
@@ -515,8 +547,11 @@ class ModelParallelMultiheadAttention(nn.Module):
 
         # logger.info("attn_probs:" + str(attn_probs.float().norm().item()))
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
-        # logger.info("attn:" + str(attn.float().norm().item()))
+
+        if not self.xf_eff_attn:
+            attn = torch.bmm(attn_probs, v)
+            # logger.info("attn:" + str(attn.float().norm().item()))
+
         assert list(attn.size()) == [
             bsz * self.num_heads_partition,
             tgt_len,
@@ -525,11 +560,9 @@ class ModelParallelMultiheadAttention(nn.Module):
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
         attn, attn_bias = self.out_proj(attn)
-        # return attn_weights None to keep the return type same as single gpu multihead attention
-        # This will be deprecated.
-        attn_weights: Optional[Tensor] = None
-        # logger.info("output:" + str(attn.float().norm().item()))
-        return (attn, attn_bias), attn_weights
+        # Note that this no longer matches the signature of non-model-parallel version, which returns
+        # Tuple[Tensor, Optional[Tensor]]
+        return attn, attn_bias
 
     def _get_input_buffer(
         self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]

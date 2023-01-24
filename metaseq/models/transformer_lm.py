@@ -11,7 +11,7 @@ from typing import Optional
 
 from omegaconf import II
 
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
@@ -20,11 +20,12 @@ from metaseq.models import (
     register_model,
     register_model_architecture,
 )
-from metaseq.models.transformer import (
+from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
-    Embedding,
     TransformerDecoder,
 )
+from metaseq.modules.embedding import Embedding
+from metaseq.modules.activation_functions import get_available_activation_fns
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
-    activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
+    activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
         default="relu", metadata={"help": "activation function to use"}
     )
     dropout: float = field(default=0.1, metadata={"help": "dropout probability"})
@@ -43,21 +44,12 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     decoder_embed_dim: int = field(
         default=512, metadata={"help": "decoder embedding dimension"}
     )
-    decoder_output_dim: int = field(
-        default=512, metadata={"help": "decoder output dimension"}
-    )
-    decoder_input_dim: int = field(
-        default=512, metadata={"help": "decoder input dimension"}
-    )
     decoder_ffn_embed_dim: int = field(
         default=2048, metadata={"help": "decoder embedding dimension for FFN"}
     )
     decoder_layers: int = field(default=6, metadata={"help": "num decoder layers"})
     decoder_attention_heads: int = field(
         default=8, metadata={"help": "num decoder attention heads"}
-    )
-    decoder_normalize_before: bool = field(
-        default=False, metadata={"help": "apply layernorm before each decoder block"}
     )
     share_decoder_input_output_embed: bool = field(
         default=False, metadata={"help": "share decoder input and output embeddings"}
@@ -134,6 +126,20 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "Exact same init as Megatron"},
     )
+    full_megatron_init_scalar: float = field(
+        default=1.0,
+        metadata={
+            "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
+        },
+    )
+    pos_init_scalar: float = field(
+        default=1.0,
+        metadata={"help": "Factor to scale positional embedding init by."},
+    )
+    truncate_init: bool = field(
+        default=False,
+        metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
+    )
     megatron_init_sigma: float = field(
         default=0.006,
         metadata={"help": "Sigma for megatron initialization"},
@@ -141,7 +147,32 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     no_emb_dropout: Optional[bool] = field(
         default=False, metadata={"help": "Avoid emb dropout for decoder"}
     )
-
+    disable_bias: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Remove biases from all matrix projection, similar to PaLM paper,"
+            " note this doesn't remove bias from layernorm"
+        },
+    )
+    disable_affine_ln: Optional[bool] = field(
+        default=False, metadata={"help": "disable weight and bias of layer norm"}
+    )
+    attn_variant: ATTN_CHOICES = field(
+        default="default", metadata={"help": "variant to use for attention"}
+    )
+    xf_attn_op: str = field(
+        default="None",
+        metadata={
+            "help": "which memory efficient attention operation to use from xFormers."
+        },
+    )
+    recompute_fc1_num_layers: Optional[int] = field(
+        default=0,
+        metadata={
+            "help": "Num layers for which to recompute FC1 in backwards, "
+            "only applicable when --sequence-parallel option is set"
+        },
+    )
     # options from other parts of the config
     add_bos_token: bool = II("task.add_bos_token")
     tokens_per_sample: int = II("task.tokens_per_sample")
@@ -172,13 +203,12 @@ class TransformerLanguageModel(LanguageModel):
             )
 
         embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_input_dim
+            args, task.source_dictionary, args.decoder_embed_dim
         )
         decoder = TransformerDecoder(
             args,
             task.target_dictionary,
             embed_tokens,
-            no_encoder_attn=True,
         )
         return cls(decoder)
 
@@ -191,6 +221,7 @@ class TransformerLanguageModel(LanguageModel):
             initialize_params_on_gpu=getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
+            dtype=utils.get_model_init_dtype(args),
         )
 
 
@@ -210,15 +241,6 @@ def base_lm_architecture(args):
     args.share_decoder_input_output_embed = getattr(
         args, "share_decoder_input_output_embed", False
     )
-
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
-    # Model training is not stable without this
-    args.decoder_normalize_before = True
-
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.checkpoint_activations = getattr(args, "checkpoint_activations", False)
     args.offload_activations = getattr(args, "offload_activations", False)
@@ -244,18 +266,6 @@ def transformer_lm_gpt2_tiny(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)
     args.decoder_layers = getattr(args, "decoder_layers", 2)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 1)
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
-    args.activation_fn = getattr(args, "activation_fn", "gelu")
-    base_lm_architecture(args)
-
-
-@register_model_architecture("transformer_lm", "transformer_lm_gpt2_bigger")
-def transformer_lm_gpt2_bigger(args):
-    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 2048)
-    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 8192)
-    args.decoder_layers = getattr(args, "decoder_layers", 48)
-    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 32)
     args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")

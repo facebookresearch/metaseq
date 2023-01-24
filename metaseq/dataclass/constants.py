@@ -48,3 +48,11 @@ CLIP_GRAD_NORM_TYPE_CHOICES = ChoiceEnum(["l2", "inf"])
 
 # Default document attention separator
 UNSPECIFIED_DOC_SEP = -1
+
+
+class AttentionVariants(str, Enum):
+    DEFAULT = "default"
+    XFORMERS = "xformers_default"
+
+
+ATTN_CHOICES = ChoiceEnum(k.value for k in AttentionVariants)

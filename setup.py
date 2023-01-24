@@ -135,7 +135,7 @@ def do_setup(package_data):
         install_requires=[
             # protobuf version pinned due to tensorboard not pinning a version.
             #  https://github.com/protocolbuffers/protobuf/issues/10076
-            "protobuf==3.20.1",
+            "protobuf==3.20.2",
             "aim>=3.9.4",
             "azure-storage-blob",
             "boto3",
@@ -147,7 +147,6 @@ def do_setup(package_data):
             "fire",
             "flask==2.1.1",  # for api
             "hydra-core>=1.1.0,<1.2",
-            "iopath",
             "ipdb",
             "ipython",
             "Jinja2==3.1.1",  # for evals
@@ -157,10 +156,12 @@ def do_setup(package_data):
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf<=2.1.1",
+            "portalocker>=2.5",
             "pre-commit",
             "pytest",
+            "pytest-regressions",
             "regex",
-            "sklearn",  # for evals
+            "scikit-learn",  # for evals
             "sacrebleu",  # for evals
             "tensorboard==2.8.0",
             "timeout-decorator",
@@ -180,13 +181,14 @@ def do_setup(package_data):
         ),
         extras_require={
             "dev": [
-                "flake8==3.9.2",
+                "flake8",
                 "black==22.3.0",
                 # test deps
                 "iopath",
                 "transformers",
                 "pyarrow",
                 "boto3",
+                "pandas",
             ]
         },
         package_data=package_data,
@@ -194,10 +196,10 @@ def do_setup(package_data):
         test_suite="tests",
         entry_points={
             "console_scripts": [
-                "metaseq-train = metaseq_cli.train:cli_main",
-                "metaseq-validate = metaseq_cli.validate:cli_main",
+                "metaseq-train = metaseq.cli.train:cli_main",
+                "metaseq-validate = metaseq.cli.validate:cli_main",
                 "opt-baselines = metaseq.launcher.opt_baselines:cli_main",
-                "metaseq-api-local = metaseq_cli.interactive_hosted:cli_main",
+                "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
         cmdclass=cmdclass,
