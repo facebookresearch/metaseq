@@ -6,6 +6,7 @@
 import ast
 import collections
 import logging
+import math
 import os
 import re
 import socket
@@ -192,7 +193,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             )
             if restart_from_latest:
                 checkpoints = []
-                expected_file_count = distributed_utils.get_global_world_size()
+                # expected_file_count = distributed_utils.get_global_world_size()
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
                         raise RuntimeError(
@@ -209,15 +210,16 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                             if not f.startswith("_")
                         ]
                     )
-                    if present_files == expected_file_count:
-                        filename = os.path.join(
-                            nfs_path, candidate, f"checkpoint{suffix}.pt"
-                        )
-                        break
-                    logger.info(
-                        f"skipping checkpoint {candidate} because it only has"
-                        f" {present_files} files (expected {expected_file_count})"
+                    assert len(present_files) > 0
+                    # if present_files == expected_file_count:
+                    filename = os.path.join(
+                        nfs_path, candidate, f"checkpoint{suffix}.pt"
                     )
+                    #     break
+                    # logger.info(
+                    #     f"skipping checkpoint {candidate} because it only has"
+                    #     f" {present_files} files (expected {expected_file_count})"
+                    # )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")
             if filename is not None:
@@ -379,27 +381,56 @@ def get_paths_to_load(path, suffix="rank-"):
 
     # Check if we need to merge shards
     world_size = distributed_utils.get_data_parallel_world_size()
-    if world_size >= checkpoint_files_count:
-        return [local_path]
+    if world_size == checkpoint_files_count:
+        return [local_path], checkpoint_files_count
+    elif world_size > checkpoint_files_count:
+        # For now only support the case when new world size is multipe of previous
+        rank = distributed_utils.get_data_parallel_rank()
+        if world_size % checkpoint_files_count == 0:
+            n_new_shards_per_file = int(world_size / checkpoint_files_count)
+            rank_to_load = rank // n_new_shards_per_file
+            fname = re.sub(
+                f"{suffix}[0-9]+",
+                f"{suffix}{rank_to_load}",
+                checkpoint_files[0],
+            )
+            return [fname], checkpoint_files_count
+        else:
+            n_new_shards_per_file = world_size / checkpoint_files_count
+            n_files_per_shard = checkpoint_files_count / world_size
+            start_rank = (rank / n_new_shards_per_file)
+            end_rank = start_rank + n_files_per_shard
 
-    # Assign an equal number of shards
-    assert checkpoint_files_count % world_size == 0
-    n_local_files = int(checkpoint_files_count / world_size)
-    rank = distributed_utils.get_data_parallel_rank()
-    start_rank = n_local_files * rank
-    fnames = []
-    for rank_to_load in range(start_rank, start_rank + n_local_files):
-        fname = re.sub(
-            f"{suffix}[0-9]+",
-            f"{suffix}{rank_to_load}",
-            checkpoint_files[0],
+            ranks_to_load = list(set((int(start_rank), int(math.ceil(end_rank) - 1 ))))
+            fnames = []
+
+            for rank_to_load in ranks_to_load:
+                fname = re.sub(
+                    f"{suffix}[0-9]+",
+                    f"{suffix}{rank_to_load}",
+                    checkpoint_files[0],
+                )
+                fnames.append(fname)
+            return fnames, checkpoint_files_count
+    else:
+        # Assign an equal number of shards
+        assert checkpoint_files_count % world_size == 0
+        n_local_files = int(checkpoint_files_count / world_size)
+        rank = distributed_utils.get_data_parallel_rank()
+        start_rank = n_local_files * rank
+        fnames = []
+        for rank_to_load in range(start_rank, start_rank + n_local_files):
+            fname = re.sub(
+                f"{suffix}[0-9]+",
+                f"{suffix}{rank_to_load}",
+                checkpoint_files[0],
+            )
+            fnames.append(fname)
+        logger.info(
+            f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker."
         )
-        fnames.append(fname)
-    logger.info(
-        f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker."
-    )
 
-    return fnames
+        return fnames, checkpoint_files_count
 
 
 def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) -> dict:
@@ -420,13 +451,31 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
     """
 
     # Expand multi-part checkpoints like "checkpoint_last-shard0.pt"
-    paths_to_load = get_paths_to_load(path, suffix="shard")
-
+    paths_to_load, ddp_checkpoint_files_count = get_paths_to_load(path, suffix="shard")
+    logger.warning(f"Rank: {torch.distributed.get_rank()}, len of files to load: {len(paths_to_load)}, shards: {ddp_checkpoint_files_count}")
+    world_size = distributed_utils.get_data_parallel_world_size()
     try:
-        if len(paths_to_load) > 1:
+        if world_size < ddp_checkpoint_files_count:
+            assert len(paths_to_load) > 1
             state = _merge_flat_fsdp_shards([torch_load_cpu(f) for f in paths_to_load])
-        else:
+        elif world_size == ddp_checkpoint_files_count:
             state = torch_load_cpu(paths_to_load[0])
+        else:
+            # if world_size > ddp_checkpoint_files_count:
+            shard_ids = []
+            states = []
+            for path_to_load in paths_to_load:
+                assert "shard" in path_to_load
+                match = re.search(r"-shard(\d+)\.pt", path_to_load)
+                assert match
+                shard_ids.append(int(match.group(1)))
+                states.append(torch_load_cpu(path_to_load))
+
+            logger.warning(f"Rank: {torch.distributed.get_rank()}, shard_ids: {shard_ids}")
+            state = _split_flat_fsdp_shards(states, previous_shard_counts=ddp_checkpoint_files_count, shard_ids=shard_ids)
+            logger.warning(f"Post fixed state")
+
+
     except Exception as error:
         logger.error(
             f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."
@@ -452,7 +501,6 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
 
         if arg_overrides is not None:
             overwrite_args_by_name(state["cfg"], arg_overrides)
-
     state = _upgrade_state_dict(state)
     return state
 
@@ -614,6 +662,100 @@ def verify_checkpoint_directory(save_dir: str) -> None:
             os.remove(temp_file_path)
         except FileNotFoundError:
             pass
+
+
+def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shard_ids: List[int]) -> Dict:
+    """
+    This function basically takes multiple FSDP states, merges and then finds the new state
+    in the new FSDP shard.
+    i.e.
+    lets say previous training was with data prallel size = 2 and
+    new training run is with data parallel size = 3.
+
+    Then it will take [state1, state2] and based on the current data parallel rank,
+    return the new state, which in the case of
+    a) rank0: first 2/3rd of state1
+    b) rank1: last 1/3rd of state1, first 1/3rd of state2
+    c) rank2: last 2/3rd of state2
+    """
+    # First copy all keys apart from model and opt stats to the
+    # final state dict from zero'th loaded state
+    splitted_state = {k: v for k, v in states[0].items() if k not in ('model', 'opt_stats')}
+    splitted_model_state = {}
+    ddp_world_size = distributed_utils.get_data_parallel_world_size()
+
+    for k in states[0]["model"].keys():
+        dtype = states[0]["model"][k].dtype
+        if "flat_param" not in k:
+            # I think usually its just decoder.version that comes here.
+            splitted_model_state[k] = states[0]["model"][k]
+            continue
+
+        values = [state['model'][k] for state in states]
+
+        assert all(len(value.shape) == 1 for value in values), "Flat param should have only one dimensional tensor"
+        assert all(value.size(0) == values[0].size(0) for value in values), "all shards should have same sized tensor"
+
+        full_param_shape = values[0].size(0) * previous_shard_counts
+
+        # TODO: [namangoyal] double check this
+        new_shard_size = math.ceil(full_param_shape / ddp_world_size)
+        new_start_offset = new_shard_size * distributed_utils.get_data_parallel_rank()
+
+        current_start_offset = values[0].size(0) * shard_ids[0]
+        start_offset = new_start_offset-current_start_offset
+
+        concatted_value = torch.cat(values)
+        new_v = concatted_value[start_offset: start_offset+new_shard_size]
+
+        if new_v.size(0) != new_shard_size:
+            assert distributed_utils.get_data_parallel_rank() == ddp_world_size - 1
+            num_to_pad = new_shard_size - new_v.size(0)
+            new_v = torch.nn.functional.pad(new_v, [0, num_to_pad])
+        splitted_model_state[k] = new_v
+
+    splitted_state['model'] = splitted_model_state
+    # TODO(susanz): Not removing decoder.version due to HF compatibility.
+    if "decoder.version" not in splitted_state['model']:
+        splitted_state['model']["decoder.version"] = torch.tensor([3.0], dtype=dtype)
+
+    if OPT_KEY in states[0]:
+        splitted_state[OPT_KEY] = _split_flat_fsdp_opt_state(states, previous_shard_counts, shard_ids)
+
+    return splitted_state
+
+
+def _split_flat_fsdp_opt_state(states: List[Dict], previous_shard_counts: int, shard_ids: List[int]) -> Dict:
+    splitted_opt_state = states[0][OPT_KEY]
+    ddp_world_size = distributed_utils.get_data_parallel_world_size()
+    for k in states[0][OPT_KEY]["state"].keys():
+        # 0,1,2,3... if each layer wrapped, else 0
+        for k2 in states[0][OPT_KEY]["state"][k].keys():
+            values = [state[OPT_KEY]["state"][k][k2] for state in states]
+
+            if not torch.is_tensor(values[0]) or is_singleton_tensor(values[0]):
+                assert all(value == values[0] for value in values)
+                splitted_opt_state["state"][k][k2] = values[0]
+            else:
+                assert all(len(value.shape) == 1 for value in values), "Flat param should have only one dimensional tensor"
+                full_param_shape = values[0].size(0) * previous_shard_counts
+
+                # TODO: [namangoyal] double check this
+                new_shard_size = math.ceil(full_param_shape / ddp_world_size)
+                new_start_offset = new_shard_size * distributed_utils.get_data_parallel_rank()
+
+                current_start_offset = values[0].size(0) * shard_ids[0]
+                start_offset = new_start_offset-current_start_offset
+
+                concatted_value = torch.cat(values)
+                splitted_value = concatted_value[start_offset: start_offset+new_shard_size]
+
+                if splitted_value.size(0) != new_shard_size:
+                    assert distributed_utils.get_data_parallel_rank() == ddp_world_size - 1
+                    num_to_pad = new_shard_size - splitted_value.size(0)
+                    splitted_value = torch.nn.functional.pad(splitted_value, [0, num_to_pad])
+                splitted_opt_state["state"][k][k2] = splitted_value
+    return splitted_opt_state
 
 
 def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:

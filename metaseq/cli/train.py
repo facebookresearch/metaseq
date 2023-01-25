@@ -162,7 +162,6 @@ def main(cfg: DictConfig) -> None:
         )
     )
     logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
-
     # Load the latest checkpoint if one is available and restore the
     # corresponding train iterator
     extra_state, epoch_itr = checkpoint_utils.load_checkpoint(
@@ -268,6 +267,11 @@ def train(
         i,
         samples,
     ):
+        # if  i == 1:
+        #     if torch.distributed.get_rank() == 0:
+        #         from metaseq.pdb import set_trace; set_trace()
+        #     else:
+        #         from time import sleep; sleep(10000)
         with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]
