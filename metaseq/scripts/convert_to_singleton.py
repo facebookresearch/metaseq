@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 """
 Script for backing out of the MP-resharded (reshard.pt) files and getting back
 a non-flattened state dict.
@@ -36,7 +40,7 @@ import torch
 from metaseq import options, tasks, checkpoint_utils, utils
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import utils as dist_utils
+from metaseq.distributed import utils as distributed_utils
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 from metaseq.distributed.stitch_fsdp_ckpt import reshard_megatron_parts
 
@@ -49,7 +53,7 @@ logging.basicConfig(
 logger = logging.getLogger("convert_to_singleton")
 
 
-def create_generation_config_with_defaults(model_path):
+def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"):
     files = glob.glob(f"{model_path}/reshard*.pt")
 
     MP = len(files)
@@ -62,6 +66,8 @@ def create_generation_config_with_defaults(model_path):
         str(MP),
         "--distributed-world-size",
         str(MP),
+        # "--ddp-backend",
+        # ddp_backend,
         "--task",
         "language_modeling",
         "--bpe-merges",
@@ -78,7 +84,7 @@ def create_generation_config_with_defaults(model_path):
         model_path + "/reshard.pt",
         "--checkpoint-shard-count",
         "1",
-        "--use-sharded-state",
+        # "--use-sharded-state",
         model_path,
     ]
     print(ARGS)
@@ -102,37 +108,37 @@ def worker_main(cfg: MetaseqConfig):
     task = tasks.setup_task(cfg.task)
 
     def _build_model(cfg, task):
-        # hardcoded to cpu & fp16
-        model = task.build_model(cfg.model).half().cuda()
+        cfg.model.tensor_parallel_init_model_on_gpu = True
+        model = task.build_model(cfg.model).cuda()
         return fsdp_wrap(model)
 
-    with fsdp_enable_wrap(
-        cfg.distributed_training,
-        use_sharded_state=cfg.distributed_training.use_sharded_state,
-    ):
-        models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
-            utils.split_paths(cfg.common_eval.path),
-            arg_overrides=None,
-            task=task,
-            suffix=cfg.checkpoint.checkpoint_suffix,
-            strict=True,
-            num_shards=cfg.checkpoint.checkpoint_shard_count,
-            build_model_hook=_build_model,
-        )
-        model = models[0]
+    # with fsdp_enable_wrap(
+        # cfg.distributed_training,
+        # use_sharded_state=cfg.distributed_training.use_sharded_state,
+    # ):
+    models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
+        utils.split_paths(cfg.common_eval.path),
+        arg_overrides=None,
+        task=task,
+        suffix=cfg.checkpoint.checkpoint_suffix,
+        strict=True,
+        num_shards=cfg.checkpoint.checkpoint_shard_count,
+        build_model_hook=_build_model,
+    )
+    model = models[0]
 
     # consolidate everything on rank0
-    mp_size = dist_utils.get_model_parallel_world_size()
+    mp_size = distributed_utils.get_model_parallel_world_size()
     model_parts = [{} for _ in range(mp_size)]
 
-    with model.summon_full_params():
-        for name, p in model.named_parameters():
-            gathered = [torch.zeros_like(p) for _ in range(mp_size)]
-            torch.distributed.all_gather(
-                gathered, p, group=dist_utils.get_global_group()
-            )
-            for r, t in enumerate(gathered):
-                model_parts[r][name] = t.cpu()
+    # with model.summon_full_params():
+    for name, p in model.named_parameters():
+        gathered = [torch.zeros_like(p) for _ in range(mp_size)]
+        torch.distributed.all_gather(
+            gathered, p, group=distributed_utils.get_global_group()
+        )
+        for r, t in enumerate(gathered):
+            model_parts[r][name] = t.cpu()
 
     glued = reshard_megatron_parts(model_parts, new_model_part_count=1)[0]
     # glued['decoder.output_projection.weight'] = glued['decoder.embed_tokens.weight']
@@ -149,7 +155,7 @@ def worker_main(cfg: MetaseqConfig):
     output_sd["cfg"]["model"].arch = "transformer_lm"
     output_sd["cfg"]["model"]._name = "transformer_lm"
 
-    if dist_utils.get_global_rank() == 0:
+    if distributed_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
             torch.save(output_sd, f)
 
@@ -161,7 +167,7 @@ def main():
     args = real_parser.parse_args()
 
     cfg = create_generation_config_with_defaults(args.location)
-    dist_utils.call_main(cfg, worker_main)
+    distributed_utils.call_main(cfg, worker_main)
 
 
 if __name__ == "__main__":
