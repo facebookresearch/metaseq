@@ -18,6 +18,7 @@ from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+from metaseq.data.streaming_src_tgt_dataset import StreamingSrcTgtDataset
 from ctypes import c_int, sizeof, memmove, addressof
 
 logger = logging.getLogger(__name__)
@@ -293,18 +294,19 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
             next_worker = self._itr.next_worker
 
         dataset = self.dataset
-        while not isinstance(dataset, DocumentToSequenceDataset):
+
+        while not (isinstance(dataset, DocumentToSequenceDataset) or isinstance(dataset, StreamingSrcTgtDataset)):
             dataset = dataset.dataset
-        logger.debug(
-            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache.data)} "
-            f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
-        )
+        # logger.debug(
+            # f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache.data)} "
+            # f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
+        # )
         return {
             "epoch": epoch,
             "sequences_consumed": sequences_consumed,
-            "tokenization_cache": dataset.len_cache
-            if distributed_utils.get_global_rank() == 0
-            else None,
+            # "tokenization_cache": dataset.len_cache
+            # if distributed_utils.get_global_rank() == 0
+            # else None,
             "n": n,
             "next_worker": next_worker,
         }

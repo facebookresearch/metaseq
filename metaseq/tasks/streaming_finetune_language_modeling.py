@@ -17,6 +17,8 @@ import torch
 from metaseq.data import (
     JsonlDataset,
     data_utils,
+    StreamingSrcTgtDataset,
+    StreamingShuffleDataset
 )
 from metaseq.tasks.streaming_language_modeling import (
     StreamingLanguageModelingTask,
@@ -129,6 +131,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
         ):
             if not file.endswith(".jsonl"):
                 continue
+
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
@@ -148,12 +151,12 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
         logger.info(
             f"Enabling {'left' if self.args.left_truncation else 'right'} truncation in the blocks of {split} split"
         )
+
+        # shuffle order across epochs
+        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
         self.datasets[split] = StreamingSrcTgtDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
@@ -167,7 +170,6 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             padding_idx=self.source_dictionary.pad(),
             left_truncation=self.args.left_truncation,
             seed=self.args.seed,
-            source_target=True,
         )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):

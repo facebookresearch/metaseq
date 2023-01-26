@@ -593,7 +593,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
         dataset.set_shuffle_buffer_size(shuffle_buffer_size)
-        dataset.set_num_workers(num_workers)
+        # dataset.set_num_workers(num_workers)
 
         # partition dataset across data parallel workers
         dataset = PartitionedStreamingDataset(
