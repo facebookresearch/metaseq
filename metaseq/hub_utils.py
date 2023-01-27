@@ -384,7 +384,7 @@ class GeneratorInterface:
                                     for t, s in zip(top_toks, top_scores)
                                 }
                                 out_logprobs.append(lp)
-                            if echo:
+                            if echo_list[i]:
                                 # use null instead of giving bunk probs for EOS token
                                 result["top_logprobs"] = [None] + out_logprobs[1:]
                             else:
