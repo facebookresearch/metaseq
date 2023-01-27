@@ -6,12 +6,22 @@
 from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
 
 import importlib
+import logging
 import math
 import torch
+from types import SimpleNamespace
+from metaseq.dataclass.constants import AttentionVariants
 
 # Not importing here cause cpu tests don't like it
 global fused_layer_norm_cuda
 fused_layer_norm_cuda = None
+
+try:
+    import xformers.ops as xops
+
+    has_xformers = True
+except (ImportError, ModuleNotFoundError):
+    has_xformers = False
 
 try:
     from megatron.mpu.mappings import (
@@ -24,6 +34,17 @@ try:
     has_megatron_submodule = True
 except (ImportError, ModuleNotFoundError):
     has_megatron_submodule = False
+
+
+class _FakeContext(SimpleNamespace):
+    """
+    Used to provide a temporary buffer for FlashAttention's saved buffers
+    """
+
+    saved_tensors = None
+
+    def save_for_backward(self, *args):
+        self.saved_tensors = args
 
 
 class SequeuceParallelTransformerBlock(torch.autograd.Function):
@@ -101,10 +122,27 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         head_dim,
         recompute_fc1,
         activation_fn_name,  # "relu" or "gelu" for now
+        attn_variant,
+        xf_attn_op,
     ):
         assert (
             activation_fn_name == "relu" or activation_fn_name == "gelu"
         ), "Only relu/gelu is supported!"
+
+        xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        if xf_eff_attn and not has_xformers:
+            raise ImportError(
+                "\n\nPlease install xformers to use memory efficient attention"
+            )
+
+        xf_op = xops.MemoryEfficientAttentionCutlassFwdFlashBwOp
+        # xf_op = xops.MemoryEfficientAttentionTritonFwdFlashBwOp
+        if xf_eff_attn and xf_attn_op is not None:
+            try:
+                xf_op = getattr(xops, xf_attn_op)
+            except AttributeError:
+                logging.warning(f"Invalid xformers memorry efficient op specified.")
+
         # import from apex
         global fused_layer_norm_cuda
         if fused_layer_norm_cuda is None:
@@ -139,16 +177,38 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
 
         k, v, q = split_tensor_along_last_dim(kvq_out, 3, contiguous_split_chunks=True)
         seq_len, bsz, embed_dim_per_partition = q.size()
-        q = q.view(seq_len, -1, head_dim)
-        k = k.view(seq_len, -1, head_dim)
-        v = v.view(seq_len, -1, head_dim).transpose(0, 1)
 
-        attn, _ = SequeuceParallelTransformerBlock.forward_mha(
-            q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
-        )
+        if xf_eff_attn:
+            num_heads = embed_dim_per_partition // head_dim
+            q = q.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
+            k = k.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
+            v = v.view(seq_len, bsz, num_heads, head_dim).transpose(0, 1)
+
+            attn = (
+                xops.memory_efficient_attention_forward(
+                    q,
+                    k,
+                    v,
+                    attn_bias=xops.LowerTriangularMask(),
+                    p=0.0,
+                    scale=None,
+                    op=xf_op[0],
+                )
+                .transpose(0, 1)
+                .reshape(seq_len, bsz, num_heads * head_dim)
+            )
+        else:
+            q = q.view(seq_len, -1, head_dim)
+            k = k.view(seq_len, -1, head_dim)
+            v = v.view(seq_len, -1, head_dim).transpose(0, 1)
+
+            attn, _ = SequeuceParallelTransformerBlock.forward_mha(
+                q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
+            )
 
         out_proj_out = torch.matmul(attn, out_proj_weight.t())
         out_proj_out = _reduce_scatter_along_first_dim(out_proj_out)
+        out_proj_out = out_proj_out.view_as(residual)
 
         out_proj_out = out_proj_out + residual
 
@@ -195,12 +255,16 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             ctx.head_dim,
             ctx.embed_dim_per_partition,
             ctx.activation_fn_name,
+            ctx.xf_eff_attn,
+            ctx.xf_op,
         ) = (
             bsz,
             seq_len,
             head_dim,
             embed_dim_per_partition,
             activation_fn_name,
+            xf_eff_attn,
+            xf_op,
         )
 
         # apply scatter gather,
@@ -224,12 +288,22 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             fc1_weight,
             fc2_weight,
         ) = ctx.saved_tensors
-        bsz, seq_len, head_dim, embed_dim_per_partition, activation_fn_name = (
+        (
+            bsz,
+            seq_len,
+            head_dim,
+            embed_dim_per_partition,
+            activation_fn_name,
+            xf_eff_attn,
+            xf_op,
+        ) = (
             ctx.bsz,
             ctx.seq_len,
             ctx.head_dim,
             ctx.embed_dim_per_partition,
             ctx.activation_fn_name,
+            ctx.xf_eff_attn,
+            ctx.xf_op,
         )
         dtype = grad_output.dtype
 
@@ -320,9 +394,28 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         )
 
         # recalculate attention
-        attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
-            q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
-        )
+        if xf_eff_attn:
+            num_heads = embed_dim_per_partition // head_dim
+
+            attn, lse = xops.memory_efficient_attention_forward_requires_grad(
+                q,
+                k,
+                v,
+                attn_bias=xops.LowerTriangularMask(),
+                p=0.0,
+                scale=None,
+                op=xf_op[0],
+            )
+            out = attn
+            attn = (
+                attn.transpose(0, 1)
+                .reshape(seq_len, bsz, num_heads * head_dim)
+                .contiguous()
+            )
+        else:
+            attn, attn_probs = SequeuceParallelTransformerBlock.forward_mha(
+                q, k, v, bsz, seq_len, head_dim, embed_dim_per_partition, dtype
+            )
 
         handle.wait()
 
@@ -335,9 +428,31 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
         attn = SequeuceParallelTransformerBlock._collapse_first_dimensions(attn)
         grad_out_proj_weight = grad_attention_output.t().matmul(attn)
 
-        grad_kvq_proj_output = SequeuceParallelTransformerBlock.backward_mha(
-            grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
-        )
+        if xf_eff_attn:
+            grad_out_proj_input = grad_out_proj_input.reshape(
+                seq_len, bsz, -1, head_dim
+            ).transpose(0, 1)
+            d_q, d_k, d_v = xops.memory_efficient_attention_backward(
+                grad=grad_out_proj_input,
+                output=out,
+                lse=lse,
+                query=q,
+                key=k,
+                value=v,
+                attn_bias=xops.LowerTriangularMask(),
+                p=0.0,
+                scale=None,
+                op=xf_op[1],
+            )
+            # bmhk => m b hk
+            d_q = d_q.transpose(0, 1).view(seq_len, bsz, -1)
+            d_k = d_k.transpose(0, 1).view(seq_len, bsz, -1)
+            d_v = d_v.transpose(0, 1).view(seq_len, bsz, -1)
+            grad_kvq_proj_output = torch.cat([d_k, d_v, d_q], dim=-1)
+        else:
+            grad_kvq_proj_output = SequeuceParallelTransformerBlock.backward_mha(
+                grad_out_proj_input, q, k, v, attn_probs, seq_len, bsz, head_dim
+            )
 
         (
             mha_layer_norm_output,
@@ -383,6 +498,8 @@ class SequeuceParallelTransformerBlock(torch.autograd.Function):
             grad_out_proj_weight,
             grad_fc1_weight,
             grad_fc2_weight,
+            None,
+            None,
             None,
             None,
             None,
