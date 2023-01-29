@@ -1,3 +1,4 @@
+# fmt: off
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
 #
 # This source code is licensed under the MIT license found in the
@@ -33,6 +34,7 @@ def save_checkpoint(
     trainer,
     epoch_itr,
     val_loss,
+    log_training_trajectory=False,
     training_finished=False,
     async_callback_fn=None,
 ):
@@ -74,8 +76,7 @@ def save_checkpoint(
     )
     checkpoint_conds["checkpoint_{}_{}{}.pt".format(epoch, updates, suffix)] = (
         not end_of_epoch
-        and cfg.save_interval_updates > 0
-        and updates % cfg.save_interval_updates == 0
+        and ((cfg.save_interval_updates > 0 and updates % cfg.save_interval_updates == 0) or (log_training_trajectory and updates in [10, 20, 50, 100, 200, 500]))
     )
     checkpoint_conds["checkpoint_best{}.pt".format(suffix)] = (
         val_loss is not None

@@ -385,6 +385,12 @@ class DatasetConfig(MetaseqDataclass):
             "help": "if set, validate language model at the beginning of training or fine-tuning process"
         },
     )
+    log_training_trajectory: bool = field(
+        default=False,
+        metadata={
+            "help": "(InstructOPT specific) if set, evaluate and save checkpoints more frequently in early stage of training"
+        },
+    )
     fixed_validation_seed: Optional[int] = field(
         default=None, metadata={"help": "specified random seed for validation"}
     )

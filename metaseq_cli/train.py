@@ -37,7 +37,9 @@ from metaseq.logging import meters, metrics, progress_bar
 from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
-from metaseq.tasks.streaming_finetune_language_modeling import StreamingFinetuneLanguageModelingTask
+from metaseq.tasks.streaming_finetune_language_modeling import (
+    StreamingFinetuneLanguageModelingTask,
+)
 
 
 logging.basicConfig(
@@ -418,6 +420,10 @@ def validate_and_save(
             and num_updates >= cfg.dataset.validate_after_updates
             and was_successful_step
         )
+        or (
+            cfg.dataset.log_training_trajectory
+            and num_updates in [10, 20, 50, 100, 200, 500]
+        )
     )
     do_validate = (
         (
@@ -432,6 +438,10 @@ def validate_and_save(
             and was_successful_step
         )
         or (cfg.dataset.validate_at_beginning and num_updates == 0)
+        or (
+            cfg.dataset.log_training_trajectory
+            and num_updates in [0, 10, 20, 50, 100, 200, 500]
+        )
     ) and not cfg.dataset.disable_validation
     valid_losses = [None]
     if do_validate:
@@ -446,6 +456,7 @@ def validate_and_save(
             trainer,
             epoch_itr,
             valid_losses[0],
+            log_training_trajectory=cfg.dataset.validate_after_updates,
             training_finished=should_stop,
             async_callback_fn=functools.partial(post_checkpoint_callback, cfg)
             if cfg.checkpoint.cloud_upload_path
