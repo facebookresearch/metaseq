@@ -63,7 +63,7 @@ class IncrementalState(object):
 
 
 def with_incremental_state(cls):
-    cls.__bases__ = (IncrementalState,) + tuple(
+    cls.__bases__ = tuple(
         b for b in cls.__bases__ if b != IncrementalState
-    )
+    ) + (IncrementalState,)
     return cls
