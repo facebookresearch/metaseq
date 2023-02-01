@@ -39,4 +39,3 @@ import metaseq.pdb  # noqa
 import metaseq.tasks  # noqa
 
 import metaseq.benchmark  # noqa
-import metaseq.model_parallel  # noqa

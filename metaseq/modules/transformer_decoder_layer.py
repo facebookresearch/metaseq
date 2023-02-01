@@ -208,7 +208,7 @@ class TransformerDecoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         if getattr(self.args, "sequence_parallel", False):
-            from metaseq.model_parallel.modules import SequeuceParallelTransformerBlock
+            from metaseq.modules import SequeuceParallelTransformerBlock
 
             x = SequeuceParallelTransformerBlock.apply(
                 x,
