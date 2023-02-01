@@ -40,10 +40,10 @@ We welcome PRs from the community!
 You can find information about contributing to metaseq in our [Contributing](docs/CONTRIBUTING.md) document.
 
 ## The Team
-Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Stephen Roller](https://github.com/stephenroller), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), [David Esiobu](https://github.com/davides), [David Greenberg](https://github.com/dgrnbrg-meta), [Igor Molybog](https://github.com/igormolybogFB), and [Peter Albert](https://github.com/Xirider).
+Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), [David Esiobu](https://github.com/davides), [Igor Molybog](https://github.com/igormolybogFB), [Peter Albert](https://github.com/Xirider), [Sharan Narang](https://github.com/sharannarang), and [Andrew Poulton](https://github.com/andrewPoulton).
 
 Previous maintainers include:
-[Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).
+[Stephen Roller](https://github.com/stephenroller), [Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).
 
 
 ## License
