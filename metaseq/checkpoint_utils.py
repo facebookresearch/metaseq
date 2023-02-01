@@ -119,7 +119,7 @@ def get_storage_type(path: str) -> str:
 
 def get_checkpoint_steps(path: str) -> int:
     match = re.search(r"checkpoint_(\d+)", path)
-    if match[1] is None:
+    if match is None:
         return 0
     return int(match[1])
 
@@ -127,6 +127,8 @@ def get_checkpoint_steps(path: str) -> int:
 def get_all_checkpoints_from_directory(
     directory: str, suffix: str, add_priority: float, storage_type: str
 ) -> List[CheckpointPath]:
+    # from metaseq.pdb import set_trace_rank0
+    # set_trace_rank0()
     checkpoints = []
     for candidate in os.listdir(directory):
         steps = get_checkpoint_steps(candidate)
@@ -141,11 +143,14 @@ def get_all_checkpoints_from_directory(
                 if not f.startswith("_")
             ]
         )
+        logger.info(f"{present_files} parts found for this checkpoint")
         if present_files != expected_file_count:
             logger.info(
-                f"skipping checkpoint {candidate} because it only has"
+                f"skipping checkpoint {candidate} in {directory} because it only has"
                 f" {present_files} files (expected {expected_file_count})"
             )
+            present_files = [ f for f in os.listdir(os.path.join(directory, candidate)) if not f.startswith("_")]
+            logger.info(str(present_files))
             continue
 
         # TODO validate this
@@ -236,7 +241,7 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
 
     checkpoints.extend(
         get_all_checkpoints_from_directory(
-            cfg.local_checkpoints_dir, add_priority=0.3, storage_type="local"
+            cfg.save_dir, suffix, add_priority=0.3, storage_type="local"
         )
     )
 
@@ -256,17 +261,19 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
 
     # copy cloud checkpoints to a local cache file
     local_cache_dir = os.path.join(
-        cfg.local_checkpoints_dir,
-        f"cached_checkpoint_{checkpoint.priority}{suffix}.pt",
+        cfg.save_dir,
+        f"cached_checkpoint_{int(checkpoint.priority)}"
     )
+    os.makedirs(local_cache_dir, exist_ok=True)
+    local_cache_file = os.path.join(local_cache_dir, f"checkpoint{suffix}.pt")
 
-    logger.info(f"Copying checkpoint from {checkpoint.path} -> {local_cache_dir}")
+    logger.info(f"Copying checkpoint from {checkpoint.path} -> {local_cache_file}")
     if checkpoint.storage_type == "nfs":
-        shutil.copyfile(checkpoint.path, local_cache_dir)
+        shutil.copyfile(checkpoint.path, local_cache_file)
     elif checkpoint.storage_type == "azure_blob":
-        azure_utils.download_specific_ckpt(checkpoint.path, local_cache_dir)
+        azure_utils.download_specific_ckpt(checkpoint.path, local_cache_file)
 
-    return local_cache_dir
+    return local_cache_file
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
