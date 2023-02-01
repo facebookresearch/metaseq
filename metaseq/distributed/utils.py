@@ -85,7 +85,7 @@ def _infer_slurm_init(cfg: DistributedTrainingConfig):
             host = os.environ.get("MASTER_ADDR", None)
         if host is None:
             return
-        cfg.distributed_init_method = "tcpr://{host}:{port}".format(
+        cfg.distributed_init_method = "barrierlesstcpr://{host}:{port}".format(
             host=host, port=cfg.distributed_port
         )
         nnodes = int(os.environ.get("SLURM_NNODES"))
