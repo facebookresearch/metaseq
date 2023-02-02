@@ -193,7 +193,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             )
             if restart_from_latest:
                 checkpoints = []
-                # expected_file_count = distributed_utils.get_global_world_size()
+                expected_file_count = distributed_utils.get_global_world_size()
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
                         raise RuntimeError(
@@ -211,22 +211,47 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                         ]
                     )
                     assert len(present_files) > 0
-                    # if present_files == expected_file_count:
-                    filename = os.path.join(
-                        nfs_path, candidate, f"checkpoint{suffix}.pt"
+                    if present_files == expected_file_count:
+                        filename = os.path.join(
+                            nfs_path, candidate, f"checkpoint{suffix}.pt"
+                        )
+                        break
+                    logger.info(
+                        f"skipping checkpoint {candidate} because it only has"
+                        f" {present_files} files (expected {expected_file_count})"
                     )
-                    #     break
-                    # logger.info(
-                    #     f"skipping checkpoint {candidate} because it only has"
-                    #     f" {present_files} files (expected {expected_file_count})"
-                    # )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")
             if filename is not None:
-                logger.info(
-                    f"Copying checkpoint from nfs {filename} -> {checkpoint_path_to_load}"
+
+                paths_to_load, ddp_checkpoint_files_count = get_paths_to_load(filename, suffix="shard")
+                world_size = distributed_utils.get_data_parallel_world_size()
+
+                paths_to_copy = paths_to_load
+                if world_size > ddp_checkpoint_files_count:
+                    if world_size % ddp_checkpoint_files_count == 0:
+                        assert len(paths_to_load) == 1
+                        ranks_per_file = world_size // ddp_checkpoint_files_count
+                        if distributed_utils.get_data_parallel_rank() % ranks_per_file != 0:
+                            paths_to_copy = []
+                    else:
+                        # if world size is increasing, paths to load can be 1 or 2
+                        # above hack is to not double copy the files.
+                        if len(paths_to_load) > 1:
+                            paths_to_copy = []
+                logger.warning(
+                    f"Copying checkpoint from nfs {paths_to_copy} -> {cfg.save_dir}"
                 )
-                shutil.copyfile(filename, checkpoint_path_to_load)
+                for path_to_copy in paths_to_copy:
+                    dest_prefix = os.path.basename(checkpoint_path_to_load).split('-')[0]
+
+                    src_fname = os.path.basename(path_to_copy)
+                    src_prefix = src_fname.split('-')[0]
+                    dest_fname = os.path.join(
+                        cfg.save_dir,
+                        src_fname.replace(src_prefix, dest_prefix)
+                    )
+                    shutil.copy(path_to_copy, dest_fname)
             else:
                 logger.info(f"No NFS checkpoints found")
 

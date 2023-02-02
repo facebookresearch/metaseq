@@ -12,6 +12,7 @@ import logging
 import re
 import sys
 import time
+import os
 import math
 from itertools import chain
 from typing import Any, Dict, List
@@ -425,9 +426,19 @@ class Trainer(object):
 
         is_distributed = self.data_parallel_world_size > 1
 
-        bexists = PathManager.isfile(filename)
+        if self.cfg.checkpoint.cloud_upload_path and self.cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
+            # this is a big hacky as when we increase the world size, then filename doesn't really point
+            # to a real file, we convert it to multiple files to be loaded later.
+            # so here we just check if there are some files existing in the dir.
+            files_in_local_dir = os.listdir(self.cfg.checkpoint.save_dir)
 
-        if True:
+            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(self.checkpoint_suffix, '')
+            matched_files = [f for f in files_in_local_dir if f.startswith(filename_prefix)]
+            bexists = len(matched_files) > 0
+        else:
+            bexists = PathManager.isfile(filename)
+
+        if bexists:
             logger.warning(f"Preparing to load checkpoint {filename}")
             load_on_all_ranks = (
                 self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
