@@ -371,7 +371,7 @@ def transformer_lm_megatron(args):
     base_lm_architecture(args)
 
 
-@register_model_architecture("model_parallel_transformer_lm", "transformer_lm_gpt")
+@register_model_architecture("base_transformer_lm", "transformer_lm_gpt")
 def transformer_lm_gpt(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 768)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072)
@@ -383,9 +383,7 @@ def transformer_lm_gpt(args):
     base_lm_architecture(args)
 
 
-@register_model_architecture(
-    "model_parallel_transformer_lm", "transformer_lm_gpt2_tiny"
-)
+@register_model_architecture("base_transformer_lm", "transformer_lm_gpt2_tiny")
 def transformer_lm_gpt2_tiny(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 64)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)

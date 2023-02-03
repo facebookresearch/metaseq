@@ -148,3 +148,6 @@ _results/*
 *.swp
 
 metaseq/fair_internal/scripts/azure/nccl_tests/bin/*
+
+# checkpoint for testing gpu_tests on CircleCI
+125m/*
