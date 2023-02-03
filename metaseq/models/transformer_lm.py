@@ -35,10 +35,9 @@ from metaseq.models.transformer_decoder import (
 from metaseq.modules.embedding import Embedding
 from metaseq.modules.activation_functions import get_available_activation_fns
 
-DEFAULT_MAX_TARGET_POSITIONS = 1024
-
 import logging
 
+DEFAULT_MAX_TARGET_POSITIONS = 1024
 logger = logging.getLogger(__name__)
 
 
