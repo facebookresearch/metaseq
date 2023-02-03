@@ -43,6 +43,7 @@ DEFAULT_MAX_TARGET_POSITIONS = 1024
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
     activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
@@ -234,6 +235,7 @@ class TransformerLanguageModel(LanguageModel):
             ),
             dtype=utils.get_model_init_dtype(args),
         )
+
 
 @register_model("model_parallel_transformer_lm")
 class ModelParallelTransformerLanguageModel(TransformerLanguageModel):

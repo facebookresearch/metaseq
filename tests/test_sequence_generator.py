@@ -11,7 +11,7 @@ import torch
 
 import tests.utils as test_utils
 from metaseq.data.dictionary import Dictionary
-from metaseq.models.transformer_lm import TransformerLanguageModel
+from metaseq.models.transformer_lm_mp import TransformerLanguageModel
 from metaseq.sequence_generator import SequenceGenerator
 from metaseq.tasks.base_task import LegacyTask
 
