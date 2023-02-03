@@ -9,7 +9,7 @@ import torch
 from torch import nn
 
 from metaseq import utils
-from metaseq.model_parallel.modules import ModelParallelMultiheadAttention
+from metaseq.modules import ModelParallelMultiheadAttention
 from metaseq.modules import TransformerDecoderLayer
 
 try:

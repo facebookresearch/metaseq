@@ -5,7 +5,7 @@
 
 import torch
 import torch.nn as nn
-from metaseq.model_parallel.models.transformer_decoder import (
+from metaseq.models.transformer_decoder_mp import (
     ModelParallelTransformerDecoder,
 )
 from metaseq.models import register_model, register_model_architecture

@@ -5,7 +5,7 @@
 
 import logging
 
-from metaseq.model_parallel.modules import (
+from metaseq.modules import (
     ModelParallelTransformerDecoderLayer,
 )
 from metaseq.models.transformer_decoder import TransformerDecoder

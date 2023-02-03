@@ -14,7 +14,6 @@ from hydra.core.config_store import ConfigStore
 
 from .distributed_model import DistributedModel
 from .base_decoder import BaseDecoder
-from .base_encoder import BaseEncoder
 from .base_model import (
     BaseModel,
     LanguageModel,
@@ -33,7 +32,6 @@ __all__ = [
     "BaseModel",
     "DistributedModel",
     "BaseDecoder",
-    "BaseEncoder",
     "LanguageModel",
     "register_model",
 ]
