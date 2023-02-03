@@ -362,3 +362,27 @@ def transformer_lm_megatron(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.activation_fn = getattr(args, "activation_fn", "gelu")
     base_lm_architecture(args)
+
+
+@register_model_architecture("transformer_lm", "transformer_lm_gpt")
+def transformer_lm_gpt(args):
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 768)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072)
+    args.decoder_layers = getattr(args, "decoder_layers", 12)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 12)
+    args.dropout = getattr(args, "dropout", 0.1)
+    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
+    args.activation_fn = getattr(args, "activation_fn", "gelu")
+    base_lm_architecture(args)
+
+
+@register_model_architecture("transformer_lm", "transformer_lm_gpt2_tiny")
+def transformer_lm_gpt2_tiny(args):
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 64)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)
+    args.decoder_layers = getattr(args, "decoder_layers", 2)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 1)
+    args.dropout = getattr(args, "dropout", 0.1)
+    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
+    args.activation_fn = getattr(args, "activation_fn", "gelu")
+    base_lm_architecture(args)
