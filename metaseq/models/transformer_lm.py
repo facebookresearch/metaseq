@@ -46,6 +46,7 @@ from metaseq.modules.activation_functions import get_available_activation_fns
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
     activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
@@ -382,7 +383,9 @@ def transformer_lm_gpt(args):
     base_lm_architecture(args)
 
 
-@register_model_architecture("model_parallel_transformer_lm", "transformer_lm_gpt2_tiny")
+@register_model_architecture(
+    "model_parallel_transformer_lm", "transformer_lm_gpt2_tiny"
+)
 def transformer_lm_gpt2_tiny(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 64)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)
