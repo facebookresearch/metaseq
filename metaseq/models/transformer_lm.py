@@ -5,9 +5,6 @@
 
 import torch
 import torch.nn as nn
-from metaseq.models.transformer_decoder_mp import (
-    ModelParallelTransformerDecoder,
-)
 
 try:
     from megatron.mpu import VocabParallelEmbedding
@@ -33,6 +30,7 @@ from metaseq.models import (
 from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
     TransformerDecoder,
+    ModelParallelTransformerDecoder,
 )
 from metaseq.modules.embedding import Embedding
 from metaseq.modules.activation_functions import get_available_activation_fns
