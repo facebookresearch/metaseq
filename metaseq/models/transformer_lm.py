@@ -16,8 +16,6 @@ try:
 except (ImportError, ModuleNotFoundError):
     has_megatron_submodule = False
 
-import logging
-
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -40,6 +38,8 @@ from metaseq.modules.embedding import Embedding
 from metaseq.modules.activation_functions import get_available_activation_fns
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +376,9 @@ def transformer_lm_gpt(args):
     base_lm_architecture(args)
 
 
-@register_model_architecture("model_parallel_transformer_lm", "transformer_lm_gpt2_tiny")
+@register_model_architecture(
+    "model_parallel_transformer_lm", "transformer_lm_gpt2_tiny"
+)
 def transformer_lm_gpt2_tiny(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 64)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 64)
