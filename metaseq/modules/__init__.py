@@ -14,8 +14,10 @@ from .positional_embedding import PositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .linear import Linear
 from .feedforward_network import FeedForwardNetwork
-from .transformer_decoder_layer import TransformerDecoderLayer
-from .transformer_decoder_layer_mp import ModelParallelTransformerDecoderLayer
+from .transformer_decoder_layer import (
+    TransformerDecoderLayer,
+    ModelParallelTransformerDecoderLayer,
+)
 from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBlock
 
 __all__ = [
