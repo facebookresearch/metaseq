@@ -197,6 +197,7 @@ class GeneratorInterface:
         inputs: List[List[int]],
         min_tokens: List[int] = None,
         max_tokens: List[int] = None,
+        max_gen_tokens: int = 2048,
         temperature: float = 1.0,
         top_p: float = -1.0,
         logprobs: int = 0,
@@ -236,6 +237,7 @@ class GeneratorInterface:
         assert best_of >= n
         self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
         self.cfg.generation.sampling = top_p > 0.0
+        self.cfg.generation.max_gen_tokens = max_gen_tokens
         self.cfg.generation.beam = best_of
         if temperature > 0:
             self.cfg.generation.temperature = temperature

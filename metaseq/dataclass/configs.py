@@ -610,6 +610,12 @@ class GenerationConfig(MetaseqDataclass):
             "help": "generate sequences of maximum length ax + b, where x is the source length"
         },
     )
+    max_gen_tokens: int = field(
+        default=2048,
+        metadata={
+            "help": "generate sequences of maximum length ax + b, where x is the source length"
+        },
+    )
     min_len: int = field(
         default=1,
         metadata={"help": "minimum generation length"},
