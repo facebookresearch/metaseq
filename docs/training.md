@@ -37,7 +37,7 @@ metaseq-train --task streaming_language_modeling \
   --criterion cross_entropy \
   --batch-size 8 \
   --save-dir /checkpoints/lm_transformer_pile-00 \
-  --arch transformer_lm --share-decoder-input-output-embed \
+  --arch transformer_lm_megatron --share-decoder-input-output-embed \
   --dropout 0.1 \
   --optimizer adam --weight-decay 0.01 --clip-norm 0.0 \
   --lr 0.0005 --lr-scheduler inverse_sqrt --warmup-updates 4000 --warmup-init-lr 1e-07 \
@@ -82,4 +82,3 @@ Navigate to "Metrics Explorer" and select metrics to explore from the top left d
 | `-p` &#124; `--port <port>` | Specify port to listen to. |
 
 _See Aim full documentation at [aimstack.readthedocs.io](https://aimstack.readthedocs.io)._
-
