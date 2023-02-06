@@ -123,18 +123,19 @@ def get_checkpoint_steps(path: str) -> int:
         return 0
     return int(match[1])
 
+def get_all_checkpoints_from_directory_with_subdirs(directory: str, suffix: str, add_priority: float, storage_type: str):
 
-def get_all_checkpoints_from_directory(
+
+
+def get_all_checkpoints_from_directory_with_subdirs(
     directory: str, suffix: str, add_priority: float, storage_type: str
 ) -> List[CheckpointPath]:
-    # from metaseq.pdb import set_trace_rank0
-    # set_trace_rank0()
     checkpoints = []
     for candidate in os.listdir(directory):
         steps = get_checkpoint_steps(candidate)
         if steps == 0:
             continue
-        # TODO needs to be adapated for local dir
+        # TODO needs to be adapated for local dir, which has only num_gpu checkpoints
         expected_file_count = distributed_utils.get_global_world_size()
         present_files = len(
             [
