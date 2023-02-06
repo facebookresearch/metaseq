@@ -67,7 +67,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         ):
             with torch.no_grad():
                 # yank out the inner states we wish to instrument
-                # see transformer_decoder.py TransformerDecoder.extract_features
+                # see transformer_decoder.py ModelParallelTransformerDecoder.extract_features
                 emb, *_, actv = net_output[1]["inner_states"]
                 assert isinstance(
                     emb, dict
