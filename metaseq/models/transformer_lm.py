@@ -232,6 +232,7 @@ class TransformerLanguageModel(BaseModel):
             dtype=utils.get_model_init_dtype(args),
         )
 
+
 @register_model("model_parallel_transformer_lm")
 class ModelParallelTransformerLanguageModel(BaseModel):
     @classmethod

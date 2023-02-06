@@ -74,7 +74,9 @@ class TestJitSequenceGeneratorBase(unittest.TestCase):
         ModelParallelTransformerLanguageModel.add_args(self.parser)
         args = self.parser.parse_args([])
         args.decoder_layers = 1
-        self.transformer_model = ModelParallelTransformerLanguageModel.build_model(args, self.task)
+        self.transformer_model = ModelParallelTransformerLanguageModel.build_model(
+            args, self.task
+        )
 
     def assertOutputEqual(self, hypo, pos_probs):
         pos_scores = torch.FloatTensor(pos_probs).log()
