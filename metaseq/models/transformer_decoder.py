@@ -19,7 +19,6 @@ from metaseq.modules import (
     Dropout,
     LayerNorm,
     PositionalEmbedding,
-    TransformerDecoderLayer,
     ModelParallelTransformerDecoderLayer,
     Linear,
 )
@@ -67,7 +66,7 @@ def _log_weight_stats(tensor, name):
 class ModelParallelTransformerDecoder(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
-    is a :class:`TransformerDecoderLayer`.
+    is a :class:`ModelParallelTransformerDecoderLayer`.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
