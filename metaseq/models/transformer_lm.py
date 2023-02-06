@@ -23,7 +23,7 @@ from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.models import (
-    LanguageModel,
+    BaseModel,
     register_model,
     register_model_architecture,
 )
@@ -198,7 +198,7 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
 
 
 @register_model("transformer_lm", dataclass=TransformerLanguageModelConfig)
-class TransformerLanguageModel(LanguageModel):
+class TransformerLanguageModel(BaseModel):
     def __init__(self, decoder):
         super().__init__(decoder)
 

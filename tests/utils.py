@@ -16,7 +16,7 @@ from metaseq import options
 from metaseq.data import Dictionary, data_utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.models import (
-    LanguageModel,
+    BaseModel,
     BaseDecoder,
 )
 from metaseq.tasks import LegacyTask
@@ -407,7 +407,7 @@ class TestTranslationTask(LegacyTask):
         return self.tgt_dict
 
 
-class TestModel(LanguageModel):
+class TestModel(BaseModel):
     def __init__(self, decoder):
         super().__init__(decoder)
 
