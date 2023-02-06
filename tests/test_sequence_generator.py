@@ -11,7 +11,7 @@ import torch
 
 import tests.utils as test_utils
 from metaseq.data.dictionary import Dictionary
-from metaseq.models.transformer_lm import TransformerLanguageModel
+from metaseq.models.transformer_lm import ModelParallelTransformerLanguageModel
 from metaseq.sequence_generator import SequenceGenerator
 from metaseq.tasks.base_task import LegacyTask
 
@@ -71,10 +71,10 @@ class TestJitSequenceGeneratorBase(unittest.TestCase):
         self.sample = {
             "net_input": {"src_tokens": src_tokens, "src_lengths": src_lengths}
         }
-        TransformerLanguageModel.add_args(self.parser)
+        ModelParallelTransformerLanguageModel.add_args(self.parser)
         args = self.parser.parse_args([])
         args.decoder_layers = 1
-        self.transformer_model = TransformerLanguageModel.build_model(args, self.task)
+        self.transformer_model = ModelParallelTransformerLanguageModel.build_model(args, self.task)
 
     def assertOutputEqual(self, hypo, pos_probs):
         pos_scores = torch.FloatTensor(pos_probs).log()
