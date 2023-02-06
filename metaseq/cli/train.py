@@ -37,7 +37,6 @@ from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
-from metaseq.model_parallel.megatron_trainer import MegatronTrainer
 from metaseq.trainer import Trainer
 
 logging.basicConfig(
@@ -67,11 +66,15 @@ def main(cfg: DictConfig) -> None:
 
     checkpoint_utils.verify_checkpoint_directory(cfg.checkpoint.save_dir)
 
-    if distributed_utils.is_master(cfg.distributed_training):
+    if distributed_utils.is_master(cfg.distributed_training) and os.environ.get(
+        "METASEQ_SAVE_DIR"
+    ):
         # save a (vaguely human readable) copy of the training config
+        # TODO(roller): only works when launched with a sweep script
+        # should fix that
         OmegaConf.save(
             config=_flatten_config(cfg),
-            f=os.path.join(cfg.checkpoint.save_dir, "config.yml"),
+            f=os.path.join(os.environ["METASEQ_SAVE_DIR"], "config.yml"),
         )
 
     if (
@@ -145,10 +148,7 @@ def main(cfg: DictConfig) -> None:
             task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
     # Build trainer
-    if cfg.common.model_parallel_size == 1:
-        trainer = Trainer(cfg, task, model, criterion)
-    else:
-        trainer = MegatronTrainer(cfg, task, model, criterion)
+    trainer = Trainer(cfg, task, model, criterion)
     logger.info(
         "training on {} devices (GPUs/TPUs)".format(
             cfg.distributed_training.distributed_world_size

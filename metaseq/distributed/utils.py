@@ -85,7 +85,7 @@ def _infer_slurm_init(cfg: DistributedTrainingConfig):
             host = os.environ.get("MASTER_ADDR", None)
         if host is None:
             return
-        cfg.distributed_init_method = "tcpr://{host}:{port}".format(
+        cfg.distributed_init_method = "barrierlesstcpr://{host}:{port}".format(
             host=host, port=cfg.distributed_port
         )
         nnodes = int(os.environ.get("SLURM_NNODES"))
@@ -165,7 +165,10 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
-    if cfg.common.model_parallel_size > 1:
+    if (
+        getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
+        or cfg.common.model_parallel_size > 1
+    ):
         try:
             from megatron.mpu import (
                 initialize_model_parallel,

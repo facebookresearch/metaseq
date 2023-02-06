@@ -8,14 +8,18 @@ Train a network across multiple GPUs.
 """
 
 import contextlib
+import functools
 import logging
+import math
 import re
 import sys
 import time
-import math
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
+
 import torch
+import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
@@ -24,7 +28,15 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
-from concurrent.futures import ThreadPoolExecutor
+
+try:
+    from megatron.mpu import (
+        get_cuda_rng_tracker,
+    )
+
+    has_megatron_submodule = True
+except (ImportError, ModuleNotFoundError):
+    has_megatron_submodule = False
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +54,13 @@ class Trainer(object):
     def __init__(self, cfg, task, model, criterion):
         self.cfg = cfg
         self.task = task
+        self.model_parallel_size = cfg.common.model_parallel_size
+
+        if self.model_parallel_size > 1:
+            if not has_megatron_submodule:
+                raise ImportError(
+                    "\n\nPlease install megatron using the setup instructions!"
+                )
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
@@ -378,6 +397,10 @@ class Trainer(object):
         self, filename, extra_state, training_finished=False, async_callback_fn=None
     ):
         """Save all training state in a checkpoint file."""
+
+        if self.model_parallel_size > 1:
+            extra_state["rng_tracker_states"] = get_cuda_rng_tracker().get_states()
+
         # call state_dict on all ranks in case it needs internal communication
         state_dicts = self.state_dict(filename, training_finished)
         for filename, state_dict in state_dicts.items():
@@ -557,6 +580,8 @@ class Trainer(object):
         else:
             logger.info("No existing checkpoint found {}".format(filename))
 
+        if extra_state is not None and "rng_tracker_states" in extra_state:
+            get_cuda_rng_tracker().set_states(extra_state["rng_tracker_states"])
         return extra_state
 
     def get_train_iterator(
@@ -957,12 +982,40 @@ class Trainer(object):
     def clip_grad_norm(
         self, clip_norm, clip_norm_type="l2", skip_gradient_update_on_clip_norm=False
     ):
-        return self.optimizer.clip_grad_norm(
-            clip_norm,
-            clip_norm_type,
-            aggregate_norm_fn=None,
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
-        )
+        if self.model_parallel_size == 1:
+            return self.optimizer.clip_grad_norm(
+                clip_norm,
+                clip_norm_type,
+                aggregate_norm_fn=None,
+                skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            )
+        else:
+
+            def _aggregate_model_parallel_grad_norm(norm_type, total_norm):
+                norm_type2_reduce_op = {
+                    "l2": dist.ReduceOp.SUM,
+                    "inf": dist.ReduceOp.MAX,
+                }
+                reduce_op = norm_type2_reduce_op[norm_type]
+                if norm_type == "l2":
+                    total_norm.pow_(2)
+                dist.all_reduce(
+                    total_norm,
+                    group=distributed_utils.get_model_parallel_group(),
+                    op=reduce_op,
+                )
+                if norm_type == "l2":
+                    total_norm.sqrt_()
+                return total_norm
+
+            return self.optimizer.clip_grad_norm(
+                clip_norm,
+                clip_norm_type,
+                aggregate_norm_fn=functools.partial(
+                    _aggregate_model_parallel_grad_norm, clip_norm_type
+                ),
+                skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            )
 
     def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch, span=9):
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)

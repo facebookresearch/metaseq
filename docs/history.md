@@ -15,7 +15,7 @@ In order to enable faster iteration, we have removed most features offered by fa
   * FairseqDropout &rarr; Dropout 
 
 * Model arch related renaming
-  * FairseqDecoder &rarr; BaseDecoder 
+  * FairseqDecoder &rarr; BaseDecoder (since replaced by IncrementalDecoder)
   * FairseqEncoder &rarr; BaseEncoder 
   * DistributedFairseqModel &rarr; DistributedModel 
   * BaseFairseqModel &rarr; BaseModel 
