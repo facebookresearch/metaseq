@@ -9,6 +9,7 @@ from .dictionary import Dictionary, TruncatedDictionary
 from .base_dataset import BaseDataset
 from .base_wrapper_dataset import BaseWrapperDataset
 from .append_token_dataset import AppendTokenDataset
+from .cm3_dataset import CausalMaskedDocumentToSequenceDataset
 from .concat_dataset import ConcatDataset
 from .id_dataset import IdDataset
 from .indexed_dataset import (
@@ -46,6 +47,7 @@ from .iterators import (
 __all__ = [
     "AppendTokenDataset",
     "BaseWrapperDataset",
+    "CausalMaskedDocumentToSequenceDataset",
     "ConcatDataset",
     "CountingIterator",
     "Dictionary",
