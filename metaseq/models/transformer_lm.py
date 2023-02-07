@@ -201,6 +201,7 @@ class TransformerLanguageModel(BaseModel):
     def __init__(self, decoder):
         super().__init__(decoder)
 
+
 @register_model("model_parallel_transformer_lm")
 class ModelParallelTransformerLanguageModel(BaseModel):
     @classmethod
