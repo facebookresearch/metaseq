@@ -8,8 +8,7 @@ from .dropout import Dropout
 from .activation_functions import ActivationFn, gelu
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
-from .multihead_attention import MultiheadAttention
-from .multihead_attention_mp import ModelParallelMultiheadAttention
+from .multihead_attention import ModelParallelMultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .linear import Linear
@@ -26,7 +25,6 @@ __all__ = [
     "gelu",
     "LayerNorm",
     "LearnedPositionalEmbedding",
-    "MultiheadAttention",
     "ModelParallelMultiheadAttention",
     "PositionalEmbedding",
     "SinusoidalPositionalEmbedding",

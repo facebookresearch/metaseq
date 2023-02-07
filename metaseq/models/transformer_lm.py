@@ -20,7 +20,6 @@ from omegaconf import II
 
 from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
-from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.models import (
     BaseModel,
@@ -31,7 +30,6 @@ from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
     ModelParallelTransformerDecoder,
 )
-from metaseq.modules.embedding import Embedding
 from metaseq.modules.activation_functions import get_available_activation_fns
 
 import logging

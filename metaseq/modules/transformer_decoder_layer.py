@@ -16,7 +16,6 @@ from metaseq.modules import (
     Dropout,
     FeedForwardNetwork,
     LayerNorm,
-    Linear,
 )
 from metaseq.modules.fused_bias_gelu import (
     has_fused_bias_gelu,
