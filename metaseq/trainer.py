@@ -294,7 +294,6 @@ class Trainer(object):
                 "using non-pointwise optimizers (e.g., Adagrad, Adafactor, LAMB)"
             )
 
-
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
         self._lr_scheduler = lr_scheduler.build_lr_scheduler(
