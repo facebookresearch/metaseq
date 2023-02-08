@@ -441,7 +441,6 @@ def load_checkpoint_to_cpu(path, arg_overrides=None) -> dict:
 
     # Expand multi-part checkpoints like "checkpoint_last-shard0.pt"
     paths_to_load, ddp_checkpoint_files_count = get_paths_to_load(path, suffix="shard")
-    logger.warning(f"Rank: {torch.distributed.get_rank()}, len of files to load: {len(paths_to_load)}, shards: {ddp_checkpoint_files_count}")
     world_size = distributed_utils.get_data_parallel_world_size()
     try:
         if world_size < ddp_checkpoint_files_count:
@@ -459,10 +458,7 @@ def load_checkpoint_to_cpu(path, arg_overrides=None) -> dict:
                 shard_ids.append(int(match.group(1)))
                 states.append(torch_load_cpu(path_to_load))
 
-            logger.warning(f"Rank: {torch.distributed.get_rank()}, shard_ids: {shard_ids}")
             state = _split_flat_fsdp_shards(states, previous_shard_counts=ddp_checkpoint_files_count, shard_ids=shard_ids)
-            logger.warning(f"Post fixed state")
-
 
     except Exception as error:
         logger.error(

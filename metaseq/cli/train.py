@@ -267,11 +267,6 @@ def train(
         i,
         samples,
     ):
-        # if  i == 1:
-        #     if torch.distributed.get_rank() == 0:
-        #         from metaseq.pdb import set_trace; set_trace()
-        #     else:
-        #         from time import sleep; sleep(10000)
         with metrics.aggregate("train_inner"):
             if update_freq == 1:
                 samples = [samples]

@@ -441,7 +441,7 @@ class Trainer(object):
             bexists = len(matched_files) > 0
 
         if bexists:
-            logger.warning(f"Preparing to load checkpoint {filename}")
+            logger.info(f"Preparing to load checkpoint {filename}")
             # FSDP requires loading checkpoint shards on all ranks
             load_on_all_ranks = self.is_fsdp
 
@@ -484,13 +484,7 @@ class Trainer(object):
 
             # load model parameters
             try:
-                logger.warning(
-                    f"Rank: {torch.distributed.get_rank()}, before model load state dict"
-                )
                 self.model.load_state_dict(state["model"], strict=True)
-                logger.warning(
-                    f"Rank: {torch.distributed.get_rank()}, after model load state dict"
-                )
                 # save memory for later steps
                 del state["model"]
                 if utils.has_parameters(self.get_criterion()):
@@ -540,7 +534,7 @@ class Trainer(object):
                 logger.info(f"FSDP got shard from optim_state for {filename}")
 
             self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
-            logger.warning(f"Loaded optim_state for {filename}, rank: {torch.distributed.get_rank()}")
+            logger.info(f"Loaded optim_state for {filename}")
             self.set_num_updates(last_optim["num_updates"])
 
         if extra_state is not None:
@@ -571,11 +565,11 @@ class Trainer(object):
                     if isinstance(meter, meters.TimeMeter):
                         meter.reset()
 
-            logger.warning(
+            logger.info(
                 f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
             )
         else:
-            logger.warning("No existing checkpoint found {}".format(filename))
+            logger.info("No existing checkpoint found {}".format(filename))
 
         return extra_state
 
