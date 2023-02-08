@@ -6,7 +6,8 @@
 import torch
 import torch.nn as nn
 
-from .learned_positional_embedding import LearnedPositionalEmbedding
+from .learned_positional_embedding import LearnedPositionalEmbedding, \
+    FreezableLearnedPositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 
 
@@ -20,6 +21,7 @@ def PositionalEmbedding(
     pos_init_scalar=1.0,
     megatron_init_sigma=None,
     truncate_init=False,
+    num_freeze=None,
 ):
     def _init_emb(tensor, sigma):
         if sigma <= 1e-8:  # effectively 0
@@ -38,7 +40,12 @@ def PositionalEmbedding(
         # LearnedPositionalEmbedding. Move this there for a cleaner implementation.
         if padding_idx is not None:
             num_embeddings = num_embeddings + padding_idx + 1
-        m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
+        if num_freeze:
+            m = FreezableLearnedPositionalEmbedding(
+                num_embeddings, embedding_dim, padding_idx, num_freeze
+            )
+        else:
+            m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
         if full_megatron_init:
             _init_emb(m.weight, megatron_init_sigma * pos_init_scalar)
         else:
@@ -48,7 +55,12 @@ def PositionalEmbedding(
     elif learned_sinusoidal:
         if padding_idx is not None:
             num_embeddings = num_embeddings + padding_idx + 1
-        m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
+        if num_freeze:
+            m = FreezableLearnedPositionalEmbedding(
+                num_embeddings, embedding_dim, padding_idx, num_freeze
+            )
+        else:
+            m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx)
         with torch.no_grad():
             m.weight.copy_(
                 SinusoidalPositionalEmbedding.get_embedding(

@@ -104,6 +104,7 @@ class TransformerDecoder(IncrementalDecoder):
                 pos_init_scalar=getattr(args, "pos_init_scalar", 1.0),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
                 truncate_init=getattr(args, "truncate_init", False),
+                num_freeze=getattr(args, "num_freeze_positions", None),
             )
             if args.decoder_learned_pos and not self.use_alibi
             else None
@@ -188,6 +189,9 @@ class TransformerDecoder(IncrementalDecoder):
             self.alibi = self._build_alibi_tensor(
                 self.max_positions(), args.decoder_attention_heads
             )
+        if getattr(args, "num_freeze_positions", None):
+            self.requires_grad_(False)
+            self.embed_positions.requires_grad_(True)
 
     @staticmethod
     def _build_alibi_tensor(max_seq_len: int, n_attention_heads: int):

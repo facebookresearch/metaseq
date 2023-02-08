@@ -74,11 +74,22 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=1024,
         metadata={"help": "max number of tokens per sample for LM dataset"},
     )
+    split_loss: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "splits loss reporting into loss_start (positions up to split_loss) and "
+            "loss_end (tokens from split_loss up to tokens_per_sample)."
+        }
+    )
     max_source_positions: Optional[int] = field(
         default=None, metadata={"help": "max number of tokens in the source sequence"}
     )
     max_target_positions: Optional[int] = field(
         default=None, metadata={"help": "max number of tokens in the target sequence"}
+    )
+    num_freeze_positions: Optional[int] = field(
+        default=None, metadata={
+            "help": "train only positional embeddings and only from this position"}
     )
     final_vocab_size: Optional[int] = field(
         default=None, metadata={"help": "force vocab size to this"}
@@ -177,6 +188,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert self.tokenizer.id_to_token(2) in {"<EOS>", "</s>"}
         assert self.dictionary.unk_index == 3
         assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
+
+        self.split_loss = getattr(args, "split_loss", None)
 
     @classmethod
     def setup_task(cls, args, **kwargs):

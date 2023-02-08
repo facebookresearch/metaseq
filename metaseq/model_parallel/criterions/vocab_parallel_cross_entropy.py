@@ -28,6 +28,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             raise ImportError(
                 "\n\nPlease install megatron using the setup instructions!"
             )
+        self.split_loss = getattr(task, "split_loss", None)
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -44,6 +45,16 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
         if has_pad:
             loss = loss * (target != self.padding_idx)
+        if self.split_loss is not None:
+            loss_start = loss.detach()[:, :self.split_loss].sum()
+            loss_end = loss.detach()[:, self.split_loss:].sum()
+            if has_pad:
+                ntokens_start = (target.detach()[:, :self.split_loss] != self.padding_idx).sum()
+                ntokens_end = (target.detach()[:, self.split_loss:] != self.padding_idx).sum()
+            else:
+                ntokens_start = loss.shape[0] * min(loss.shape[1], self.split_loss)
+                ntokens_end = loss.shape[0] * max(loss.shape[1] - self.split_loss, 0)
+
         loss = loss.sum()
         # When using target loss only, use num tokens in target only as the sample_size
         # See StreamingSrcTgtDataset
@@ -58,6 +69,11 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
         }
+        if self.split_loss is not None:
+            logging_output["loss_start"] = loss_start.item()
+            logging_output["loss_end"] = loss_end.item()
+            logging_output["ntokens_start"] = ntokens_start
+            logging_output["ntokens_end"] = ntokens_end
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
         if (
@@ -111,6 +127,18 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
         )
+
+        if any("loss_start" in log for log in logging_outputs):
+            loss_start_sum = sum(log.get("loss_start", 0) for log in logging_outputs)
+            loss_end_sum = sum(log.get("loss_end", 0) for log in logging_outputs)
+            ntokens_start = sum(log.get("ntokens_start", 0) for log in logging_outputs)
+            ntokens_end = sum(log.get("ntokens_end", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "loss_start", loss_start_sum / ntokens_start / math.log(2), ntokens_start, round=3
+            )
+            metrics.log_scalar(
+                "loss_end", loss_end_sum / ntokens_end / math.log(2), ntokens_end, round=3
+            )
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:
