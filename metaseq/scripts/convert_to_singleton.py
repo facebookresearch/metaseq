@@ -152,8 +152,8 @@ def worker_main(cfg: MetaseqConfig):
         cfg.common_eval.path.replace("reshard.pt", "reshard-model_part-0.pt")
     )
     output_sd["model"] = utils.move_to_cpu(glued)
-    output_sd["cfg"]["model"].arch = "transformer_lm"
-    output_sd["cfg"]["model"]._name = "transformer_lm"
+    output_sd["cfg"]["model"].arch = "transformer_lm_megatron"
+    output_sd["cfg"]["model"]._name = "transformer_lm_megatron"
 
     if distributed_utils.get_global_rank() == 0:
         with open(cfg.task.data + "/restored.pt", "wb") as f:
