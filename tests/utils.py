@@ -17,10 +17,10 @@ from metaseq.data import Dictionary, data_utils
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.models import (
     LanguageModel,
-    IncrementalDecoder,
+    BaseDecoder,
 )
 from metaseq.tasks import LegacyTask
-from metaseq_cli import train, validate
+from metaseq.cli import validate, train
 
 
 def collate(
@@ -413,11 +413,11 @@ class TestModel(LanguageModel):
 
     @classmethod
     def build_model(cls, args, task):
-        decoder = TestIncrementalDecoder(args, task.target_dictionary)
+        decoder = TestBaseDecoder(args, task.target_dictionary)
         return cls(decoder)
 
 
-class TestIncrementalDecoder(IncrementalDecoder):
+class TestBaseDecoder(BaseDecoder):
     def __init__(self, args, dictionary):
         super().__init__(dictionary)
         assert hasattr(args, "beam_probs") or hasattr(args, "probs")

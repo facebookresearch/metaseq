@@ -8,14 +8,18 @@ Train a network across multiple GPUs.
 """
 
 import contextlib
+import functools
 import logging
+import math
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
 
 import torch
+import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
@@ -24,6 +28,15 @@ from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
+
+try:
+    from megatron.mpu import (
+        get_cuda_rng_tracker,
+    )
+
+    has_megatron_submodule = True
+except (ImportError, ModuleNotFoundError):
+    has_megatron_submodule = False
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +54,18 @@ class Trainer(object):
     def __init__(self, cfg, task, model, criterion):
         self.cfg = cfg
         self.task = task
+        self.model_parallel_size = cfg.common.model_parallel_size
+
+        if self.model_parallel_size > 1:
+            if not has_megatron_submodule:
+                raise ImportError(
+                    "\n\nPlease install megatron using the setup instructions!"
+                )
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
-        self.dont_log_param_and_grad_norm = getattr(
-            cfg.common, "dont_log_param_and_grad_norm", False
-        )
         if self.cuda:
             self.device = torch.device("cuda")
         else:
@@ -82,7 +99,10 @@ class Trainer(object):
         self._criterion = criterion
         self._model = model
         if not self.is_fsdp:
-            if cfg.common.fp16:
+            if cfg.common.bf16:
+                self._criterion = self._criterion.bfloat16()
+                self._model = self._model.bfloat16()
+            elif cfg.common.fp16:
                 self._criterion = self._criterion.half()
                 self._model = self._model.half()
         if (
@@ -111,6 +131,8 @@ class Trainer(object):
         self._warn_once = set()
         self._wrapped_criterion = None
         self._wrapped_model = None
+        self._ewm_loss = None
+        self._skipped_loss_spikes = 0
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -309,8 +331,6 @@ class Trainer(object):
     def consolidate_optimizer(self):
         """For OSS, we need to consolidate the state dict."""
         self._gathered_optim_state = None
-        if self.cfg.checkpoint.no_save_optimizer_state:
-            return
         if hasattr(self.optimizer.optimizer, "consolidate_state_dict"):
             self.optimizer.optimizer.consolidate_state_dict()
         elif self.is_fsdp and not self.use_sharded_state:
@@ -324,9 +344,7 @@ class Trainer(object):
 
     def state_dict(self, filename, training_finished=False) -> Dict[str, Dict]:
         model_state_dict = self.model.state_dict()
-        optim_state = None
-        if not self.cfg.checkpoint.no_save_optimizer_state:
-            optim_state = self._gathered_optim_state or self.optimizer.state_dict()
+        optim_state = self._gathered_optim_state or self.optimizer.state_dict()
         model_save_list = [
             (
                 filename,
@@ -360,13 +378,11 @@ class Trainer(object):
                 "extra_state": {
                     "metrics": metrics.state_dict(),
                     "previous_training_time": self.cumulative_training_time(),
+                    "ewm_loss": self._ewm_loss,
                 },
             }
-            if not self.cfg.checkpoint.no_save_optimizer_state or (
-                self.cfg.checkpoint.no_save_optimizer_state_on_training_finished
-                and training_finished
-            ):
-                state_dict["last_optimizer_state"] = optimizer_state_dict
+
+            state_dict["last_optimizer_state"] = optimizer_state_dict
 
             if self.is_fsdp and self.use_sharded_state:
                 state_dict[
@@ -381,6 +397,10 @@ class Trainer(object):
         self, filename, extra_state, training_finished=False, async_callback_fn=None
     ):
         """Save all training state in a checkpoint file."""
+
+        if self.model_parallel_size > 1:
+            extra_state["rng_tracker_states"] = get_cuda_rng_tracker().get_states()
+
         # call state_dict on all ranks in case it needs internal communication
         state_dicts = self.state_dict(filename, training_finished)
         for filename, state_dict in state_dicts.items():
@@ -392,12 +412,20 @@ class Trainer(object):
             )
             state_dict["extra_state"].update(extra_state)
             if self.should_save_checkpoint_on_current_rank:
-                checkpoint_utils.torch_persistent_save(
-                    state_dict,
-                    filename,
-                    async_write=self.cfg.checkpoint.write_checkpoints_asynchronously,
-                    async_callback_fn=async_callback_fn,
-                )
+                if not hasattr(self, "async_checkpoint"):
+                    self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+
+                def perform_save():
+                    try:
+                        logger.info(f"Beginning asynchronous torch.save to {filename}")
+                        torch.save(state_dict, filename)
+                        if async_callback_fn is not None:
+                            async_callback_fn(filename)
+                        logger.info(f"Asynchronous torch.save to {filename} complete.")
+                    except Exception as e:
+                        logger.exception(f"Asynchronous save failed: {e}")
+
+                self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(
@@ -526,6 +554,9 @@ class Trainer(object):
                 self._previous_training_time = extra_state["previous_training_time"]
                 self._start_time = time.time()
 
+            if "ewm_loss" in extra_state:
+                self._ewm_loss = extra_state["ewm_loss"]
+
             self.lr_step(epoch)
 
             if (
@@ -549,6 +580,8 @@ class Trainer(object):
         else:
             logger.info("No existing checkpoint found {}".format(filename))
 
+        if extra_state is not None and "rng_tracker_states" in extra_state:
+            get_cuda_rng_tracker().set_states(extra_state["rng_tracker_states"])
         return extra_state
 
     def get_train_iterator(
@@ -585,10 +618,9 @@ class Trainer(object):
             epoch=epoch,
             data_buffer_size=self.cfg.dataset.data_buffer_size,
             disable_iterator_cache=disable_iterator_cache,
-            skip_remainder_batch=(
-                not self.cfg.optimization.train_with_epoch_remainder_batch
-            ),
+            skip_remainder_batch=True,
         )
+        logger.info("finished creating batch iterator")
         self.reset_dummy_batch(batch_iterator.first_batch)
         return batch_iterator
 
@@ -641,7 +673,7 @@ class Trainer(object):
         self._dummy_batch = batch
 
     @metrics.aggregate("train")
-    def train_step(self, samples, raise_oom=False):
+    def train_step(self, samples):
         """Do forward, backward and parameter update."""
         self._set_seed()
         self.model.train()
@@ -651,8 +683,14 @@ class Trainer(object):
         metrics.log_start_time("train_wall", priority=800, round=0)
 
         # forward and backward pass
-        logging_outputs, sample_size, ooms = [], 0, 0
+        logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
+            if (
+                self.get_num_updates() == 0
+                and i == 0
+                and distributed_utils.get_global_rank() == 0
+            ):
+                logger.info(f"First batch on first rank: " + str(sample))
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             def maybe_no_sync():
@@ -698,19 +736,7 @@ class Trainer(object):
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
-                    if raise_oom:
-                        raise e
-                    logger.warning(
-                        "attempting to recover from OOM in forward/backward pass"
-                    )
-                    ooms += 1
-                    self.zero_grad()
-                    if self.cuda:
-                        torch.cuda.empty_cache()
-                    if self.cfg.distributed_training.distributed_world_size == 1:
-                        return None
-                else:
-                    raise e
+                raise e
 
         if is_dummy_batch:
             if torch.is_tensor(sample_size):
@@ -728,10 +754,9 @@ class Trainer(object):
             train_time = self._local_cumulative_training_time()
             logging_outputs, (
                 sample_size,
-                ooms,
                 total_train_time,
             ) = self._aggregate_logging_outputs(
-                logging_outputs, sample_size, ooms, train_time, ignore=is_dummy_batch
+                logging_outputs, sample_size, train_time, ignore=is_dummy_batch
             )
             self._cumulative_training_time = (
                 total_train_time / self.data_parallel_world_size
@@ -740,46 +765,44 @@ class Trainer(object):
         overflow = False
         logger.debug(f"[{self.get_num_updates()}] done with fwd, bwd")
         try:
-            with torch.autograd.profiler.record_function("reduce-grads"):
-                # reduce gradients across workers
-                self.optimizer.all_reduce_grads(self.model)
-                if utils.has_parameters(self.criterion):
-                    self.optimizer.all_reduce_grads(self.criterion)
+            # reduce gradients across workers
+            self.optimizer.all_reduce_grads(self.model)
+            if utils.has_parameters(self.criterion):
+                self.optimizer.all_reduce_grads(self.criterion)
 
-            with torch.autograd.profiler.record_function("multiply-grads"):
-                # multiply gradients by (data_parallel_size / sample_size) since
-                # DDP normalizes by the number of data parallel workers for
-                # improved fp16 precision.
-                # Thus we get (sum_of_gradients / sample_size) at the end.
-                # In case of fp16, this step also undoes loss scaling.
-                # (Debugging note: Some optimizers perform this scaling on the
-                # fly, so inspecting model.parameters() or optimizer.params may
-                # still show the original, unscaled gradients.)
-                numer = self.data_parallel_world_size if self._sync_stats() else 1
-                self.optimizer.multiply_grads(numer / (sample_size or 1.0))
-                # Note: (sample_size or 1.0) handles the case of a zero gradient, in a
-                # way that avoids CPU/device transfers in case sample_size is a GPU or
-                # TPU object. The assumption is that the gradient itself is also 0.
+            # multiply gradients by (data_parallel_size / sample_size) since
+            # DDP normalizes by the number of data parallel workers for
+            # improved fp16 precision.
+            # Thus we get (sum_of_gradients / sample_size) at the end.
+            # In case of fp16, this step also undoes loss scaling.
+            # (Debugging note: Some optimizers perform this scaling on the
+            # fly, so inspecting model.parameters() or optimizer.params may
+            # still show the original, unscaled gradients.)
+            numer = self.data_parallel_world_size if self._sync_stats() else 1
+            self.optimizer.multiply_grads(numer / (sample_size or 1.0))
+            # Note: (sample_size or 1.0) handles the case of a zero gradient, in a
+            # way that avoids CPU/device transfers in case sample_size is a GPU or
+            # TPU object. The assumption is that the gradient itself is also 0.
 
-            with torch.autograd.profiler.record_function("clip-grads"):
-                # clip grads
-                grad_norm = self.clip_grad_norm(
-                    self.cfg.optimization.clip_norm,
-                    self.cfg.optimization.clip_norm_type,
-                    self.cfg.optimization.skip_gradient_update_on_clip_norm,
-                )
-
+            # clip grads
+            grad_norm = self.clip_grad_norm(
+                self.cfg.optimization.clip_norm,
+                self.cfg.optimization.clip_norm_type,
+                self.cfg.optimization.skip_gradient_update_on_clip_norm,
+            )
             # check that grad norms are consistent across workers
             self._check_grad_norms(grad_norm)
             if not torch.isfinite(grad_norm).all():
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
-
-            with torch.autograd.profiler.record_function("optimizer"):
-                # take an optimization step
-                self.task.optimizer_step(
-                    self.optimizer, model=self.model, update_num=self.get_num_updates()
-                )
+            # skip optimizer step if there is a loss spike
+            ewm_loss_ratio = self.skip_spike(
+                logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
+            )
+            # take an optimization step
+            self.task.optimizer_step(
+                self.optimizer, model=self.model, update_num=self.get_num_updates()
+            )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
         except FloatingPointError:
@@ -805,6 +828,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
+        except SpikeError as e:
+            overflow = True
+            logger.info(str(e))
+            self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -821,7 +848,7 @@ class Trainer(object):
 
             # log stats
             logging_output = self._reduce_and_log_stats(
-                logging_outputs, sample_size, grad_norm
+                logging_outputs, sample_size, grad_norm, ewm_loss_ratio
             )
 
             # clear CUDA cache to reduce memory fragmentation
@@ -942,47 +969,6 @@ class Trainer(object):
         """Get the (non-wrapped) criterion instance."""
         return self._criterion
 
-    def get_meter(self, name):
-        """[deprecated] Get a specific meter by name."""
-        from metaseq import meters
-
-        if "get_meter" not in self._warn_once:
-            self._warn_once.add("get_meter")
-            utils.deprecation_warning(
-                "Trainer.get_meter is deprecated. Please use metaseq.metrics instead."
-            )
-
-        train_meters = metrics.get_meters("train")
-        if train_meters is None:
-            train_meters = {}
-
-        if name == "train_loss" and "loss" in train_meters:
-            return train_meters["loss"]
-        elif name == "train_nll_loss":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = train_meters.get("nll_loss", None)
-            return m or meters.AverageMeter()
-        elif name == "wall":
-            # support for legacy train.py, which assumed this meter is
-            # always initialized
-            m = metrics.get_meter("default", "wall")
-            return m or meters.TimeMeter()
-        elif name == "wps":
-            m = metrics.get_meter("train", "wps")
-            return m or meters.TimeMeter()
-        elif name in {"valid_loss", "valid_nll_loss"}:
-            # support for legacy train.py, which assumed these meters
-            # are always initialized
-            k = name[len("valid_") :]
-            m = metrics.get_meter("valid", k)
-            return m or meters.AverageMeter()
-        elif name == "oom":
-            return meters.AverageMeter()
-        elif name in train_meters:
-            return train_meters[name]
-        return None
-
     def get_num_updates(self):
         """Get the number of parameters updates."""
         return self._num_updates
@@ -996,12 +982,67 @@ class Trainer(object):
     def clip_grad_norm(
         self, clip_norm, clip_norm_type="l2", skip_gradient_update_on_clip_norm=False
     ):
-        return self.optimizer.clip_grad_norm(
-            clip_norm,
-            clip_norm_type,
-            aggregate_norm_fn=None,
-            skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
-        )
+        if self.model_parallel_size == 1:
+            return self.optimizer.clip_grad_norm(
+                clip_norm,
+                clip_norm_type,
+                aggregate_norm_fn=None,
+                skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            )
+        else:
+
+            def _aggregate_model_parallel_grad_norm(norm_type, total_norm):
+                norm_type2_reduce_op = {
+                    "l2": dist.ReduceOp.SUM,
+                    "inf": dist.ReduceOp.MAX,
+                }
+                reduce_op = norm_type2_reduce_op[norm_type]
+                if norm_type == "l2":
+                    total_norm.pow_(2)
+                dist.all_reduce(
+                    total_norm,
+                    group=distributed_utils.get_model_parallel_group(),
+                    op=reduce_op,
+                )
+                if norm_type == "l2":
+                    total_norm.sqrt_()
+                return total_norm
+
+            return self.optimizer.clip_grad_norm(
+                clip_norm,
+                clip_norm_type,
+                aggregate_norm_fn=functools.partial(
+                    _aggregate_model_parallel_grad_norm, clip_norm_type
+                ),
+                skip_gradient_update_on_clip_norm=skip_gradient_update_on_clip_norm,
+            )
+
+    def skip_spike(self, logging_outputs, ewm_ratio_to_skip_batch, span=9):
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        loss_t = float(loss_sum / sample_size / math.log(2))
+
+        if self._ewm_loss is None:
+            self._ewm_loss = loss_t
+
+        ewm_t_1 = self._ewm_loss
+        alpha = 2 / (span + 1)
+        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
+        ewm_ratio = loss_t / ewm_t
+
+        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
+            self._skipped_loss_spikes += 1
+            raise SpikeError(
+                f"Skip batch as we encountered a loss spike. In "
+                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+                f"The ewm for the loss was only at {ewm_t:.2f} . "
+                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            )
+        # the current loss is only included in ewm if the current batch is not skipped
+        self._ewm_loss = ewm_t
+
+        return ewm_ratio
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:
@@ -1185,45 +1226,21 @@ class Trainer(object):
                     + "-" * 80
                 )
 
-    def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
-        # perform a bunch of arch-specific gradient metrics
-        for name, param in self.model.named_parameters():
-            if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
-                break
-            if param.grad is None:
-                continue
-            nice_name = name.replace("module._fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("_fsdp_wrapped_module._fpw_module.", "")
-            nice_name = nice_name.replace("._fsdp_wrapped_module.flat_param_0", "")
-            nice_name = nice_name.replace("decoder.layers.", "layer")
-            # threshold for near zeros
-            threshold = torch.finfo(param.grad.dtype).tiny * 2
-            with torch.no_grad():
-                g = param.grad
-                if hasattr(self.optimizer, "_multiply_factor"):
-                    g = self.optimizer._multiply_factor * g
-                norm = g.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = g.max()
-                nz = ((g > -threshold) & (g < threshold)).sum() / g.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"gnorm_{nice_name}", norm, priority=10)
-            metrics.log_scalar(f"gmax_{nice_name}", max_, priority=11)
-            metrics.log_scalar(f"gzero_{nice_name}", nz, priority=12)
-            with torch.no_grad():
-                norm = param.norm(p=2, dim=-1, dtype=torch.float32)
-                max_ = param.max()
-                nz = ((param > -threshold) & (param < threshold)).sum() / param.numel()
-            # priorities for printing order
-            metrics.log_scalar(f"pnorm_{nice_name}", norm, priority=13)
-            metrics.log_scalar(f"pmax_{nice_name}", max_, priority=14)
-            metrics.log_scalar(f"pzero_{nice_name}", nz, priority=15)
-
+    def _reduce_and_log_stats(
+        self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
+    ):
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
         ):
             metrics.log_speed("ups", 1.0, priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
+            metrics.log_scalar("ewm_loss", self._ewm_loss, priority=700, round=2)
+            metrics.log_scalar("ewm_loss_ratio", ewm_loss_ratio, priority=710, round=4)
+            metrics.log_scalar(
+                "skipped_loss_spikes", self._skipped_loss_spikes, priority=720
+            )
+            self._skipped_loss_spikes = 0
             if self.cfg.optimization.clip_norm > 0:
                 metrics.log_scalar(
                     "clip",
@@ -1314,3 +1331,7 @@ def _set_module_by_path(module, path, value):
     for name in path[:-1]:
         module = getattr(module, name)
     setattr(module, path[-1], value)
+
+
+class SpikeError(Exception):
+    pass

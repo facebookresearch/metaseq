@@ -44,7 +44,7 @@ We actively welcome your pull requests.
 ### Pre-commit hooks
 In order to ensure your code lints, there are pre-commit hooks configured in the repository which you can install.
 After installation, they will automatically run each time you commit.
-An abbreviated guide is given below; for more information, refer to [the offical pre-commit documentation](https://pre-commit.com/).
+An abbreviated guide is given below; for more information, refer to [the official pre-commit documentation](https://pre-commit.com/).
 
 ```
 pip install pre-commit

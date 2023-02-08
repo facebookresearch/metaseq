@@ -15,14 +15,14 @@ import torch
 
 from metaseq.data import (
     JsonlDataset,
-    StreamingShuffleDataset,
-    StreamingSrcTgtDataset,
     data_utils,
 )
 from metaseq.tasks.streaming_language_modeling import (
     StreamingLanguageModelingTask,
     StreamingLanguageModelingConfig,
 )
+from metaseq.tasks.streaming_language_modeling import DocumentToSequenceDataset
+
 from metaseq.tasks import register_task
 
 logger = logging.getLogger(__name__)
@@ -96,10 +96,7 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
-        # shuffle order across epochs
-        dataset = StreamingShuffleDataset(dataset, seed=self.args.seed)
-
-        self.datasets[split] = StreamingSrcTgtDataset(
+        self.datasets[split] = DocumentToSequenceDataset(
             dataset,
             # We generate blocks with one extra token, so that we have a target
             # for the final input token. This results in slight data loss.
@@ -108,10 +105,8 @@ class StreamingFinetuneLanguageModelingTask(StreamingLanguageModelingTask):
             # we drop the remainder block during training
             drop_last=(split == "train"),
             padding_idx=self.source_dictionary.pad(),
-            # 1284 is a randomly-generated offset to decouple the seed used here
-            # from the seed used above in StreamingShuffleDataset
-            # TODO: Track this seed to avoid collisions. See issue #65
-            seed=1284 + self.args.seed,
+            seed=self.args.seed,
+            source_target=True,
         )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):

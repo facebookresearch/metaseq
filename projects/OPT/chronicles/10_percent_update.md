@@ -3,7 +3,7 @@
 
 **Posted on:** November 17, 2021
 
-Over the past couple of weeks, the team has been working on launching the full 175B training run with tensor parallelism (TP), on an updated dataset taken from the Pile, CCNEWS, and Reddit.   Since the last post, the following has happened:
+Over the past couple of weeks, the team has been working on launching the full 175B training run with tensor parallelism (TP), on an updated dataset taken from the Pile, CCNEWS, and Pushift.io.   Since the last post, the following has happened:
 
 * Kicked off 1.3B parameter "kitchen-sink" runs (experiments 14-19) with TP to test stability of TP and various configurations of new deduplicated datasets, new BPEs, learned positional embeddings (LPE), Normformer, removing embedding dropout, and ReLU <> GeLU. 
 * Found issues with the new dataset where perplexity was unreasonably low, which ended up being a combination of:

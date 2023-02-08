@@ -181,9 +181,7 @@ class CommonConfig(MetaseqDataclass):
     model_parallel_size: int = field(
         default=1, metadata={"help": "total number of GPUs to parallelize model over"}
     )
-    profile: bool = field(
-        default=False, metadata={"help": "enable autograd profiler emit_nvtx"}
-    )
+    profile: bool = field(default=False, metadata={"help": "use pytorch profiler (v2)"})
     use_plasma_view: bool = field(
         default=False, metadata={"help": "Store indices and sizes in shared memory"}
     )
@@ -195,16 +193,6 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
-    )
-    new_profiler: bool = field(
-        default=False, metadata={"help": "use pytorch profiler (v2)"}
-    )
-    dont_log_param_and_grad_norm: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "Don't log grad/param norms for each parameter.",
-            "argparse_alias": "--quiet",
-        },
     )
 
 
@@ -272,13 +260,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "[deprecated] this is now defined per Criterion"},
     )
-    heartbeat_timeout: int = field(
-        default=-1,
-        metadata={
-            "help": "kill the job if no progress is made in N seconds; "
-            "set to -1 to disable"
-        },
-    )
+
     broadcast_buffers: bool = field(
         default=False,
         metadata={
@@ -347,6 +329,14 @@ class DatasetConfig(MetaseqDataclass):
     data_buffer_size: int = field(
         default=10, metadata={"help": "Number of batches to preload"}
     )
+    skip_batches: str = field(
+        default="",
+        metadata={
+            "help": "comma separated list of batch ranges to skip in this order "
+            "(e.g. '100-200,150-180,160,300-310'), "
+            "ranges correspond to the actual num_updates in a run"
+        },
+    )
     train_subset: str = field(
         default="train",
         metadata={"help": "data subset to use for training (e.g. train, valid, test)"},
@@ -369,9 +359,6 @@ class DatasetConfig(MetaseqDataclass):
     ignore_unused_valid_subsets: Optional[bool] = field(
         default=False,
         metadata={"help": "do not raise error if valid subsets are ignored"},
-    )
-    validate_interval: int = field(
-        default=1, metadata={"help": "validate every N epochs"}
     )
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
@@ -436,6 +423,14 @@ class OptimizationConfig(MetaseqDataclass):
             "help": "Skip gradient update if gnorm is higher than --clip-norm value"
         },
     )
+    ewm_ratio_to_skip_batch: float = field(
+        default=-1,
+        metadata={
+            "help": "Skip current batch if the loss to loss ewm ratio is "
+            "higher than this value. Turned off at -1"
+        },
+    )
+
     update_freq: List[int] = field(
         default_factory=lambda: [1],
         metadata={"help": "update parameters every N_i batches, when in epoch i"},
@@ -445,13 +440,6 @@ class OptimizationConfig(MetaseqDataclass):
         metadata={
             "help": "learning rate for the first N epochs; all epochs >N using LR_N"
             " (note: this may be interpreted differently depending on --lr-scheduler)"
-        },
-    )
-    train_with_epoch_remainder_batch: Optional[bool] = field(
-        default=False,
-        metadata={
-            "help": "if set, include the last (partial) batch of each epoch in training"
-            " (default is to skip it)."
         },
     )
 
@@ -500,64 +488,25 @@ class CheckpointConfig(MetaseqDataclass):
             "help": "a dictionary used to override optimizer args when loading a checkpoint"
         },
     )
-    save_interval: int = field(
-        default=1, metadata={"help": "save a checkpoint every N epochs"}
+    save_interval_epochs: int = field(
+        default=1,
+        metadata={
+            "help": "save a checkpoint every N epochs"
+            "(note: one epoch is a a run over just one data shard, not of over the whole dataset, see #198)"
+        },
     )
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
     )
-    keep_interval_updates: int = field(
-        default=-1,
-        metadata={
-            "help": "keep the last N checkpoints saved with --save-interval-updates"
-        },
+    save_last_checkpoint: bool = field(
+        default=True,
+        metadata={"help": "store a last checkpoint at the end of the training run."},
     )
     keep_last_epochs: int = field(
-        default=-1, metadata={"help": "keep last N epoch checkpoints"}
+        default=-1, metadata={"help": "keep only the last N epoch checkpoints"}
     )
-    keep_best_checkpoints: int = field(
-        default=-1, metadata={"help": "keep best N checkpoints based on scores"}
-    )
-    no_save: bool = field(
-        default=False, metadata={"help": "don't save models or checkpoints"}
-    )
-    no_epoch_checkpoints: bool = field(
-        default=False, metadata={"help": "only store last and best checkpoints"}
-    )
-    no_last_checkpoints: bool = field(
-        default=False, metadata={"help": "don't store last checkpoints"}
-    )
-    no_best_checkpoints: bool = field(
-        default=False, metadata={"help": "don't store best checkpoints"}
-    )
-    no_save_optimizer_state: bool = field(
-        default=False,
-        metadata={"help": "don't save optimizer-state as part of checkpoint"},
-    )
-    no_save_optimizer_state_on_training_finished: bool = field(
-        default=False,
-        metadata={
-            "help": "don't save optimizer-state as part of checkpoint when training is done"
-        },
-    )
-    best_checkpoint_metric: str = field(
-        default="loss", metadata={"help": 'metric to use for saving "best" checkpoints'}
-    )
-    maximize_best_checkpoint_metric: bool = field(
-        default=False,
-        metadata={
-            "help": 'select the largest metric value for saving "best" checkpoints'
-        },
-    )
-    patience: int = field(
-        default=-1,
-        metadata={
-            "help": (
-                "early stop training if valid performance doesn't "
-                "improve for N consecutive validation runs; note "
-                "that this is influenced by --validate-interval"
-            )
-        },
+    keep_last_updates: int = field(
+        default=-1, metadata={"help": "keep only the last N updates checkpoints"}
     )
     checkpoint_suffix: str = field(
         default="", metadata={"help": "suffix to add to the checkpoint file name"}
@@ -578,8 +527,9 @@ class CheckpointConfig(MetaseqDataclass):
             "(default: only load on rank 0 and broadcast to other devices)"
         },
     )
+    # TODO: remove write_checkpoints_asynchronously flag; metaseq-internal has dependency here so keeping for now.
     write_checkpoints_asynchronously: bool = field(
-        default=False,
+        default=True,
         metadata={
             "help": (
                 "Write checkpoints asynchronously in a separate "
@@ -598,6 +548,34 @@ class CheckpointConfig(MetaseqDataclass):
             "argparse_alias": "--cloud-dir",
         },
     )
+    nfs_eval_script_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path of eval script to run on checkpoints after they were uploaded"
+        },
+    )
+    nfs_eval_num_attempts: int = field(
+        default=10,
+        metadata={
+            "help": "Number of attempts of running evals on upload of checkpoint"
+        },
+    )
+    nfs_eval_attempt_wait_minutes: int = field(
+        default=5,
+        metadata={
+            "help": "Time to wait between attempts of running evals on upload of checkpoint"
+        },
+    )
+    nfs_eval_frequency: int = field(
+        default=5000,
+        metadata={
+            "help": (
+                "Run evaluation only on uploaded checkpoints"
+                "with multiples of this frequency"
+            ),
+        },
+    )
+
     # TODO(susanz): After https://github.com/fairinternal/fairseq-big-internal/issues/22 is tackled, modify this
     #  to use ComputeEnvs constant
     cluster_env: str = field(
@@ -605,6 +583,13 @@ class CheckpointConfig(MetaseqDataclass):
         metadata={"help": "cluster we are running on: azure/aws/fair/rsc"},
     )
     model_parallel_size: int = II("common.model_parallel_size")
+    sequence_parallel: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use sequeunce level parallelism as over tensor parallel gpus."
+            " only use this option when --model-parallel-size > 1"
+        },
+    )
 
 
 @dataclass
@@ -612,10 +597,6 @@ class GenerationConfig(MetaseqDataclass):
     beam: int = field(
         default=5,
         metadata={"help": "beam size"},
-    )
-    nbest: int = field(
-        default=1,
-        metadata={"help": "number of hypotheses to output"},
     )
     max_len_a: float = field(
         default=0,

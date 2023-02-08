@@ -3,40 +3,65 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from typing import Dict, Optional
+
 import torch.nn as nn
 from torch import Tensor
 
 from metaseq import utils
+from metaseq.incremental_decoding_utils import with_incremental_state
 
 
+@with_incremental_state
 class BaseDecoder(nn.Module):
-    """Base class for decoders."""
+    """Base class for incremental decoders.
+
+    Incremental decoding is a mode at inference time where the Model
+    only receives a single timestep of input corresponding to the previous
+    output token (for teacher forcing) and must produce the next output
+    *incrementally*. Thus the model must cache any long-term state that is
+    needed about the sequence, e.g., hidden states, convolutional states, etc.
+
+    This interface also defines the :func:`reorder_incremental_state` method,
+    which is used during beam search to select and reorder the incremental state
+    based on the selection of beams.
+
+    To learn more about how incremental decoding works, refer to `this blog
+    <http://www.telesens.co/2019/04/21/understanding-incremental-decoding-in-fairseq/>`_.
+
+    Note that incremental_state will take different values depending on the
+    situation. At train and validation time, incremental_state will be None,
+    indicating that no incremental state is available and does not need to be
+    computed.
+
+    During generation, incremental_state will begin as an empty
+    dictionary, indicating no incremental_state is available, but SHOULD be
+    computed. This class modifies this dictionary inline via
+    reorder_incremental_state. After that first initial step, incremental_state
+    will be full of model-specific state.
+    """
 
     def __init__(self, dictionary):
         super().__init__()
         self.dictionary = dictionary
-        self.onnx_trace = False
 
-    def forward(self, prev_output_tokens, encoder_out=None, **kwargs):
+    def forward(self, prev_output_tokens, incremental_state=None, **kwargs):
         """
         Args:
             prev_output_tokens (LongTensor): shifted output tokens of shape
                 `(batch, tgt_len)`, for teacher forcing
-            encoder_out (dict, optional): output from the encoder, used for
-                encoder-side attention
+            incremental_state (dict, optional): dictionary used for storing
+                state during :ref:`Incremental decoding`. Note that this
+                dictionary is modified inline iff incremental_state is not None.
 
         Returns:
             tuple:
                 - the decoder's output of shape `(batch, tgt_len, vocab)`
                 - a dictionary with any model-specific outputs
         """
-        x, extra = self.extract_features(
-            prev_output_tokens, encoder_out=encoder_out, **kwargs
-        )
-        x = self.output_layer(x)
-        return x, extra
+        raise NotImplementedError
 
-    def extract_features(self, prev_output_tokens, encoder_out=None, **kwargs):
+    def extract_features(self, prev_output_tokens, incremental_state=None, **kwargs):
         """
         Returns:
             tuple:
@@ -54,24 +79,26 @@ class BaseDecoder(nn.Module):
         """
         raise NotImplementedError
 
+    def reorder_incremental_state(
+        self,
+        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+        new_order: Tensor,
+    ):
+        """Reorder incremental state.
+
+        This will be called when the order of the input has changed from the
+        previous time step. A typical use case is beam search, where the input
+        order changes between time steps based on the selection of beams.
+        """
+        pass
+
     def get_normalized_probs(self, logits: Tensor, log_probs: bool):
         """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(logits, log_probs)
-
-    # TorchScript doesn't support super() method so that the scriptable Subclass
-    # can't access the base class model in Torchscript.
-    # Current workaround is to add a helper function with different name and
-    # call the helper function from scriptable Subclass.
-    def get_normalized_probs_scriptable(self, logits: Tensor, log_probs: bool):
-        """Get normalized probabilities (or log probs) from a net's output."""
         if log_probs:
-            return utils.log_softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.log_softmax(logits, dim=-1)
         else:
-            return utils.softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+            return utils.softmax(logits, dim=-1)
 
     def max_positions(self):
         """Maximum input length supported by the decoder."""
         return 1e6  # an arbitrary large number
-
-    def prepare_for_onnx_export_(self):
-        self.onnx_trace = True

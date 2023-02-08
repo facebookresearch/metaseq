@@ -12,7 +12,6 @@ import signal
 import socket
 import struct
 import subprocess
-import warnings
 from argparse import Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -45,7 +44,7 @@ def infer_init_method(cfg: DistributedTrainingConfig, force_distributed=False):
         _infer_slurm_init(cfg)
     elif all(
         key in os.environ
-        for key in ["MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "RANK"]
+        for key in ["MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "RANK", "LOCAL_RANK"]
     ):
         # support torch.distributed.launch
         _infer_torch_distributed_launch_init(cfg)
@@ -64,6 +63,7 @@ def _infer_torch_distributed_launch_init(cfg: DistributedTrainingConfig):
     cfg.distributed_init_method = "env://"
     cfg.distributed_world_size = int(os.environ["WORLD_SIZE"])
     cfg.distributed_rank = int(os.environ["RANK"])
+    cfg.device_id = int(os.environ["LOCAL_RANK"])
     # processes are created by torch.distributed.launch
     cfg.distributed_no_spawn = True
 
@@ -85,7 +85,7 @@ def _infer_slurm_init(cfg: DistributedTrainingConfig):
             host = os.environ.get("MASTER_ADDR", None)
         if host is None:
             return
-        cfg.distributed_init_method = "tcp://{host}:{port}".format(
+        cfg.distributed_init_method = "barrierlesstcpr://{host}:{port}".format(
             host=host, port=cfg.distributed_port
         )
         nnodes = int(os.environ.get("SLURM_NNODES"))
@@ -124,10 +124,13 @@ def distributed_init(cfg: MetaseqConfig):
 
         cfg = convert_namespace_to_omegaconf(cfg)
 
+    # silence torch's distributed initialization info
+    logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.WARNING)
+
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        warnings.warn("Distributed is already initialized, cannot initialize twice!")
+        logger.warning("Distributed is already initialized, cannot initialize twice!")
     else:
-        logger.info(
+        logger.debug(
             "distributed init (rank {}): {}".format(
                 cfg.distributed_training.distributed_rank,
                 cfg.distributed_training.distributed_init_method,
@@ -152,16 +155,31 @@ def distributed_init(cfg: MetaseqConfig):
 
     cfg.distributed_training.distributed_rank = torch.distributed.get_rank()
 
+    # set global log level
     if is_master(cfg.distributed_training):
         logging.getLogger().setLevel(logging.INFO)
     else:
         logging.getLogger().setLevel(logging.WARNING)
 
-    if cfg.common.model_parallel_size > 1:
+    nodelist = os.environ.get("SLURM_STEP_NODELIST")
+    if nodelist:
+        logger.info(f"SLURM nodelist: {nodelist}")
+
+    if (
+        getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
+        or cfg.common.model_parallel_size > 1
+    ):
         try:
             from megatron.mpu import (
                 initialize_model_parallel,
                 model_parallel_cuda_manual_seed,
+            )
+
+            # Following initializes memory buffer in Megatron code which uses
+            # buffered memory for tensor parallel GPU comms protocols
+            from megatron.global_vars import (
+                _GLOBAL_MEMORY_BUFFER,
+                _set_global_memory_buffer,
             )
         except ImportError:
             raise ImportError(
@@ -173,6 +191,10 @@ def distributed_init(cfg: MetaseqConfig):
         if torch.cuda.is_available():
             dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
         model_parallel_cuda_manual_seed(cfg.common.seed)
+        # This check should not be usually needed as we call init only once
+        # but seems like tests are calling it multiple times.
+        if _GLOBAL_MEMORY_BUFFER is None:
+            _set_global_memory_buffer()
         model_part_number = get_model_parallel_rank()
         cfg.checkpoint.checkpoint_suffix += "-model_part-{0}".format(model_part_number)
 
@@ -180,6 +202,8 @@ def distributed_init(cfg: MetaseqConfig):
 
 
 def distributed_main(i, main, cfg: MetaseqConfig, kwargs):
+    # don't use MKL/OMP to avoid conflicting processes
+    torch.set_num_threads(1)
     if not cfg.distributed_training.distributed_no_spawn:
         # if in local spawning, i is offset by -1 since torch.multiprocessing.spawn
         # always starts at rank 0

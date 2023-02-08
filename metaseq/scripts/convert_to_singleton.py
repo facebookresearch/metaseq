@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 """
 Script for backing out of the MP-resharded (reshard.pt) files and getting back
 a non-flattened state dict.
@@ -49,7 +53,7 @@ logging.basicConfig(
 logger = logging.getLogger("convert_to_singleton")
 
 
-def create_generation_config_with_defaults(model_path):
+def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"):
     files = glob.glob(f"{model_path}/reshard*.pt")
 
     MP = len(files)
@@ -62,6 +66,8 @@ def create_generation_config_with_defaults(model_path):
         str(MP),
         "--distributed-world-size",
         str(MP),
+        "--ddp-backend",
+        ddp_backend,
         "--task",
         "language_modeling",
         "--bpe-merges",

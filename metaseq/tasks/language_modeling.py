@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
-import torch
 from omegaconf import II
 
 from metaseq import utils
@@ -34,7 +33,7 @@ from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import ByteLevelBPETokenizer, Tokenizer
 
     has_hf_tokenizers = True
 except ImportError:
@@ -49,6 +48,9 @@ logger = logging.getLogger(__name__)
 class LanguageModelingConfig(MetaseqDataclass):
     data: Optional[str] = field(
         default=None, metadata={"help": "path to data directory"}
+    )
+    hf_tokenizer: Optional[str] = field(
+        default="", metadata={"help": "path to a HF tokenizer json file."}
     )
     # Begin args from StreamingLanguageModelingConfig
     vocab_filename: Optional[str] = field(
@@ -140,9 +142,12 @@ class LanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        self.tokenizer = ByteLevelBPETokenizer.from_file(
-            args.vocab_filename, args.merges_filename
-        )
+        if args.hf_tokenizer:
+            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            self.tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
 
         self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
         if self.eod is None:
@@ -323,29 +328,6 @@ class LanguageModelingTask(LegacyTask):
             },
             sizes=[np.array(src_lengths)],
         )
-
-    def inference_step(self, generator, models, sample, prefix_tokens=None, **kwargs):
-        with torch.no_grad():
-            # Generation will always be conditioned on bos_token
-            if getattr(self.args, "add_bos_token", False):
-                bos_token = self.source_dictionary.bos()
-            else:
-                bos_token = self.source_dictionary.eos()
-
-            # SequenceGenerator doesn't use src_tokens directly, we need to
-            # pass the `prefix_tokens` argument instead
-            if prefix_tokens is None and sample["net_input"]["src_tokens"].nelement():
-                prefix_tokens = sample["net_input"]["src_tokens"]
-                if prefix_tokens[:, 0].eq(bos_token).all():
-                    prefix_tokens = prefix_tokens[:, 1:]
-
-            return generator.generate(
-                models,
-                sample,
-                prefix_tokens=prefix_tokens,
-                bos_token=bos_token,
-                **kwargs,
-            )
 
     def eval_lm_dataloader(
         self,

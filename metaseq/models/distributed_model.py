@@ -9,7 +9,6 @@ import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 
 from metaseq.distributed import (
-    DistributedTimeoutWrapper,
     ModuleProxyWrapper,
 )
 
@@ -71,11 +70,5 @@ def DistributedModel(args, model, process_group, device):
             wrapped_model = wrapped_model.to(device=device)
     else:
         raise ValueError("Unknown --ddp-backend: " + args.ddp_backend)
-
-    # kill hung distributed jobs after a timeout
-    if getattr(args, "heartbeat_timeout", -1) > 0:
-        wrapped_model = DistributedTimeoutWrapper(
-            wrapped_model, timeout=getattr(args, "heartbeat_timeout", -1)
-        )
 
     return wrapped_model

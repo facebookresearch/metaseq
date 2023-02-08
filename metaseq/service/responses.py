@@ -5,7 +5,9 @@
 
 import uuid
 import time
-from metaseq.service.constants import CHECKPOINT_FOLDER
+import metaseq.service.constants
+
+CHECKPOINT_FOLDER = metaseq.service.constants.CHECKPOINT_FOLDER
 
 
 class OAIResponse:
