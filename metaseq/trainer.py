@@ -449,8 +449,6 @@ class Trainer(object):
                 state = checkpoint_utils.load_checkpoint_to_cpu(
                     filename,
                 )
-                # if state['cfg']['distributed_training']['distributed_world_size'] != self.data_parallel_world_size
-
                 last_optim_state = state.get("last_optimizer_state", None)
                 if last_optim_state == -1:
                     master_path = re.sub("shard[0-9]+", "shard0", filename)

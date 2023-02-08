@@ -205,7 +205,6 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                             if not f.startswith("_")
                         ]
                     )
-                    assert present_files > 0
                     if present_files == expected_file_count:
                         filename = os.path.join(
                             nfs_path, candidate, f"checkpoint{suffix}.pt"

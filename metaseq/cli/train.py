@@ -162,6 +162,7 @@ def main(cfg: DictConfig) -> None:
         )
     )
     logger.info(metrics.get_nvidia_smi_gpu_memory_stats_str())
+
     # Load the latest checkpoint if one is available and restore the
     # corresponding train iterator
     extra_state, epoch_itr = checkpoint_utils.load_checkpoint(
