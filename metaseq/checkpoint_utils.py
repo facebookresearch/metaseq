@@ -11,7 +11,6 @@ import os
 import re
 import socket
 from typing import Any, Dict, List, Optional, Tuple
-import shutil
 
 import torch
 from omegaconf import OmegaConf
@@ -178,12 +177,8 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     # TODO(susanz): fix all of this spagetti, split out logic by env
     # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
-
     if cfg.cloud_upload_path:
         if cfg.cloud_upload_path.startswith("nfs:"):
-            checkpoint_path_to_load = os.path.join(
-                cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
-            )
             nfs_path = cfg.cloud_upload_path[4:]
             filename = None
             specific_restore_file_provided = cfg.restore_file != default_restore_file
@@ -210,7 +205,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                             if not f.startswith("_")
                         ]
                     )
-                    assert len(present_files) > 0
+                    assert present_files > 0
                     if present_files == expected_file_count:
                         filename = os.path.join(
                             nfs_path, candidate, f"checkpoint{suffix}.pt"
@@ -222,38 +217,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                     )
             else:
                 filename = cfg.restore_file.replace(".pt", suffix + ".pt")
-            if filename is not None:
-
-                paths_to_load, ddp_checkpoint_files_count = get_paths_to_load(filename, suffix="shard")
-                world_size = distributed_utils.get_data_parallel_world_size()
-
-                paths_to_copy = paths_to_load
-                if world_size > ddp_checkpoint_files_count:
-                    if world_size % ddp_checkpoint_files_count == 0:
-                        assert len(paths_to_load) == 1
-                        ranks_per_file = world_size // ddp_checkpoint_files_count
-                        if distributed_utils.get_data_parallel_rank() % ranks_per_file != 0:
-                            paths_to_copy = []
-                    else:
-                        # if world size is increasing, paths to load can be 1 or 2
-                        # above hack is to not double copy the files.
-                        if len(paths_to_load) > 1:
-                            paths_to_copy = []
-                logger.warning(
-                    f"Copying checkpoint from nfs {paths_to_copy} -> {cfg.save_dir}"
-                )
-                for path_to_copy in paths_to_copy:
-                    dest_prefix = os.path.basename(checkpoint_path_to_load).split('-')[0]
-
-                    src_fname = os.path.basename(path_to_copy)
-                    src_prefix = src_fname.split('-')[0]
-                    dest_fname = os.path.join(
-                        cfg.save_dir,
-                        src_fname.replace(src_prefix, dest_prefix)
-                    )
-                    shutil.copy(path_to_copy, dest_fname)
-            else:
-                logger.info(f"No NFS checkpoints found")
+            checkpoint_path_to_load = filename
 
         elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
             if (
@@ -300,19 +264,19 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         if PathManager.isfile(save_dir_last):
             checkpoint_path_to_load = save_dir_last
 
-    logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
     # make sure everyone is done downloading their checkpoints before we load
     distributed_utils.global_barrier()
 
-    extra_state = trainer.load_checkpoint(
-        checkpoint_path_to_load,
-        reset_optimizer,
-        reset_lr_scheduler,
-        optimizer_overrides,
-        reset_meters=reset_meters,
-    )
-
+    extra_state = None
+    if checkpoint_path_to_load is not None:
+        extra_state = trainer.load_checkpoint(
+            checkpoint_path_to_load,
+            reset_optimizer,
+            reset_lr_scheduler,
+            optimizer_overrides,
+            reset_meters=reset_meters,
+        )
     if reset_dataloader and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
         logger.info(
             f"Disregarding --reset-dataloader since we are continuing past a requeue"
@@ -402,7 +366,7 @@ def get_paths_to_load(path, suffix="rank-"):
 
     # Check if this looks like a sharded checkpoint
     if not _is_checkpoint_sharded(checkpoint_files):
-        return [local_path]
+        return [local_path], 1
 
     # Check if we need to merge shards
     world_size = distributed_utils.get_data_parallel_world_size()
@@ -458,7 +422,7 @@ def get_paths_to_load(path, suffix="rank-"):
         return fnames, checkpoint_files_count
 
 
-def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) -> dict:
+def load_checkpoint_to_cpu(path, arg_overrides=None) -> dict:
     """Loads a checkpoint to CPU (with upgrading for backward compatibility).
 
     If doing single-GPU training or if the checkpoint is only being loaded by at
@@ -486,7 +450,6 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
         elif world_size == ddp_checkpoint_files_count:
             state = torch_load_cpu(paths_to_load[0])
         else:
-            # if world_size > ddp_checkpoint_files_count:
             shard_ids = []
             states = []
             for path_to_load in paths_to_load:
