@@ -308,6 +308,15 @@ def train(
             num_updates = trainer.get_num_updates()
             if num_updates % cfg.common.log_interval == 0:
                 stats = get_training_stats(metrics.get_smoothed_values("train_inner"))
+                params = [(n,p) for n,p in trainer.model.named_parameters()]
+                if cfg['model'].frozen_layers:
+                  first_frozen = int(cfg['model'].frozen_layers.split(',')[0])
+
+                  if torch.distributed.get_rank() == 0:
+                    from metaseq import pdb; pdb.set_trace()
+
+                  stats["sum_layer_" + str(first_frozen)] = params[first_frozen + 1][1].sum().item()
+
                 progress.log(stats, tag="train_inner", step=num_updates)
 
                 # reset mid-epoch stats after each log interval

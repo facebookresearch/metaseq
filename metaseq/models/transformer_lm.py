@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformerLanguageModelConfig(MetaseqDataclass):
+    frozen_layers: str = field(
+        default="", metadata={"help": "layers to be frozen during training"}
+     )
     activation_fn: ChoiceEnum(get_available_activation_fns()) = field(
         default="relu", metadata={"help": "activation function to use"}
     )

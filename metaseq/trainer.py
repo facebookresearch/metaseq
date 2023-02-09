@@ -876,6 +876,16 @@ class Trainer(object):
                 new_lr = curr_lr * grad_mult_factor
                 self.optimizer.set_lr(new_lr)
                 logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
+
+            # freeze required layers
+            frozen_layers = self.cfg['model'].frozen_layers.split(',')
+
+            for n,p in self.model.named_parameters():
+              if "layers" in n:
+                layer_num = n.split("layers.")[1].split(".")[0]
+                if layer_num in frozen_layers:
+                  p.grad.zero_()
+
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer,
@@ -883,6 +893,7 @@ class Trainer(object):
                 update_num=self.get_num_updates(),
             )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
+
 
         except FloatingPointError:
             # re-run the forward and backward pass with hooks attached to print
