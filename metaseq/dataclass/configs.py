@@ -14,7 +14,6 @@ from metaseq.dataclass.constants import (
     DATASET_IMPL_CHOICES,
     DDP_BACKEND_CHOICES,
     LOG_FORMAT_CHOICES,
-    ZERO_SHARDING_CHOICES,
     CLIP_GRAD_NORM_TYPE_CHOICES,
 )
 
@@ -268,9 +267,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
             "batchnorm population statistics"
         },
     )
-    zero_sharding: ZERO_SHARDING_CHOICES = field(
-        default="none", metadata={"help": "ZeRO sharding"}
-    )
+
     fp16: bool = II("common.fp16")
     memory_efficient_fp16: bool = II("common.memory_efficient_fp16")
     bf16: bool = II("common.bf16")

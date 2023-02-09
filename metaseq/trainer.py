@@ -74,11 +74,6 @@ class Trainer(object):
         if self.is_fsdp:
             import fairscale
 
-            if self.cfg.distributed_training.zero_sharding != "none":
-                raise ValueError(
-                    "FullyShardedDataParallel is not compatible with --zero-sharding "
-                    "option (it's already built in)"
-                )
             if (
                 max(self.cfg.optimization.update_freq) > 1
                 and fairscale.__version__ < "0.4.0"
@@ -299,19 +294,6 @@ class Trainer(object):
                 "using non-pointwise optimizers (e.g., Adagrad, Adafactor, LAMB)"
             )
 
-        if self.cfg.distributed_training.zero_sharding == "os":
-            if (
-                self.cfg.common.fp16
-                and not self.cfg.common.memory_efficient_fp16
-                and not self.cfg.common.fp16_no_flatten_grads
-            ):
-                raise ValueError(
-                    "ZeRO is incompatible with fp16 and flattened grads. "
-                    "Please use --fp16-no-flatten-grads"
-                )
-            else:
-                optim.shard_(self._optimizer, self.data_parallel_process_group)
-
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
         self._lr_scheduler = lr_scheduler.build_lr_scheduler(
@@ -467,16 +449,6 @@ class Trainer(object):
 
                 logger.info(f"Loaded state for {filename}")
 
-                # If doing zero_sharding, do not broadcast global optimizer
-                # state. Later we will broadcast sharded states to each rank
-                # to avoid memory exploding.
-                if (
-                    not load_on_all_ranks
-                    and self.cfg.distributed_training.zero_sharding == "os"
-                    and "last_optimizer_state" in state
-                    and is_distributed
-                ):
-                    state["last_optimizer_state"] = "SHARDED"
             else:
                 last_optim_state = None
                 state = None
