@@ -20,10 +20,10 @@ from megatron.mpu import destroy_model_parallel
 
 
 prompts = [
-    "Today is a beautiful day and I want to",
-    "In the city of",
-    "Paris is the capital of France and",
-    "Computers and mobile phones have taken",
+    "Today is a beautiful day and I want to ",
+    "In the city of ",
+    "Paris is the capital of France and ",
+    "Computers and mobile phones have taken ",
 ]
 
 
@@ -35,7 +35,8 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
         cfg (MetaseqConfig): config file of the model
 
     Returns:
-        trimmed_logits (list(torch.Tensor)): list of logits based on the prompts
+        trimmed_logits (torch.Tensor): list of logits based on the prompts
+        tokenizer (Tokenizer): tokenizer loaded from the model config
     """
     vocab_file, merges_file, tokenizer = setup_vocab_and_merges(kwargs["model_path"])
     orig_dims = []
@@ -99,7 +100,7 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     # Destroy torch distributed process groups. This needs to be executed in each spawned process
     # https://github.com/pytorch/pytorch/issues/48203
     dist.destroy_process_group()
-    return trimmed_logits
+    return trimmed_logits, tokenizer
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
@@ -109,9 +110,10 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 )
 class TestHFCompatibility(unittest.TestCase):
     """
-    Test to check that loading the "125m" model from a checkpoint
+    Test to check that loading the "125m" model from a singleton checkpoint
+    (meaning that it's a combined checkpoint with the convert_to_singleton.py)
     using metaseq and generating predictions based on the prompt
-    is the same as loading the same model using OPTForCausalLM and
+    is the same as loading the same checkpoint using OPTForCausalLM and
     generating predictions from the same prompts.
 
     """
@@ -120,9 +122,8 @@ class TestHFCompatibility(unittest.TestCase):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
         cfg = create_generation_config_with_defaults(model_path)
-        vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
 
-        mp_logits_list = distributed_utils.call_main(
+        mp_logits_list, tokenizer = distributed_utils.call_main(
             cfg, load_mp_model_and_run_eval, model_path=model_path
         )
 
@@ -143,7 +144,7 @@ class TestHFCompatibility(unittest.TestCase):
                 )
             )
 
-            # Assert that HF and metaseq versions of the same model predict the same word
+            # Assert that HF and metaseq versions of the same model predict the same token
             self.assertEqual(metaseq_next_token, hf_next_token)
 
     def tearDown(self):
