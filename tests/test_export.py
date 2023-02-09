@@ -65,14 +65,20 @@ def _test_save_and_load(scripted_module):
 
 class TestExportModels(unittest.TestCase):
     def test_export_multihead_attention(self):
-        module = multihead_attention.MultiheadAttention(embed_dim=8, num_heads=2)
+        module = multihead_attention.ModelParallelMultiheadAttention(
+            embed_dim=8, num_heads=2
+        )
         scripted = torch.jit.script(module)
         _test_save_and_load(scripted)
 
     def test_incremental_state_multihead_attention(self):
-        module1 = multihead_attention.MultiheadAttention(embed_dim=8, num_heads=2)
+        module1 = multihead_attention.ModelParallelMultiheadAttention(
+            embed_dim=8, num_heads=2
+        )
         module1 = torch.jit.script(module1)
-        module2 = multihead_attention.MultiheadAttention(embed_dim=8, num_heads=2)
+        module2 = multihead_attention.ModelParallelMultiheadAttention(
+            embed_dim=8, num_heads=2
+        )
         module2 = torch.jit.script(module2)
 
         state = {}

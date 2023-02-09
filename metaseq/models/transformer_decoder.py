@@ -19,7 +19,6 @@ from metaseq.modules import (
     Dropout,
     LayerNorm,
     PositionalEmbedding,
-    TransformerDecoderLayer,
     ModelParallelTransformerDecoderLayer,
     Linear,
 )
@@ -64,10 +63,10 @@ def _log_weight_stats(tensor, name):
     )
 
 
-class TransformerDecoder(BaseDecoder):
+class ModelParallelTransformerDecoder(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
-    is a :class:`TransformerDecoderLayer`.
+    is a :class:`ModelParallelTransformerDecoderLayer`.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
@@ -234,8 +233,8 @@ class TransformerDecoder(BaseDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args):
-        return TransformerDecoderLayer(args)
+    def build_base_decoder_layer(self, args, **kwargs):
+        return ModelParallelTransformerDecoderLayer(args)
 
     def build_decoder_layer(self, args):
         layer = self.build_base_decoder_layer(args)
@@ -346,9 +345,12 @@ class TransformerDecoder(BaseDecoder):
 
         # Returning in T x B x C format as that makes integrating sequence parallelism easier.
         x = x.transpose(0, 1).contiguous()
+
+        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
+        if is_sequence_parallel:
+            x = mpu.scatter_to_sequence_parallel_region(x)
         return x, embed, positions
 
-    # forward for TransformerDecoder
     def forward(
         self,
         prev_output_tokens,
@@ -445,9 +447,36 @@ class TransformerDecoder(BaseDecoder):
         # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
         return x, {"inner_states": inner_states}
 
-    def output_layer(self, features):
+    def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
-        return self.output_projection(features)
+        if not self.share_input_output_embed:
+            raise NotImplementedError(
+                "Model parallel training currently requires --share-decoder-input-output-embed"
+            )
+
+        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
+        if is_sequence_parallel:
+            input_parallel = features
+        else:
+            input_parallel = mpu.copy_to_tensor_model_parallel_region(features)
+
+        # project back to size of vocabulary
+        x = mpu.LinearWithGradAccumulationAndAsyncCommunication.apply(
+            input_parallel,
+            self.output_projection.weight,
+            None,
+            False,  # gradient_accumulation_fusion
+            False,  # async_grad_allreduce
+            is_sequence_parallel,  # sequence_parallel
+        )
+        # Gather output if model is in inference mode (i.e. evallm or generation) cause both are not yet compatible with
+        # parallel vocab embeddings
+        if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
+            self, "inference", False
+        ):
+            x = gather_from_tensor_model_parallel_region(x).contiguous()
+
+        return x
 
     def max_positions(self):
         """Maximum output length supported by the decoder."""
@@ -509,57 +538,6 @@ class TransformerDecoder(BaseDecoder):
         else:
             return self._future_mask[:cur_seq_len, :cur_seq_len]
 
-
-class ModelParallelTransformerDecoder(TransformerDecoder):
-    """
-    Model Parallel Transformer decoder consisting of *args.decoder_layers* layers. Each layer
-    is a :class:`ModelParallelTransformerDecoderLayer`.
-    """
-
-    def build_base_decoder_layer(self, args, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args)
-
-    def output_layer(self, features, **kwargs):
-        """Project features to the vocabulary size."""
-        if not self.share_input_output_embed:
-            raise NotImplementedError(
-                "Model parallel training currently requires --share-decoder-input-output-embed"
-            )
-
-        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
-        if is_sequence_parallel:
-            input_parallel = features
-        else:
-            input_parallel = mpu.copy_to_tensor_model_parallel_region(features)
-
-        # project back to size of vocabulary
-        x = mpu.LinearWithGradAccumulationAndAsyncCommunication.apply(
-            input_parallel,
-            self.output_projection.weight,
-            None,
-            False,  # gradient_accumulation_fusion
-            False,  # async_grad_allreduce
-            is_sequence_parallel,  # sequence_parallel
-        )
-        # Gather output if model is in inference mode (i.e. evallm or generation) cause both are not yet compatible with
-        # parallel vocab embeddings
-        if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
-            self, "inference", False
-        ):
-            x = gather_from_tensor_model_parallel_region(x).contiguous()
-
-        return x
-
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
         self.inference = True
-
-    def forward_embedding(
-        self,
-        *args,
-    ):
-        x, embed, positions = super().forward_embedding(*args)
-        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
-        if is_sequence_parallel:
-            x = mpu.scatter_to_sequence_parallel_region(x)
-        return x, embed, positions
