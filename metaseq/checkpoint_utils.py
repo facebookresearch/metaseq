@@ -138,8 +138,6 @@ def get_all_checkpoints_from_directory(
             logger.info("is .pt file")
             if not suffix in candidate:
                 continue
-            logger.info(suffix)
-            logger.info(candidate)
             checkpoints.append(
                 CheckpointPath(
                     path=os.path.join(directory, candidate),
@@ -147,18 +145,6 @@ def get_all_checkpoints_from_directory(
                     priority=steps + add_priority,
                 )
             )
-            # delete this all
-            prefix = candidate.split(suffix)[0]
-            counter = 0
-            for other_file in os.listdir(directory):
-                if prefix in other_file:
-                    logger.info(other_file)
-                    counter += 1
-
-            logger.info(f"Files found for it: {counter}")
-            expected_file_count = distributed_utils.get_global_world_size()
-            logger.info(f"World size: {expected_file_count}")
-
             continue
 
         # nfs and cached files look like this: checkpoint_180/checkpoint-model_part-0-shard0.pt
@@ -170,14 +156,11 @@ def get_all_checkpoints_from_directory(
                 if not f.startswith("_")
             ]
         )
-        logger.info(f"{present_files} parts found for {candidate} checkpoint")
         if present_files != expected_file_count:
             logger.info(
                 f"skipping checkpoint {candidate} in {directory} because it only has"
                 f" {present_files} files (expected {expected_file_count})"
             )
-            present_files = [ f for f in os.listdir(os.path.join(directory, candidate)) if not f.startswith("_")]
-            logger.info(str(present_files))
             continue
 
         checkpoints.append(
@@ -226,6 +209,15 @@ def get_checkpoint_to_finetune(
         run_before_loading=[reset_for_finetuning],
     )
 
+
+def reset_for_finetuning(cfg, checkpoint):
+    cfg.reset_optimizer = True
+    cfg.reset_lr_scheduler = True
+    cfg.reset_meters = True
+    cfg.reset_dataloader = True
+    logger.info(
+        "Resetting optimizer, lr scheduler, meters, and dataloader for fine-tuning!"
+    )
 
 
 def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
@@ -313,7 +305,6 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     checkpoint_path_to_load = prepare_local_checkpoint_path(cfg, trainer)
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
-    logger.info("V3")
     # make sure everyone is done downloading their checkpoints before we load
     distributed_utils.global_barrier()
 
