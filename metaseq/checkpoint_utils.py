@@ -393,10 +393,10 @@ def get_paths_to_load(path, suffix="rank-"):
         else:
             n_new_shards_per_file = world_size / checkpoint_files_count
             n_files_per_shard = checkpoint_files_count / world_size
-            start_rank = (rank / n_new_shards_per_file)
+            start_rank = rank / n_new_shards_per_file
             end_rank = start_rank + n_files_per_shard
 
-            ranks_to_load = list(set((int(start_rank), int(math.ceil(end_rank) - 1 ))))
+            ranks_to_load = list(set((int(start_rank), int(math.ceil(end_rank) - 1))))
             fnames = []
 
             for rank_to_load in ranks_to_load:
@@ -483,7 +483,11 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
                 shard_ids.append(int(match.group(1)))
                 states.append(torch_load_cpu(path_to_load))
 
-            state = _split_flat_fsdp_shards(states, previous_shard_counts=ddp_checkpoint_files_count, shard_ids=shard_ids)
+            state = _split_flat_fsdp_shards(
+                states,
+                previous_shard_counts=ddp_checkpoint_files_count,
+                shard_ids=shard_ids,
+            )
     except Exception as error:
         logger.error(
             f"Got Exception While Trying To Load {path} with Paths to Load {paths_to_load}."
@@ -752,7 +756,9 @@ def _get_pad_info(state_dict: Dict) -> Dict[str, int]:
     return res
 
 
-def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shard_ids: List[int]) -> Dict:
+def _split_flat_fsdp_shards(
+    states: List[Dict], previous_shard_counts: int, shard_ids: List[int]
+) -> Dict:
     """
     This function basically takes multiple FSDP states, merges and then finds the new state
     in the new FSDP shard.
@@ -767,7 +773,9 @@ def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shar
     """
     # First copy all keys apart from model and opt stats to the
     # final state dict from zero'th loaded state
-    splitted_state = {k: v for k, v in states[0].items() if k not in ('model', 'opt_stats')}
+    splitted_state = {
+        k: v for k, v in states[0].items() if k not in ("model", "opt_stats")
+    }
     splitted_model_state = {}
     ddp_world_size = distributed_utils.get_data_parallel_world_size()
 
@@ -778,10 +786,14 @@ def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shar
             splitted_model_state[k] = states[0]["model"][k]
             continue
 
-        values = [state['model'][k] for state in states]
+        values = [state["model"][k] for state in states]
 
-        assert all(len(value.shape) == 1 for value in values), "Flat param should have only one dimensional tensor"
-        assert all(value.size(0) == values[0].size(0) for value in values), "all shards should have same sized tensor"
+        assert all(
+            len(value.shape) == 1 for value in values
+        ), "Flat param should have only one dimensional tensor"
+        assert all(
+            value.size(0) == values[0].size(0) for value in values
+        ), "all shards should have same sized tensor"
 
         full_param_shape = values[0].size(0) * previous_shard_counts
 
@@ -790,10 +802,10 @@ def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shar
         new_start_offset = new_shard_size * distributed_utils.get_data_parallel_rank()
 
         current_start_offset = values[0].size(0) * shard_ids[0]
-        start_offset = new_start_offset-current_start_offset
+        start_offset = new_start_offset - current_start_offset
 
         concatted_value = torch.cat(values)
-        new_v = concatted_value[start_offset: start_offset+new_shard_size]
+        new_v = concatted_value[start_offset : start_offset + new_shard_size]
 
         if new_v.size(0) != new_shard_size:
             assert distributed_utils.get_data_parallel_rank() == ddp_world_size - 1
@@ -801,18 +813,22 @@ def _split_flat_fsdp_shards(states: List[Dict], previous_shard_counts: int, shar
             new_v = torch.nn.functional.pad(new_v, [0, num_to_pad])
         splitted_model_state[k] = new_v
 
-    splitted_state['model'] = splitted_model_state
+    splitted_state["model"] = splitted_model_state
     # TODO(susanz): Not removing decoder.version due to HF compatibility.
-    if "decoder.version" not in splitted_state['model']:
-        splitted_state['model']["decoder.version"] = torch.tensor([3.0], dtype=dtype)
+    if "decoder.version" not in splitted_state["model"]:
+        splitted_state["model"]["decoder.version"] = torch.tensor([3.0], dtype=dtype)
 
     if OPT_KEY in states[0]:
-        splitted_state[OPT_KEY] = _split_flat_fsdp_opt_state(states, previous_shard_counts, shard_ids)
+        splitted_state[OPT_KEY] = _split_flat_fsdp_opt_state(
+            states, previous_shard_counts, shard_ids
+        )
 
     return splitted_state
 
 
-def _split_flat_fsdp_opt_state(states: List[Dict], previous_shard_counts: int, shard_ids: List[int]) -> Dict:
+def _split_flat_fsdp_opt_state(
+    states: List[Dict], previous_shard_counts: int, shard_ids: List[int]
+) -> Dict:
     splitted_opt_state = states[0][OPT_KEY]
     ddp_world_size = distributed_utils.get_data_parallel_world_size()
     for k in states[0][OPT_KEY]["state"].keys():
@@ -824,22 +840,32 @@ def _split_flat_fsdp_opt_state(states: List[Dict], previous_shard_counts: int, s
                 assert all(value == values[0] for value in values)
                 splitted_opt_state["state"][k][k2] = values[0]
             else:
-                assert all(len(value.shape) == 1 for value in values), "Flat param should have only one dimensional tensor"
+                assert all(
+                    len(value.shape) == 1 for value in values
+                ), "Flat param should have only one dimensional tensor"
                 full_param_shape = values[0].size(0) * previous_shard_counts
 
                 # TODO: [namangoyal] double check this
                 new_shard_size = math.ceil(full_param_shape / ddp_world_size)
-                new_start_offset = new_shard_size * distributed_utils.get_data_parallel_rank()
+                new_start_offset = (
+                    new_shard_size * distributed_utils.get_data_parallel_rank()
+                )
 
                 current_start_offset = values[0].size(0) * shard_ids[0]
-                start_offset = new_start_offset-current_start_offset
+                start_offset = new_start_offset - current_start_offset
 
                 concatted_value = torch.cat(values)
-                splitted_value = concatted_value[start_offset: start_offset+new_shard_size]
+                splitted_value = concatted_value[
+                    start_offset : start_offset + new_shard_size
+                ]
 
                 if splitted_value.size(0) != new_shard_size:
-                    assert distributed_utils.get_data_parallel_rank() == ddp_world_size - 1
+                    assert (
+                        distributed_utils.get_data_parallel_rank() == ddp_world_size - 1
+                    )
                     num_to_pad = new_shard_size - splitted_value.size(0)
-                    splitted_value = torch.nn.functional.pad(splitted_value, [0, num_to_pad])
+                    splitted_value = torch.nn.functional.pad(
+                        splitted_value, [0, num_to_pad]
+                    )
                 splitted_opt_state["state"][k][k2] = splitted_value
     return splitted_opt_state

@@ -437,10 +437,13 @@ class Trainer(object):
             # to a real file, we convert it to multiple files to be loaded later.
             # so here we just check if there are some files existing in the dir.
             files_in_local_dir = os.listdir(os.path.dirname(filename))
-            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(self.checkpoint_suffix, '')
-            matched_files = [f for f in files_in_local_dir if f.startswith(filename_prefix)]
+            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(
+                self.checkpoint_suffix, ""
+            )
+            matched_files = [
+                f for f in files_in_local_dir if f.startswith(filename_prefix)
+            ]
             bexists = len(matched_files) > 0
-
 
         if bexists:
             logger.info(f"Preparing to load checkpoint {filename}")
