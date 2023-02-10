@@ -123,11 +123,8 @@ def get_checkpoint_steps(path: str) -> int:
         return 0
     return int(match[1])
 
-def get_all_checkpoints_from_directory_with_subdirs(directory: str, suffix: str, add_priority: float, storage_type: str):
 
-
-
-def get_all_checkpoints_from_directory_with_subdirs(
+def get_all_checkpoints_from_directory(
     directory: str, suffix: str, add_priority: float, storage_type: str
 ) -> List[CheckpointPath]:
     checkpoints = []
@@ -135,7 +132,36 @@ def get_all_checkpoints_from_directory_with_subdirs(
         steps = get_checkpoint_steps(candidate)
         if steps == 0:
             continue
-        # TODO needs to be adapated for local dir, which has only num_gpu checkpoints
+
+        # in scratch saved files are in this form: checkpoint_180-model_part-0-shard0.pt
+        if candidate.endswith(".pt"):
+            logger.info("is .pt file")
+            if not suffix in candidate:
+                continue
+            logger.info(suffix)
+            logger.info(candidate)
+            checkpoints.append(
+                CheckpointPath(
+                    path=os.path.join(directory, candidate),
+                    storage_type=storage_type,
+                    priority=steps + add_priority,
+                )
+            )
+            # delete this all
+            prefix = candidate.split(suffix)[0]
+            counter = 0
+            for other_file in os.listdir(directory):
+                if prefix in other_file:
+                    logger.info(other_file)
+                    counter += 1
+
+            logger.info(f"Files found for it: {counter}")
+            expected_file_count = distributed_utils.get_global_world_size()
+            logger.info(f"World size: {expected_file_count}")
+
+            continue
+
+        # nfs and cached files look like this: checkpoint_180/checkpoint-model_part-0-shard0.pt
         expected_file_count = distributed_utils.get_global_world_size()
         present_files = len(
             [
@@ -144,7 +170,7 @@ def get_all_checkpoints_from_directory_with_subdirs(
                 if not f.startswith("_")
             ]
         )
-        logger.info(f"{present_files} parts found for this checkpoint")
+        logger.info(f"{present_files} parts found for {candidate} checkpoint")
         if present_files != expected_file_count:
             logger.info(
                 f"skipping checkpoint {candidate} in {directory} because it only has"
@@ -154,7 +180,6 @@ def get_all_checkpoints_from_directory_with_subdirs(
             logger.info(str(present_files))
             continue
 
-        # TODO validate this
         checkpoints.append(
             CheckpointPath(
                 path=os.path.join(directory, candidate, f"checkpoint{suffix}.pt"),
@@ -288,7 +313,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     checkpoint_path_to_load = prepare_local_checkpoint_path(cfg, trainer)
 
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
-
+    logger.info("V3")
     # make sure everyone is done downloading their checkpoints before we load
     distributed_utils.global_barrier()
 
