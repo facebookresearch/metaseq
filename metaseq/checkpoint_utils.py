@@ -10,7 +10,6 @@ import os
 import re
 import socket
 from typing import Any, Dict, List, Optional, Tuple
-import shutil
 import math
 import torch
 from omegaconf import OmegaConf
