@@ -14,7 +14,7 @@ from metaseq.modules import (
     ActivationFn,
     ModelParallelMultiheadAttention,
     Dropout,
-    FeedForwardNetwork,
+    FeedForward,
     LayerNorm,
 )
 from metaseq.modules.fused_bias_gelu import (
@@ -309,7 +309,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         )
         residual = x
         x = self.final_layer_norm(x)
-        x = FeedForwardNetwork(
+        x = FeedForward(
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,

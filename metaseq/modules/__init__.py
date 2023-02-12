@@ -12,7 +12,7 @@ from .multihead_attention import ModelParallelMultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .linear import Linear
-from .feedforward_network import FeedForwardNetwork
+from .feedforward import FeedForward
 from .transformer_decoder_layer import (
     ModelParallelTransformerDecoderLayer,
 )
@@ -29,7 +29,7 @@ __all__ = [
     "PositionalEmbedding",
     "SinusoidalPositionalEmbedding",
     "Linear",
-    "FeedForwardNetwork",
+    "FeedForward",
     "ModelParallelTransformerDecoderLayer",
     "SequeuceParallelTransformerBlock",
 ]
