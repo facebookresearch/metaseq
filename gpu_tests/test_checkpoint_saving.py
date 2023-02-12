@@ -163,11 +163,11 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
 def run_training(events, max_update):
     argv_injection = (
         "python3 metaseq/launcher/opt_baselines.py   "
-        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
-        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-        "--num-gpus 4 --num-nodes 1   --seed 1   "
-        "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
+        "--prefix train.8m --model-size 8m --checkpoints-dir ./test-checkpoint "
+        "--tensorboard-logdir ./test-checkpoint --num-trials 1 --azure "
+        "--num-gpus 4 --num-nodes 1 --seed 1 --no-wandb"
+        "--local --disable-validation --max-epoch 5 --max-update 5 --benchmark "
+        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test "
     )
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run",
