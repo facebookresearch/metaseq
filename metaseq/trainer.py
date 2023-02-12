@@ -66,8 +66,8 @@ class Trainer(object):
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
-        self.dont_log_param_and_grad_norm = getattr(
-            cfg.common, "dont_log_param_and_grad_norm", False
+        self.quiet_logs = getattr(
+            cfg.common, "quiet_logs", False
         )
         if self.cuda:
             self.device = torch.device("cuda")
@@ -1246,7 +1246,7 @@ class Trainer(object):
     ):
         # perform a bunch of arch-specific gradient metrics
         for name, param in self.model.named_parameters():
-            if (not self.is_fsdp) or self.dont_log_param_and_grad_norm:
+            if (not self.is_fsdp) or self.quiet_logs:
                 break
             if param.grad is None:
                 continue
