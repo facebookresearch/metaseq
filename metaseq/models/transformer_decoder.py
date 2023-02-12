@@ -57,7 +57,7 @@ class TransformerDecoderMultiLayerBlockModule(nn.Module):
         return x, inner_states
 
 
-def _log_weight_stats(tensor, name):
+def log_weight_stats(tensor, name):
     logger.debug(
         f"{name}, mean: {tensor.mean():.5f}, std: {tensor.std():.5f}, min: {tensor.min():.5f}, max: {tensor.max():.5f}"
     )
@@ -162,7 +162,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         else:
             self.layers = nn.ModuleList(layers)
 
-        _log_weight_stats(self.embed_tokens.weight, "embed tokens")
+        log_weight_stats(self.embed_tokens.weight, "embed tokens")
 
         self.num_layers = len(self.layers)
 
@@ -239,7 +239,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
     def build_decoder_layer(self, args):
         layer = self.build_base_decoder_layer(args)
         for name, param in layer.named_parameters():
-            _log_weight_stats(param, name)
+            log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
             return layer
         checkpoint = getattr(args, "checkpoint_activations", False)

@@ -34,7 +34,7 @@ from metaseq.modules.activation_functions import get_available_activation_fns
 
 import logging
 
-DEFAULT_MAX_TARGET_POSITIONS = 1024
+DEFAULT_MAX_TARGET_POSITIONS = 2048
 logger = logging.getLogger(__name__)
 
 
