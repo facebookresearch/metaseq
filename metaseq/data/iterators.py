@@ -364,11 +364,16 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 # applied once earlier in the epoch to fix any data loaders with incorrect data.
                 num_workers = self._itr.num_workers
                 batch_size = self._itr.batch_size * self._itr.num_shards
-                if sum(sequences_consumed) != n*batch_size:
-                    logger.warn(f'{distributed_utils.get_global_rank()}: Sequences appear corrupted: {n}*{batch_size} != sum({sequences_consumed})')
+                if sum(sequences_consumed) != n * batch_size:
+                    logger.warn(
+                        f"{distributed_utils.get_global_rank()}: Sequences appear corrupted: {n}*{batch_size} != sum({sequences_consumed})"
+                    )
                     each, left = divmod(n, num_workers)
-                    sequences_consumed = [batch_size*(each + (1 if i < left else 0)) for i in range(num_workers)]
-                assert sum(sequences_consumed) == n*batch_size
+                    sequences_consumed = [
+                        batch_size * (each + (1 if i < left else 0))
+                        for i in range(num_workers)
+                    ]
+                assert sum(sequences_consumed) == n * batch_size
 
             self._itr.sequences_consumed = sequences_consumed
             self._itr.next_worker = next_worker
