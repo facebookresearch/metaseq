@@ -365,8 +365,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 num_workers = self._itr.num_workers
                 batch_size = self._itr.batch_size * self._itr.num_shards
                 if sum(sequences_consumed) != n * batch_size:
-                    logger.warn(
-                        f"{distributed_utils.get_global_rank()}: Sequences appear corrupted: {n}*{batch_size} != sum({sequences_consumed})"
+                    logger.warning(
+                        f"{distributed_utils.get_global_rank()}: Sequences appear corrupted: "
+                        f"{n}*{batch_size} != sum({sequences_consumed})"
                     )
                     each, left = divmod(n, num_workers)
                     sequences_consumed = [
