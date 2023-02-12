@@ -78,23 +78,6 @@ def move_to_cpu(sample, cast_to_fp32=True):
     return apply_to_sample(_move_to_cpu, sample)
 
 
-def load_align_dict(replace_unk):
-    if replace_unk is None:
-        align_dict = None
-    elif isinstance(replace_unk, str) and len(replace_unk) > 0:
-        # Load alignment dictionary for unknown word replacement if it was passed as an argument.
-        align_dict = {}
-        with open(replace_unk, "r") as f:
-            for line in f:
-                cols = line.split()
-                align_dict[cols[0]] = cols[1]
-    else:
-        # No alignment dictionary provided but we still want to perform unknown word replacement by copying the
-        # original source word.
-        align_dict = {}
-    return align_dict
-
-
 def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
@@ -106,10 +89,6 @@ def make_positions(tensor, padding_idx: int):
     # how to handle the dtype kwarg in cumsum.
     mask = tensor.ne(padding_idx).int()
     return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx
-
-
-def strip_pad(tensor, pad):
-    return tensor[tensor.ne(pad)]
 
 
 def item(tensor):
