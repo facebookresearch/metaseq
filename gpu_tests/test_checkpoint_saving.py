@@ -59,7 +59,7 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         upload_events = [
             event for event in events_first_run if event["type"] == "upload"
         ]
-        self.assertEqual(len(upload_events), 8)
+        self.assertEqual(len(upload_events), 4)
         checkpoint_dir = "test-checkpoint"
         common_checkpoint_model_dir = upload_events[0]["checkpoint_model_dir"]
         file_names_saved_azure = sorted(
@@ -71,10 +71,11 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
                 "checkpoint_18-model_part-0-shard1.pt",
                 "checkpoint_18-model_part-1-shard0.pt",
                 "checkpoint_18-model_part-1-shard1.pt",
-                "checkpoint_last-model_part-0-shard0.pt",
-                "checkpoint_last-model_part-0-shard1.pt",
-                "checkpoint_last-model_part-1-shard0.pt",
-                "checkpoint_last-model_part-1-shard1.pt",
+                # Behavior changed with https://github.com/facebookresearch/metaseq/pull/648
+                # "checkpoint_last-model_part-0-shard0.pt",
+                # "checkpoint_last-model_part-0-shard1.pt",
+                # "checkpoint_last-model_part-1-shard0.pt",
+                # "checkpoint_last-model_part-1-shard1.pt",
             ]
         )
         self.assertEqual(file_names_saved_azure, expected_file_names)
@@ -163,11 +164,11 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
 def run_training(events, max_update):
     argv_injection = (
         "python3 metaseq/launcher/opt_baselines.py   "
-        "--prefix train.8m    --model-size 8m    --checkpoints-dir ./test-checkpoint    "
-        "--tensorboard-logdir ./test-checkpoint    --num-trials 1    --azure   "
-        "--num-gpus 4 --num-nodes 1   --seed 1   "
-        "--local --disable-validation    --max-epoch 5    --max-update 5 --benchmark    "
-        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test   "
+        "--prefix train.8m --model-size 8m --checkpoints-dir ./test-checkpoint "
+        "--tensorboard-logdir ./test-checkpoint --num-trials 1 --azure "
+        "--num-gpus 4 --num-nodes 1 --seed 1 --no-wandb "
+        "--local --disable-validation --max-epoch 5 --max-update 5 --benchmark "
+        "--full-azure-upload-path https://myaccount.blob.core.windows.net/test "
     )
     with patch("sys.argv", argv_injection.split()[1:]), patch(
         "metaseq.launcher.slurm.local_run",

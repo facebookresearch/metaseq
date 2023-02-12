@@ -193,6 +193,12 @@ class CommonConfig(MetaseqDataclass):
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
     )
+    quiet_logs: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Don't log grad/param norms for each parameter.",
+        },
+    )
 
 
 @dataclass
@@ -494,6 +500,13 @@ class CheckpointConfig(MetaseqDataclass):
     )
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
+    )
+    local_save_interval_updates: int = field(
+        default=0,
+        metadata={
+            "help": "save a checkpoint (and validate) every N updates to local SSD. "
+            "Only applicable when copying to NFS asynchronously"
+        },
     )
     save_last_checkpoint: bool = field(
         default=True,
