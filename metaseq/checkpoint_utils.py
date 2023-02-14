@@ -19,7 +19,6 @@ from metaseq.dataclass.configs import CheckpointConfig
 from metaseq.dataclass.utils import overwrite_args_by_name, CheckpointPath
 from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
-from metaseq.launcher.opt_job_constants import ComputeEnvs
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +204,7 @@ def get_checkpoint_to_finetune(
             validated_path = sharded_path
     if validated_path is None:
         raise ValueError(
-            f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
+            f"--finetune-from-model {finetune_path} does not exist either as is or sharded"
         )
     return CheckpointPath(
         path=validated_path,
