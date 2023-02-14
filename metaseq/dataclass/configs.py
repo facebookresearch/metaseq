@@ -452,11 +452,11 @@ class CheckpointConfig(MetaseqDataclass):
     save_dir: str = field(
         default="checkpoints", metadata={"help": "path to save checkpoints"}
     )
-    restore_file: str = field(
-        default="checkpoint_last.pt",
+    restore_file: Optional[str] = field(
+        default=None,
         metadata={
             "help": "filename from which to load checkpoint "
-            "(default: <save-dir>/checkpoint_last.pt"
+            "in the form nfs:path/to/dir/checkpoint.pt"
         },
     )
     finetune_from_model: Optional[str] = field(
