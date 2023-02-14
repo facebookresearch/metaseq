@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
     DistributedTrainingConfig.distributed_world_size != 4,
     "test requires 4 GPUs",
 )
-class TestModelParallelMP1(unittest.TestCase):
+class TestLoadOnMoreGPUs(unittest.TestCase):
     """
     The test will verify that the model can started with more GPUs
     from a checkpoint created with less GPUs. We test the first
@@ -56,6 +56,8 @@ class TestModelParallelMP1(unittest.TestCase):
             int(training_log_events_first_run[-1]["num_updates"]), max_update_first_run
         )
 
+        # get the list of files from the chekpoint folder
+        # from the 2 GPUs run: ./test-checkpoint/*.ngpu2
         first_run_checkpoints = subprocess.Popen(
             "ls -1 ./test-checkpoint/*.ngpu2",
             shell=True,  # this enables the * to be interpreted as a wildcard pattern
@@ -103,9 +105,10 @@ class TestModelParallelMP1(unittest.TestCase):
         )
 
         # check that training ran correctly
-        # check that the number of updates was correct
         self.assertNotEqual(training_log_events_second_run, [])
 
+        # get the list of files from the chekpoint folder
+        # from the 4 GPUs run: ./test-checkpoint/*.ngpu4
         second_run_checkpoints = subprocess.Popen(
             "ls -1 ./test-checkpoint/*.ngpu4",
             shell=True,  # this enables the * to be interpreted as a wildcard pattern
