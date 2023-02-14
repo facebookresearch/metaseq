@@ -878,13 +878,14 @@ class Trainer(object):
                 logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
 
             # freeze required layers
-            frozen_layers = self.cfg['model'].frozen_layers.split(',')
+            if hasattr(self.cfg['model'], 'frozen_layers'):
+              frozen_layers = self.cfg['model'].frozen_layers.split(',')
 
-            for n,p in self.model.named_parameters():
-              if "layers" in n:
-                layer_num = n.split("layers.")[1].split(".")[0]
-                if layer_num in frozen_layers:
-                  p.grad.zero_()
+              for n,p in self.model.named_parameters():
+                if "layers" in n:
+                  layer_num = n.split("layers.")[1].split(".")[0]
+                  if layer_num in frozen_layers:
+                    p.grad = None#.zero_()
 
             # take an optimization step
             self.task.optimizer_step(
