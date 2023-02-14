@@ -474,6 +474,7 @@ def merge_with_parent(dc: MetaseqDataclass, cfg: MetaseqDataclass):
     OmegaConf.set_struct(merged_cfg, True)
     return merged_cfg
 
+
 @dataclass
 class CheckpointPath:
     path: str

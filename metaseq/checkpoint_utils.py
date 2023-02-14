@@ -279,8 +279,7 @@ def prepare_local_checkpoint_path(cfg: CheckpointConfig, trainer) -> str:
 
     # copy cloud checkpoints to a local cache file
     local_cache_dir = os.path.join(
-        cfg.save_dir,
-        f"cached_checkpoint_{int(checkpoint.priority)}"
+        cfg.save_dir, f"cached_checkpoint_{int(checkpoint.priority)}"
     )
     os.makedirs(local_cache_dir, exist_ok=True)
     local_cache_file = os.path.join(local_cache_dir, f"checkpoint{suffix}.pt")
