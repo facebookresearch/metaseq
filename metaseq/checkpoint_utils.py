@@ -140,7 +140,7 @@ def get_all_checkpoints_from_directory(
         # in scratch saved files are in this form: checkpoint_180-model_part-0-shard0.pt
         if candidate.endswith(".pt"):
             logger.info("is .pt file")
-            if not suffix in candidate:
+            if suffix not in candidate:
                 continue
             checkpoints.append(
                 CheckpointPath(
