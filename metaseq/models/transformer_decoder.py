@@ -233,11 +233,8 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args)
-
     def build_decoder_layer(self, args):
-        layer = self.build_base_decoder_layer(args)
+        layer = ModelParallelTransformerDecoderLayer(args)
         for name, param in layer.named_parameters():
             log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
