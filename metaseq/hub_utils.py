@@ -323,6 +323,7 @@ class GeneratorInterface:
                         tokens,
                         scores,
                         distributions,
+                        prompt_len-1,
                     )
 
                     if echo:
@@ -394,6 +395,7 @@ class GeneratorInterface:
         tokens: List[int],
         scores: List[float],
         distributions,
+        min_len,
     ):
         """
         Cut off tokens after finding a special tokens.
@@ -410,7 +412,7 @@ class GeneratorInterface:
                 # simply skip pads
                 mask.append(False)
                 continue
-            if t in special_token_inds and i > 0:
+            if t in special_token_inds and i > min_len:
                 # and other special tokens should end things
                 mask.append(False)
                 break
