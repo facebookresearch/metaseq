@@ -102,6 +102,10 @@ class TestModelParallelMP1(unittest.TestCase):
             size_patch_dict=size_patch_dict,
         )
 
+        # check that training ran correctly
+        # check that the number of updates was correct
+        self.assertNotEqual(training_log_events_second_run, [])
+
         second_run_checkpoints = subprocess.Popen(
             "ls -1 ./test-checkpoint/*.ngpu4",
             shell=True,  # this enables the * to be interpreted as a wildcard pattern
