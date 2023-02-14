@@ -379,10 +379,13 @@ def get_paths_to_load(path, suffix="rank-"):
         return [local_path], checkpoint_files_count
     elif world_size > checkpoint_files_count:
         # For now only support the case when new world size is multipe of previous
+        # Ex.: rank=0, world_size=2, checkpoint_files_count=1
         rank = distributed_utils.get_data_parallel_rank()
         if world_size % checkpoint_files_count == 0:
             n_new_shards_per_file = int(world_size / checkpoint_files_count)
             rank_to_load = rank // n_new_shards_per_file
+            # fname='./gpu_tests/test-checkpoint/.../checkpoint_18-model_part-0-shard0.pt'
+            # checkpoint_files[0]='./gpu_tests/test-checkpoint/.../checkpoint_18-model_part-0-shard0.pt'
             fname = re.sub(
                 f"{suffix}[0-9]+",
                 f"{suffix}{rank_to_load}",
@@ -426,25 +429,6 @@ def get_paths_to_load(path, suffix="rank-"):
 
         return fnames, checkpoint_files_count
 
-    # # Assign an equal number of shards
-    # assert checkpoint_files_count % world_size == 0
-    # n_local_files = int(checkpoint_files_count / world_size)
-    # rank = distributed_utils.get_data_parallel_rank()
-    # start_rank = n_local_files * rank
-    # fnames = []
-    # for rank_to_load in range(start_rank, start_rank + n_local_files):
-    #     fname = re.sub(
-    #         f"{suffix}[0-9]+",
-    #         f"{suffix}{rank_to_load}",
-    #         checkpoint_files[0],
-    #     )
-    #     fnames.append(fname)
-    # logger.info(
-    #     f"Loading {checkpoint_files_count} on {world_size} DDP workers: {n_local_files} files per worker."
-    # )
-
-    # return fnames
-
 
 def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) -> dict:
     """Loads a checkpoint to CPU (with upgrading for backward compatibility).
@@ -476,9 +460,12 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
             shard_ids = []
             states = []
             for path_to_load in paths_to_load:
+                # check that the files are in the form
+                # /.../checkpoint_18-model_part-0-shard0.pt
                 assert "shard" in path_to_load
                 match = re.search(r"-shard(\d+)\.pt", path_to_load)
                 assert match
+                # list of shard IDs: shard_ids=[0,...]
                 shard_ids.append(int(match.group(1)))
                 states.append(torch_load_cpu(path_to_load))
 
@@ -772,19 +759,22 @@ def _split_flat_fsdp_shards(
     """
     # First copy all keys apart from model and opt stats to the
     # final state dict from zero'th loaded state
+    # k: ['cfg', 'criterion', 'optimizer_history', 'task_state',
+    # 'extra_state', 'last_optimizer_state', 'shard_metadata']
     splitted_state = {
         k: v for k, v in states[0].items() if k not in ("model", "opt_stats")
     }
     splitted_model_state = {}
     ddp_world_size = distributed_utils.get_data_parallel_world_size()
-
+    # k in ['flat_param_0', 'decoder.version', 'decoder.layers.0.flat_param_0',
+    # ...'decoder.layers.3.flat_param_0']
     for k in states[0]["model"].keys():
         dtype = states[0]["model"][k].dtype
         if "flat_param" not in k:
             # I think usually its just decoder.version that comes here.
             splitted_model_state[k] = states[0]["model"][k]
             continue
-
+        # values: [tensor([-0.0013, ...-0.0030], dtype=torch.float16)]
         values = [state["model"][k] for state in states]
 
         assert all(
@@ -831,8 +821,11 @@ def _split_flat_fsdp_opt_state(
     splitted_opt_state = states[0][OPT_KEY]
     ddp_world_size = distributed_utils.get_data_parallel_world_size()
     for k in states[0][OPT_KEY]["state"].keys():
-        # 0,1,2,3... if each layer wrapped, else 0
+        # k in [0,1,2,3...] if each layer wrapped, else 0
+        # k2 in ['step', 'exp_avg', 'exp_avg_sq']
         for k2 in states[0][OPT_KEY]["state"][k].keys():
+            # values are eather the list of 'step' number, ex. [18]
+            # if k2='step' OR a tnesor in case k2='exp_avg' or 'exp_avg_sq'
             values = [state[OPT_KEY]["state"][k][k2] for state in states]
 
             if not torch.is_tensor(values[0]) or is_singleton_tensor(values[0]):
