@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Dict, Optional
-
+import math
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -12,23 +12,35 @@ from torch import Tensor
 from metaseq import utils
 from metaseq.modules import (
     ActivationFn,
-    MultiheadAttention,
+    ModelParallelMultiheadAttention,
     Dropout,
     FeedForwardNetwork,
     LayerNorm,
-    Linear,
 )
 from metaseq.modules.fused_bias_gelu import (
     has_fused_bias_gelu,
     load_megatron_fused_kernel,
 )
 
+try:
+    from megatron.mpu import (
+        ColumnParallelLinear,
+        RowParallelLinear,
+    )
 
-class TransformerDecoderLayer(nn.Module):
-    """Pre-norm Decoder layer block.
+    has_megatron_submodule = True
+except (ImportError, ModuleNotFoundError):
+    has_megatron_submodule = False
 
+
+def _weight_init(weight):
+    return nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+
+
+class ModelParallelTransformerDecoderLayer(nn.Module):
+    """Decoder layer block.
     Note that we have found model training to require pre-norm to remain stable.
-
+    See "Megatron-LM: https://arxiv.org/pdf/1909.08053.pdf" for more details.
     Args:
         args (argparse.Namespace): parsed command-line arguments
     """
@@ -80,7 +92,6 @@ class TransformerDecoderLayer(nn.Module):
             "truncate_init": getattr(args, "truncate_init", False),
         }
 
-        # Note: ModelParallelTransformerDecoderLayer overrides build_fc1.
         self.fc1 = self.build_fc1(
             self.embed_dim,
             ffn_dim,
@@ -95,7 +106,6 @@ class TransformerDecoderLayer(nn.Module):
             **fc1_kwargs,
         )
 
-        # Note: ModelParallelTransformerDecoderLayer overrides build_fc2.
         self.fc2 = self.build_fc2(
             ffn_dim,
             self.embed_dim,
@@ -113,61 +123,113 @@ class TransformerDecoderLayer(nn.Module):
         self.final_layer_norm.to(device).to(dtype)
         self.args = args
 
-    # Refer to model_parallel's transformer layer for why fc1 and fc2 are separate methods.
     def build_fc1(
         self,
         input_dim,
         output_dim,
-        initialize_params_on_gpu=False,
+        initialize_params_on_gpu,
+        full_megatron_init,
+        megatron_init_sigma,
+        dtype,
         disable_bias=False,
-        **unused_args
+        truncate_init=False,
     ):
-        return Linear(
+        if not has_megatron_submodule:
+            raise ImportError(
+                "\n\nPlease install megatron using the setup instructions!"
+            )
+
+        def _init_method_bias(bias):
+            fan_in = input_dim
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(bias, -bound, bound)
+
+        if full_megatron_init:
+            # Setting bias init method to None, initializes biases with zero.
+            init_method_weights = utils.init_method_normal(
+                megatron_init_sigma, truncate_init=truncate_init
+            )
+            init_method_bias = None
+        else:
+            init_method_weights = _weight_init
+            init_method_bias = _init_method_bias
+
+        return ColumnParallelLinear(
             input_dim,
             output_dim,
-            initialize_params_on_gpu=initialize_params_on_gpu,
+            gather_output=False,
+            init_method=init_method_weights,
+            skip_bias_add=self.skip_bias_add,
+            init_method_bias=init_method_bias,
+            use_cpu_initialization=not initialize_params_on_gpu,
+            dtype=dtype,
             bias=not disable_bias,
-            dtype=utils.get_model_init_dtype(self.args),
         )
 
     def build_fc2(
         self,
         input_dim,
         output_dim,
-        initialize_params_on_gpu=False,
+        initialize_params_on_gpu,
+        full_megatron_init,
+        full_megatron_init_scalar,
+        megatron_init_sigma,
+        num_layers,
+        dtype,
         disable_bias=False,
-        **unused_args
+        truncate_init=False,
     ):
-        return Linear(
+        if not has_megatron_submodule:
+            raise ImportError(
+                "\n\nPlease install megatron using the setup instructions!"
+            )
+
+        skip_bias_add = self.skip_bias_add
+        if full_megatron_init:
+            init_method_weights = utils.scaled_init_method_normal(
+                megatron_init_sigma * full_megatron_init_scalar,
+                num_layers,
+                truncate_init=truncate_init,
+            )
+        else:
+            init_method_weights = _weight_init
+
+        fc2 = RowParallelLinear(
             input_dim,
             output_dim,
-            initialize_params_on_gpu=initialize_params_on_gpu,
-            dtype=utils.get_model_init_dtype(self.args),
+            input_is_parallel=True,
+            init_method=init_method_weights,
+            skip_bias_add=skip_bias_add,
+            use_cpu_initialization=not initialize_params_on_gpu,
+            bias=not disable_bias,
+            dtype=dtype,
         )
+        if not full_megatron_init:
+            # Copy nn.linear initialization to get same initialization as of non-model-parallel.
+            # fan_in, _ = nn.init._calculate_fan_in_and_fan_out(fc2.weight)
+            fan_in = input_dim
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(fc2.bias, -bound, bound)
+        return fc2
 
-    def build_self_attention(
-        self,
-        embed_dim,
-        args,
-        add_bias_kv=False,
-        add_zero_attn=False,
-    ):
-        return MultiheadAttention(
-            embed_dim,
-            args.decoder_attention_heads,
+    def build_self_attention(self, embed_dim, args, **unused_kwargs):
+        return ModelParallelMultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=args.decoder_attention_heads,
             dropout=args.attention_dropout,
-            add_bias_kv=add_bias_kv,
-            add_zero_attn=add_zero_attn,
             self_attention=True,
-            initialize_params_on_gpu=getattr(
+            use_cpu_initialization=not getattr(
                 args, "tensor_parallel_init_model_on_gpu", False
             ),
-            bias=not getattr(
-                args,
-                "disable_bias",
-                False,
-            ),
+            full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
+            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+            num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
+            bias=not getattr(args, "disable_bias", False),
+            attn_variant=getattr(args, "attn_variant", "default"),
+            xf_attn_op=getattr(args, "xf_attn_op", None),
+            truncate_init=getattr(args, "truncate_init", None),
         )
 
     def forward_attention(
@@ -180,7 +242,8 @@ class TransformerDecoderLayer(nn.Module):
         incremental_state=None,
         attn_mask=None,
     ):
-        x, _ = self.self_attn(
+        # This is calling into ModelParallelMultiheadAttention.forward
+        attn_output, attn_bias = self.self_attn(
             query=query,
             key=key,
             value=value,
@@ -188,8 +251,19 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             attn_mask=attn_mask,
         )
-        x = self.dropout_module(x)
-        x = residual + x
+        # Note [naman]: got rid off fused bias, dropout and residual cause
+        # now we dont use dropout. And we dont use jit scripting also cause
+        # it seems to use additional gpu memory for activations for dropout
+        # even when its disabled.
+        if attn_bias is not None:
+            attn_output = attn_output + attn_bias.view(1, 1, -1)
+
+        x = torch.nn.functional.dropout(
+            attn_output,
+            p=self.args.dropout,
+            training=self.training,
+        )
+        x = x + residual
         return x
 
     def forward(
@@ -208,7 +282,7 @@ class TransformerDecoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         if getattr(self.args, "sequence_parallel", False):
-            from metaseq.model_parallel.modules import SequeuceParallelTransformerBlock
+            from metaseq.modules import SequeuceParallelTransformerBlock
 
             x = SequeuceParallelTransformerBlock.apply(
                 x,

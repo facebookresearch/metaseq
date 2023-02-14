@@ -33,9 +33,11 @@ def check_type(module, expected_type):
 class BaseModel(nn.Module):
     """Base class for metaseq models."""
 
-    def __init__(self):
+    def __init__(self, decoder):
         super().__init__()
         self._is_generation_fast = False
+        self.decoder = decoder
+        check_type(self.decoder, BaseDecoder)
 
     @classmethod
     def add_args(cls, parser):
@@ -71,14 +73,6 @@ class BaseModel(nn.Module):
             else:
                 return F.softmax(logits, dim=-1)
         raise NotImplementedError
-
-    def extract_features(self, *args, **kwargs):
-        """Similar to *forward* but only return features."""
-        return self(*args, **kwargs)
-
-    def max_positions(self):
-        """Maximum length supported by the model."""
-        return None
 
     def set_num_updates(self, num_updates):
         """State from trainer to pass along to model at every update."""
@@ -154,19 +148,6 @@ class BaseModel(nn.Module):
     @classmethod
     def hub_models(cls):
         return {}
-
-
-class LanguageModel(BaseModel):
-    """Base class for decoder-only models.
-
-    Args:
-        decoder (BaseDecoder): the decoder
-    """
-
-    def __init__(self, decoder):
-        super().__init__()
-        self.decoder = decoder
-        check_type(self.decoder, BaseDecoder)
 
     def forward(self, src_tokens, **kwargs):
         """

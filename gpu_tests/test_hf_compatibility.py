@@ -20,14 +20,24 @@ from megatron.mpu import destroy_model_parallel
 
 
 prompts = [
-    "Today is a beautiful day and I want to",
-    "In the city of",
-    "Paris is the capital of France and",
-    "Computers and mobile phones have taken",
+    "Today is a beautiful day and I want to ",
+    "In the city of ",
+    "Paris is the capital of France and ",
+    "Computers and mobile phones have taken ",
 ]
 
 
 def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
+    """
+    Function to load the model from the model_path and make predictions
+    based on the input list of prompts
+    Args:
+        cfg (MetaseqConfig): config file of the model
+
+    Returns:
+        trimmed_logits (torch.Tensor): list of logits based on the prompts
+        tokenizer (Tokenizer): tokenizer loaded from the model config
+    """
     vocab_file, merges_file, tokenizer = setup_vocab_and_merges(kwargs["model_path"])
     orig_dims = []
 
@@ -90,7 +100,7 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     # Destroy torch distributed process groups. This needs to be executed in each spawned process
     # https://github.com/pytorch/pytorch/issues/48203
     dist.destroy_process_group()
-    return trimmed_logits
+    return trimmed_logits, tokenizer
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "test requires a GPU")
@@ -99,76 +109,43 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
     "test requires a pytorch version of at least 1.9.1",
 )
 class TestHFCompatibility(unittest.TestCase):
-    def test_singleton_metaseq_hf_compatibility(self):
-        model_path = os.path.join(os.path.dirname(__file__), "125m")
-        vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
+    """
+    Test to check that loading the "125m" model from a singleton checkpoint
+    (meaning that it's a combined checkpoint with the convert_to_singleton.py)
+    using metaseq and generating predictions based on the prompt
+    is the same as loading the same checkpoint using OPTForCausalLM and
+    generating predictions from the same prompts.
 
-        checkpoint = checkpoint_utils.load_model_ensemble_and_task(
-            [os.path.join(model_path, "restored.pt")],
-            arg_overrides={
-                "vocab_filename": vocab_file,
-                "merges_filename": merges_file,
-            },
-        )
-
-        model = checkpoint[0][0].eval()
-
-        hf_model = OPTForCausalLM.from_pretrained(model_path).cuda()
-
-        for prompt in prompts:
-            input_ids = tensorize_input(tokenizer, prompt).cuda()
-            with torch.no_grad():
-                logits_metaseq = model(input_ids)[0]
-                logits_hf = hf_model(input_ids)[0]
-
-            metaseq_next_token = get_next_token(logits_metaseq, tokenizer)
-            hf_next_token = get_next_token(logits_hf, tokenizer)
-
-            # Assert that HF and metaseq versions of the same model predict the same logits
-            self.assertTrue(
-                torch.allclose(logits_metaseq.cpu().float(), logits_hf.cpu(), atol=1e-1)
-            )
-
-            # Assert that HF and metaseq versions of the same model predict the same word
-            self.assertEqual(metaseq_next_token, hf_next_token)
+    """
 
     def test_model_parallel_metaseq_hf_compatibility(self):
         model_path = os.path.join(os.path.dirname(__file__), "125m")
 
         cfg = create_generation_config_with_defaults(model_path)
-        mp_logits_list = distributed_utils.call_main(
+
+        mp_logits_list, tokenizer = distributed_utils.call_main(
             cfg, load_mp_model_and_run_eval, model_path=model_path
         )
 
-        # Verify that the generated logits match the consolidated model logits
+        hf_model = OPTForCausalLM.from_pretrained(model_path).cuda()
 
-        vocab_file, merges_file, tokenizer = setup_vocab_and_merges(model_path)
-        checkpoint = checkpoint_utils.load_model_ensemble_and_task(
-            [os.path.join(model_path, "restored.pt")],
-            arg_overrides={
-                "vocab_filename": vocab_file,
-                "merges_filename": merges_file,
-            },
-        )
-        model = checkpoint[0][0].eval()
-
-        for prompt, logits_mp in zip(prompts, mp_logits_list):
+        for i, prompt in enumerate(prompts):
             input_ids = tensorize_input(tokenizer, prompt).cuda()
             with torch.no_grad():
-                logits_metaseq = model(input_ids)[0]
+                logits_hf = hf_model(input_ids)[0]
 
-            metaseq_next_token = get_next_token(logits_metaseq, tokenizer)
-            mp_next_token = get_next_token(logits_mp, tokenizer)
+            metaseq_next_token = get_next_token(mp_logits_list[i], tokenizer)
+            hf_next_token = get_next_token(logits_hf, tokenizer)
 
-            # Assert that MP and metaseq versions of the same model predict the same logits
+            # Assert that HF and metaseq versions of the same model predict the same logits
             self.assertTrue(
                 torch.allclose(
-                    logits_metaseq.cpu().float(), logits_mp.cpu().float(), atol=1e-1
+                    mp_logits_list[i].cpu().float(), logits_hf.cpu(), atol=1e-1
                 )
             )
 
-            # Assert that MP and metaseq versions of the same model predict the same word
-            self.assertEqual(metaseq_next_token, mp_next_token)
+            # Assert that HF and metaseq versions of the same model predict the same token
+            self.assertEqual(metaseq_next_token, hf_next_token)
 
     def tearDown(self):
         # Tear down model parallel

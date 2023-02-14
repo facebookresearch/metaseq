@@ -8,13 +8,15 @@ from .dropout import Dropout
 from .activation_functions import ActivationFn, gelu
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
-from .multihead_attention import MultiheadAttention
+from .multihead_attention import ModelParallelMultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .linear import Linear
 from .feedforward_network import FeedForwardNetwork
-from .transformer_decoder_layer import TransformerDecoderLayer
-from .transformer_encoder_layer import TransformerEncoderLayer
+from .transformer_decoder_layer import (
+    ModelParallelTransformerDecoderLayer,
+)
+from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBlock
 
 __all__ = [
     "ActivationFn",
@@ -23,11 +25,11 @@ __all__ = [
     "gelu",
     "LayerNorm",
     "LearnedPositionalEmbedding",
-    "MultiheadAttention",
+    "ModelParallelMultiheadAttention",
     "PositionalEmbedding",
     "SinusoidalPositionalEmbedding",
     "Linear",
     "FeedForwardNetwork",
-    "TransformerDecoderLayer",
-    "TransformerEncoderLayer",
+    "ModelParallelTransformerDecoderLayer",
+    "SequeuceParallelTransformerBlock",
 ]

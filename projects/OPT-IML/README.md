@@ -1,5 +1,5 @@
 ## About OPT-IML
-[OPT-IML (OPT + Instruction Meta-Learning)](https://github.com/facebookresearch/metaseq/raw/main/projects/OPT-IML/optiml_paper_v1.pdf) is a set of instruction-tuned versions of OPT, on a collection of ~2000 NLP tasks gathered from 8 NLP benchmarks, called OPT-IML Bench. 
+[OPT-IML (OPT + Instruction Meta-Learning)](https://arxiv.org/pdf/2212.12017.pdf) is a set of instruction-tuned versions of OPT, on a collection of ~2000 NLP tasks gathered from 8 NLP benchmarks, called OPT-IML Bench. 
 
 We provide two model versions: 
 * OPT-IML trained on 1500 tasks with several tasks held-out for purposes of downstream evaluation, and 

@@ -14,10 +14,8 @@ from hydra.core.config_store import ConfigStore
 
 from .distributed_model import DistributedModel
 from .base_decoder import BaseDecoder
-from .base_encoder import BaseEncoder
 from .base_model import (
     BaseModel,
-    LanguageModel,
 )
 
 
@@ -33,8 +31,6 @@ __all__ = [
     "BaseModel",
     "DistributedModel",
     "BaseDecoder",
-    "BaseEncoder",
-    "LanguageModel",
     "register_model",
 ]
 
@@ -93,11 +89,11 @@ def register_model(name, dataclass=None):
     For example::
 
         @register_model('lstm')
-        class LSTM(LanguageModel):
+        class LSTM(BaseModel):
             (...)
 
     .. note:: All models must implement the :class:`BaseModel` interface.
-        Typically you will extend :class:`LanguageModel` for
+        Typically you will extend :class:`BaseModel` for
         language modeling tasks.
 
     Args:

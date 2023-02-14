@@ -14,7 +14,6 @@ from metaseq.dataclass.constants import (
     DATASET_IMPL_CHOICES,
     DDP_BACKEND_CHOICES,
     LOG_FORMAT_CHOICES,
-    ZERO_SHARDING_CHOICES,
     CLIP_GRAD_NORM_TYPE_CHOICES,
 )
 
@@ -194,6 +193,12 @@ class CommonConfig(MetaseqDataclass):
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
     )
+    quiet_logs: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Don't log grad/param norms for each parameter.",
+        },
+    )
 
 
 @dataclass
@@ -268,9 +273,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
             "batchnorm population statistics"
         },
     )
-    zero_sharding: ZERO_SHARDING_CHOICES = field(
-        default="none", metadata={"help": "ZeRO sharding"}
-    )
+
     fp16: bool = II("common.fp16")
     memory_efficient_fp16: bool = II("common.memory_efficient_fp16")
     bf16: bool = II("common.bf16")
@@ -497,6 +500,13 @@ class CheckpointConfig(MetaseqDataclass):
     )
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
+    )
+    local_save_interval_updates: int = field(
+        default=0,
+        metadata={
+            "help": "save a checkpoint (and validate) every N updates to local SSD. "
+            "Only applicable when copying to NFS asynchronously"
+        },
     )
     save_last_checkpoint: bool = field(
         default=True,
