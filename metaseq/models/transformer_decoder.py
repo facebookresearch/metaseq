@@ -271,7 +271,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
-        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
+        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP and self.embed_positions is not None:
             # create own positions when self_attn_doc_sep is set
             # We are essentially resetting positions based on document separator tokens.
             # For instance, if the doc separator is 2, and the tokens are
@@ -311,16 +311,14 @@ class ModelParallelTransformerDecoder(BaseDecoder):
                 torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask
             ).long() + self.padding_idx
 
-            # If the positions are pre-computed, padding_idx should not be set.
+            # Since positions are pre-computed, padding_idx should not be set.
             # Ref metaseq/metaseq/modules/learned_positional_embedding.py
-            if self.embed_positions is not None:
-                self.embed_positions.padding_idx = None
-        else:
-            positions = None
-        if self.embed_positions is not None:
+            self.embed_positions.padding_idx = None
             positions = self.embed_positions(
                 tokens, incremental_state=incremental_state, positions=positions
             )
+        else:
+            positions = None
 
         # see BaseDecoder for important information about
         # incremental state
@@ -347,52 +345,6 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         if is_sequence_parallel:
             x = mpu.scatter_to_sequence_parallel_region(x)
         return x, embed, positions
-
-    def forward(
-        self,
-        prev_output_tokens,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        features_only: bool = False,
-        src_lengths: Optional[Any] = None,
-        token_embeddings: Optional[torch.Tensor] = None,
-        self_attn_padding_mask: Optional[Tensor] = None,
-    ):
-        """
-        Includes several features from "Jointly Learning to Align and
-        Translate with Transformer Models" (Garg et al., EMNLP 2019).
-
-        Args:
-            prev_output_tokens (LongTensor): previous decoder outputs of shape
-                `(batch, tgt_len)`, for teacher forcing
-            incremental_state (dict): dictionary used for storing state during
-                :ref:`Incremental decoding`
-            features_only (bool, optional): only return features without
-                applying output layer (default: False).
-            token_embeddings (torch.Tensor, optional): precomputed embeddings
-                default `None` will recompute embeddings
-            self_attn_padding_mask (torch.Tensor, optional): precomputed padding
-                mask for self-attention (default None will recompute mask)
-
-        Returns:
-            tuple:
-                - the decoder's output of shape `(batch, tgt_len, vocab)`
-                - a dictionary with any model-specific outputs
-        """
-
-        # see BaseDecoder for important information about
-        # incremental state
-        x, extra = self.extract_features(
-            prev_output_tokens,
-            incremental_state=incremental_state,
-            token_embeddings=token_embeddings,
-            self_attn_padding_mask=self_attn_padding_mask,
-        )
-        if not features_only:
-            x = self.output_layer(x)
-
-        # Transposing back to B x T x C, so that the interface stays the same.
-        x = x.transpose(0, 1).contiguous()
-        return x, extra
 
     def extract_features(
         self,
@@ -447,6 +399,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
         if not self.share_input_output_embed:
+            # TODO[Susan]: Remove this & make compatible.
             raise NotImplementedError(
                 "Model parallel training currently requires --share-decoder-input-output-embed"
             )
@@ -466,8 +419,8 @@ class ModelParallelTransformerDecoder(BaseDecoder):
             False,  # async_grad_allreduce
             is_sequence_parallel,  # sequence_parallel
         )
-        # Gather output if model is in inference mode (i.e. evallm or generation) cause both are not yet compatible with
-        # parallel vocab embeddings
+        # Gather output if model is in inference mode (i.e. eval_lm or generation) cause both are not yet
+        # compatible with vocab parallel embeddings
         if getattr(self.args, "criterion") != "vocab_parallel_cross_entropy" or getattr(
             self, "inference", False
         ):
@@ -538,3 +491,48 @@ class ModelParallelTransformerDecoder(BaseDecoder):
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
         self.inference = True
+
+    def forward(
+        self,
+        prev_output_tokens,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        features_only: bool = False,
+        src_lengths: Optional[Any] = None,
+        token_embeddings: Optional[torch.Tensor] = None,
+        self_attn_padding_mask: Optional[Tensor] = None,
+    ):
+        """
+        Includes several features from "Jointly Learning to Align and
+        Translate with Transformer Models" (Garg et al., EMNLP 2019).
+
+        Args:
+            prev_output_tokens (LongTensor): previous decoder outputs of shape
+                `(batch, tgt_len)`, for teacher forcing
+            incremental_state (dict): dictionary used for storing state during
+                :ref:`Incremental decoding`
+            features_only (bool, optional): only return features without
+                applying output layer (default: False).
+            token_embeddings (torch.Tensor, optional): precomputed embeddings
+                default `None` will recompute embeddings
+            self_attn_padding_mask (torch.Tensor, optional): precomputed padding
+                mask for self-attention (default None will recompute mask)
+
+        Returns:
+            tuple:
+                - the decoder's output of shape `(batch, tgt_len, vocab)`
+                - a dictionary with any model-specific outputs
+        """
+
+        # see BaseDecoder for important information about incremental state
+        x, extra = self.extract_features(
+            prev_output_tokens,
+            incremental_state=incremental_state,
+            token_embeddings=token_embeddings,
+            self_attn_padding_mask=self_attn_padding_mask,
+        )
+        if not features_only:
+            x = self.output_layer(x)
+
+        # Transposing back to B x T x C, so that the interface stays the same.
+        x = x.transpose(0, 1).contiguous()
+        return x, extra
