@@ -55,6 +55,9 @@ class TestLoadOnMoreGPUs(unittest.TestCase):
         self.assertEqual(
             int(training_log_events_first_run[-1]["num_updates"]), max_update_first_run
         )
+        # check the achieved loss is correct
+        loss_val = float(training_log_events_first_run[-1]["loss"])
+        self.assertAlmostEqual(loss_val, 14.744, 1)  # 1 digit precision
 
         # get the list of files from the chekpoint folder
         # from the 2 GPUs run: ./test-checkpoint/*.ngpu2
@@ -106,6 +109,15 @@ class TestLoadOnMoreGPUs(unittest.TestCase):
 
         # check that training ran correctly
         self.assertNotEqual(training_log_events_second_run, [])
+
+        # check the achieved loss is correct
+        # check that loss is same as with 2 GPUs after reloading on 4 GPUs
+        loss_val_start = float(training_log_events_second_run[0]["loss"])
+        self.assertAlmostEqual(loss_val_start, 14.744, 1)  # 1 digit precision
+
+        # check that loss improved during training on 4 GPUs
+        loss_val_end = float(training_log_events_second_run[-1]["loss"])
+        self.assertAlmostEqual(loss_val_end, 12.165, 1)  # 1 digit precision
 
         # get the list of files from the chekpoint folder
         # from the 4 GPUs run: ./test-checkpoint/*.ngpu4
