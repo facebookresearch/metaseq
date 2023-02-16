@@ -271,7 +271,10 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
-        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP and self.embed_positions is not None:
+        if (
+            self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP
+            and self.embed_positions is not None
+        ):
             # create own positions when self_attn_doc_sep is set
             # We are essentially resetting positions based on document separator tokens.
             # For instance, if the doc separator is 2, and the tokens are
