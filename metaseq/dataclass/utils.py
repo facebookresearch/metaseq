@@ -473,3 +473,19 @@ def merge_with_parent(dc: MetaseqDataclass, cfg: MetaseqDataclass):
     merged_cfg.__dict__["_parent"] = cfg.__dict__["_parent"]
     OmegaConf.set_struct(merged_cfg, True)
     return merged_cfg
+
+
+# Reference:
+# https://github.com/fairinternal/fairseq-py/commit/a42ad0f498d1718ca6f96fc63f73c4b2698d45b0
+def overwrite_keys_not_present(cfg: DictConfig, overrides: Dict[str, any]):
+    # Override leaf keys not present in original checkpoint
+    # Just a hack for only two level depth
+    with open_dict(cfg):
+        for key, value in overrides.items():
+            if key in cfg:
+                for leaf_key, leaf_value in value.items():
+                    if leaf_key not in cfg[key]:
+                        cfg[key] = leaf_value
+                        logger.info(
+                            f"adding overrides not present in original model dict, {cfg[key]}={value}"
+                        )

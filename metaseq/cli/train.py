@@ -130,6 +130,7 @@ def main(cfg: DictConfig) -> None:
             )
     else:
         model = task.build_model(cfg.model)
+    # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
 
     logger.info(model)

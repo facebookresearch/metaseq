@@ -15,7 +15,7 @@ import torch
 from omegaconf import OmegaConf
 
 from metaseq.dataclass.configs import CheckpointConfig
-from metaseq.dataclass.utils import overwrite_args_by_name
+from metaseq.dataclass.utils import overwrite_args_by_name, overwrite_keys_not_present
 from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
@@ -504,6 +504,7 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False) ->
 
         if arg_overrides is not None:
             overwrite_args_by_name(state["cfg"], arg_overrides)
+            overwrite_keys_not_present(state["cfg"], arg_overrides)
 
     state = _upgrade_state_dict(state)
     return state
