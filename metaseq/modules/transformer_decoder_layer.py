@@ -14,7 +14,7 @@ from metaseq.modules import (
     ActivationFn,
     ModelParallelMultiheadAttention,
     Dropout,
-    FeedForwardNetwork,
+    FeedForward,
     LayerNorm,
 )
 from metaseq.modules.fused_bias_gelu import (
@@ -48,36 +48,25 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
     def __init__(
         self,
         args,
-        add_bias_kv=False,
-        add_zero_attn=False,
     ):
         super().__init__()
         load_megatron_fused_kernel()
-        self.args = args
-        self.embed_dim = args.decoder_embed_dim
-        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.self_attn = self.build_self_attention(
-            self.embed_dim,
-            args,
-            add_bias_kv=add_bias_kv,
-            add_zero_attn=add_zero_attn,
-        )
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
         device = torch.cuda.current_device() if initialize_params_on_gpu else None
         dtype = utils.get_model_init_dtype(args)
 
-        self.nh = args.decoder_attention_heads
-        self.head_dim = int(self.embed_dim / self.nh)
+        self.args = args
+        self.embed_dim = args.decoder_embed_dim
+        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
+        self.self_attn = self.build_self_attention(self.embed_dim, args)
+        self.head_dim = int(self.embed_dim / args.decoder_attention_heads)
         affine_ln = not getattr(args, "disable_affine_ln", False)
-
         self.self_attn_layer_norm = LayerNorm(
             self.embed_dim, elementwise_affine=affine_ln
         )
         self.self_attn_layer_norm.to(device).to(dtype)
-
-        ffn_dim = args.decoder_ffn_embed_dim
 
         self.activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
         self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
@@ -94,7 +83,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
 
         self.fc1 = self.build_fc1(
             self.embed_dim,
-            ffn_dim,
+            args.decoder_ffn_embed_dim,
             **fc1_kwargs,
         )
 
@@ -102,12 +91,12 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             self.activation_fn_name,
             self.build_fc1,
             self.embed_dim,
-            ffn_dim,
+            args.decoder_ffn_embed_dim,
             **fc1_kwargs,
         )
 
         self.fc2 = self.build_fc2(
-            ffn_dim,
+            args.decoder_ffn_embed_dim,
             self.embed_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
             full_megatron_init=getattr(args, "full_megatron_init", False),
@@ -121,7 +110,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
-        self.args = args
 
     def build_fc1(
         self,
@@ -212,7 +200,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             nn.init.uniform_(fc2.bias, -bound, bound)
         return fc2
 
-    def build_self_attention(self, embed_dim, args, **unused_kwargs):
+    def build_self_attention(self, embed_dim, args):
         return ModelParallelMultiheadAttention(
             embed_dim=embed_dim,
             num_heads=args.decoder_attention_heads,
@@ -309,7 +297,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         )
         residual = x
         x = self.final_layer_norm(x)
-        x = FeedForwardNetwork(
+        x = FeedForward(
             x,
             fc1=self.fc1,
             activation_fn=self.activation_fn,
