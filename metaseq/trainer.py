@@ -17,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
-
+import os
 import torch
 import torch.distributed as dist
 from omegaconf import OmegaConf
@@ -427,19 +427,33 @@ class Trainer(object):
         extra_state, self._optim_history, last_optim_state = None, [], None
 
         is_distributed = self.data_parallel_world_size > 1
-        bexists = PathManager.isfile(filename)
+        bexists = False
+
+        logger.info(f"attempting to load checkpoint from: {filename}")
+
+        if PathManager.isfile(filename):
+            bexists = True
+        else:
+            # this is a big hacky as when we increase the world size, then filename doesn't really point
+            # to a real file, we convert it to multiple files to be loaded later.
+            # so here we just check if there are some files existing in the dir.
+            files_in_local_dir = os.listdir(os.path.dirname(filename))
+            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(
+                self.checkpoint_suffix, ""
+            )
+            matched_files = [
+                f for f in files_in_local_dir if f.startswith(filename_prefix)
+            ]
+            bexists = len(matched_files) > 0
+
         if bexists:
             logger.info(f"Preparing to load checkpoint {filename}")
-            load_on_all_ranks = (
-                self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
-                # FSDP requires loading checkpoint shards on all ranks
-                or self.is_fsdp
-            )
+            # FSDP requires loading checkpoint shards on all ranks
+            load_on_all_ranks = self.is_fsdp
 
             if load_on_all_ranks or self.is_data_parallel_master:
                 state = checkpoint_utils.load_checkpoint_to_cpu(
                     filename,
-                    load_on_all_ranks=load_on_all_ranks,
                 )
                 last_optim_state = state.get("last_optimizer_state", None)
                 if last_optim_state == -1:

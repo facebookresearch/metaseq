@@ -530,13 +530,6 @@ class CheckpointConfig(MetaseqDataclass):
             "the checkpoint"
         },
     )
-    load_checkpoint_on_all_dp_ranks: bool = field(
-        default=False,
-        metadata={
-            "help": "load checkpoints on all data parallel devices "
-            "(default: only load on rank 0 and broadcast to other devices)"
-        },
-    )
     # TODO: remove write_checkpoints_asynchronously flag; metaseq-internal has dependency here so keeping for now.
     write_checkpoints_asynchronously: bool = field(
         default=True,
