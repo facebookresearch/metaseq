@@ -132,6 +132,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
             "help": "Factor to scale sigma by for the second layer in FFN and out_proj of MHA"
         },
     )
+    pos_init_scalar: float = field(
+        default=1.0,
+        metadata={"help": "Factor to scale positional embedding init by."},
+    )
     truncate_init: bool = field(
         default=False,
         metadata={"help": "Truncate gaussian init to +/- 3 stddevs"},
