@@ -378,6 +378,12 @@ class DatasetConfig(MetaseqDataclass):
     validate_after_updates: int = field(
         default=0, metadata={"help": "dont validate until reaching this many updates"}
     )
+    validate_at_beginning: bool = field(
+        default=False,
+        metadata={
+          "help": "if set, validate language model at the beginning of training or fine-tuning process"
+          },
+    )
     fixed_validation_seed: Optional[int] = field(
         default=None, metadata={"help": "specified random seed for validation"}
     )
