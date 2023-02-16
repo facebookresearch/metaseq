@@ -271,10 +271,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ):
         # embed tokens and positions
-        if (
-            self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP
-            and self.embed_positions is not None
-        ):
+        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
             # create own positions when self_attn_doc_sep is set
             # We are essentially resetting positions based on document separator tokens.
             # For instance, if the doc separator is 2, and the tokens are
@@ -316,12 +313,15 @@ class ModelParallelTransformerDecoder(BaseDecoder):
 
             # Since positions are pre-computed, padding_idx should not be set.
             # Ref metaseq/metaseq/modules/learned_positional_embedding.py
-            self.embed_positions.padding_idx = None
+            if self.embed_positions is not None:
+                self.embed_positions.padding_idx = None
+        else:
+            positions = None
+
+        if self.embed_positions is not None:
             positions = self.embed_positions(
                 tokens, incremental_state=incremental_state, positions=positions
             )
-        else:
-            positions = None
 
         # see BaseDecoder for important information about
         # incremental state
