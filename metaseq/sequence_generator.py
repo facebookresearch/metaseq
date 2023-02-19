@@ -308,3 +308,90 @@ class SequenceGenerator(nn.Module):
         tok_ids = sinds[hyp_ids, choices]
         scores = sprobs[hyp_ids, choices].log()
         return scores, tok_ids
+
+
+class SequenceGeneratorWithAlignment(SequenceGenerator):
+    def __init__(
+        self, models, tgt_dict, left_pad_target=False, print_alignment="hard", **kwargs
+    ):
+        """Generates translations of a given source sentence.
+        Produces alignments following "Jointly Learning to Align and
+        Translate with Transformer Models" (Garg et al., EMNLP 2019).
+        Args:
+            left_pad_target (bool, optional): Whether or not the
+                hypothesis should be left padded or not when they are
+                teacher forced for generating alignments.
+        """
+        super().__init__(EnsembleModelWithAlignment(models), tgt_dict, **kwargs)
+        self.left_pad_target = left_pad_target
+
+        if print_alignment == "hard":
+            self.extract_alignment = utils.extract_hard_alignment
+        elif print_alignment == "soft":
+            self.extract_alignment = utils.extract_soft_alignment
+
+    @torch.no_grad()
+    def generate(self, models, sample, **kwargs):
+        finalized = super()._generate(sample, **kwargs)
+
+        src_tokens = sample["net_input"]["src_tokens"]
+        bsz = src_tokens.shape[0]
+        beam_size = self.beam_size
+        (
+            src_tokens,
+            src_lengths,
+            prev_output_tokens,
+            tgt_tokens,
+        ) = self._prepare_batch_for_alignment(sample, finalized)
+        if any(getattr(m, "full_context_alignment", False) for m in self.model.models):
+            attn = self.model.forward_align(src_tokens, src_lengths, prev_output_tokens)
+        else:
+            attn = [
+                finalized[i // beam_size][i % beam_size]["attention"].transpose(1, 0)
+                for i in range(bsz * beam_size)
+            ]
+
+        if src_tokens.device != "cpu":
+            src_tokens = src_tokens.to("cpu")
+            tgt_tokens = tgt_tokens.to("cpu")
+            attn = [i.to("cpu") for i in attn]
+
+        # Process the attn matrix to extract hard alignments.
+        for i in range(bsz * beam_size):
+            alignment = self.extract_alignment(
+                attn[i], src_tokens[i], tgt_tokens[i], self.pad, self.eos
+            )
+            finalized[i // beam_size][i % beam_size]["alignment"] = alignment
+        return finalized
+
+    def _prepare_batch_for_alignment(self, sample, hypothesis):
+        src_tokens = sample["net_input"]["src_tokens"]
+        bsz = src_tokens.shape[0]
+        src_tokens = (
+            src_tokens[:, None, :]
+            .expand(-1, self.beam_size, -1)
+            .contiguous()
+            .view(bsz * self.beam_size, -1)
+        )
+        src_lengths = sample["net_input"]["src_lengths"]
+        src_lengths = (
+            src_lengths[:, None]
+            .expand(-1, self.beam_size)
+            .contiguous()
+            .view(bsz * self.beam_size)
+        )
+        prev_output_tokens = data_utils.collate_tokens(
+            [beam["tokens"] for example in hypothesis for beam in example],
+            self.pad,
+            self.eos,
+            self.left_pad_target,
+            move_eos_to_beginning=True,
+        )
+        tgt_tokens = data_utils.collate_tokens(
+            [beam["tokens"] for example in hypothesis for beam in example],
+            self.pad,
+            self.eos,
+            self.left_pad_target,
+            move_eos_to_beginning=False,
+        )
+        return src_tokens, src_lengths, prev_output_tokens, tgt_tokens
