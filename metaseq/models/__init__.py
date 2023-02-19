@@ -32,6 +32,7 @@ __all__ = [
     "DistributedModel",
     "BaseDecoder",
     "register_model",
+    "register_model_architecture",
 ]
 
 
