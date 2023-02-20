@@ -11,14 +11,55 @@ def span_intersection(left: Tuple[int, int], right: Tuple[int, int]) -> bool:
     return max(left_x, right_x) < min(left_y, right_y)
 
 
+def overlaps(span_1: Tuple[int, int], span_2: Tuple[int, int]) -> bool:
+    # Check if two spans overlap
+    return not (span_1[1] <= span_2[0] or span_1[0] >= span_2[1])
+
+
+def calculate_overlap(span_1: Tuple[int, int], span_2: Tuple[int, int]) -> int:
+    # Calculate the overlap between two spans
+    return max(0, min(span_1[1], span_2[1]) - max(span_1[0], span_2[0]))
+
+
+def adjust_span(
+    span_1: Tuple[int, int], most_similar_span: Tuple[int, int]
+) -> Tuple[int, int]:
+    # Adjust the boundaries of span_1 so that it does not cross the boundaries of most_similar_span
+    new_start = max(span_1[0], most_similar_span[0])
+    new_end = min(span_1[1], most_similar_span[1])
+    return (new_start, new_end)
+
+
+def adjust_spans(
+    spans_1: List[Tuple[int, int]], spans_constraints: List[Tuple[int, int]]
+) -> List[Tuple[int, int]]:
+    new_spans_1 = []
+    for span_1 in spans_1:
+        most_similar_span = None
+        max_overlap = 0
+        # Find the most similar span in spans_2
+        for span_2 in spans_constraints:
+            overlap = calculate_overlap(span_1, span_2)
+            if overlap > max_overlap:
+                max_overlap = overlap
+                most_similar_span = span_2
+        # Adjust the span if it overlaps with the most similar span
+        if most_similar_span is not None and overlaps(span_1, most_similar_span):
+            span_1 = adjust_span(span_1, most_similar_span)
+        new_spans_1.append(span_1)
+    # Return the updated spans in spans_1
+    return new_spans_1
+
+
 class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
     def __init__(
         self,
         sentinel_token_expectation: int,
         sentinel_tokens: List[int],
         sentinel_method: str,
-        tokens_per_sample: int,
         sentinel_eos: int,
+        allow_rotation_across_eod: bool,
+        eod: int,
         dataset: torch.utils.data.IterableDataset,
         block_size: int,
         break_mode: str = "none",
@@ -47,7 +88,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         self.sentinel_token_expectation = sentinel_token_expectation
         self.sentinel_tokens = sentinel_tokens
         self.sentinel_method = sentinel_method
-        self.tokens_per_sample = tokens_per_sample
+        self.tokens_per_sample = block_size
         self.eos = sentinel_eos
         assert self.sentinel_method == "fixed" or self.sentinel_method == "poisson"
         assert len(self.sentinel_tokens) >= 1
@@ -56,6 +97,8 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             not self.source_target
         ), "CM3 objective is not supported when source_target is True"
         self.sentinel_fixed = self.sentinel_method == "fixed"
+        self.allow_rotation_across_eod = allow_rotation_across_eod
+        self.eod = eod
 
     def get_sentinel(self, i):
         return self.sentinel_tokens[i]
@@ -142,18 +185,31 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
     def get_ordered_spans(self, spans: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         return sorted(spans, key=lambda x: x[0])
 
+    def get_document_boundaries(self, item: torch.Tensor):
+        boundaries = (item == self.eod).nonzero().cpu().squeeze().numpy().tolist()
+        if boundaries[0] != 0:
+            boundaries = [0] + boundaries
+        if boundaries[-1] != item.size(0)-1:
+            boundaries = boundaries + [item.size(0)]
+        spans = []
+        for i in range(1, len(boundaries)):
+            spans.append((boundaries[i - 1], boundaries[i]))
+        return spans
+
     def __iter__(self):
         for packed_item in super().__iter__():
             item = packed_item["block"]
             assert len(item) > 0
             spans = self.get_spans_to_mask(len(item))
+            if not self.allow_rotation_across_eod:
+                document_boundaries = self.get_document_boundaries(item)
+                spans = adjust_spans(spans, document_boundaries)
             if spans is None:
                 yield packed_item
             else:
                 spans = self.get_ordered_spans(spans)
                 causal_source = self.sentinel_masking(item, spans)
                 causal_masked = self.sentinel_targets(item, spans)
-
                 packed_item["block"] = torch.cat([causal_source, causal_masked])[
                     : self.tokens_per_sample
                 ]  # EOSS tokens can add just enough tokens to get off by 1-2.
