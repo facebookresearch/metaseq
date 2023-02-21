@@ -735,7 +735,7 @@ def validate(
                         and i > cfg.dataset.max_valid_steps
                     ):
                         break
-                    trainer.valid_step(sample)
+                    trainer.valid_step(sample, num_step=i)
             # log validation stats
             stats = add_num_updates_to_stats(trainer, agg.get_smoothed_values())
             progress.print(stats, tag=subset, step=trainer.get_num_updates())
