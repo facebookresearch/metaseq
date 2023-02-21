@@ -1,10 +1,14 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 from typing import List
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset, adjust_spans
 
 import torch
 import unittest
 import random
-import torch
 import numpy as np
 
 
