@@ -210,7 +210,7 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
-        for step in range(start_step, max_len + 1):
+        for step in range(start_step, max_len):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
@@ -221,7 +221,7 @@ class SequenceGenerator(nn.Module):
             lprobs[:, self.pad] = -math.inf  # never select pad
 
             # handle max length constraint
-            if step >= max_len:
+            if step >= max_len - 1:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
