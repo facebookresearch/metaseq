@@ -12,6 +12,156 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+# added for self-debiasing
+from transformers import LogitsProcessor, PreTrainedTokenizer, LogitsProcessorList
+import copy
+
+
+class SelfDebiasingLogitsProcessor:
+    """
+    This class represents a logits processor that applies self-debiasing.
+    """
+
+    def __init__(
+        self,
+        num_debiasing_prefixes: int,
+        decay_constant: float = 50,
+        epsilon: float = 0.01,
+        debug: bool = False,
+        tokenizer: Optional[PreTrainedTokenizer] = None,
+    ):
+        """
+        :param num_debiasing_prefixes: the number of debiasing prefixes used
+        :param decay_constant: the decay constant (lambda in the paper)
+        :param epsilon: the minimum factor by which each probability is multiplied
+        :param debug: whether to print additional debugging output
+        :param tokenizer: a tokenizer used to print debugging output
+        """
+        assert (
+            not debug or tokenizer
+        ), "If debug=True, a tokenizer must be passed to SelfDebiasingLogitsProcessor()"
+        self.num_debiasing_prefixes = num_debiasing_prefixes
+        self.decay_constant = decay_constant
+        self.epsilon = epsilon
+        self.debug = debug
+        self.tokenizer = tokenizer
+
+    def __call__(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor
+    ) -> torch.FloatTensor:
+        batch_size = scores.shape[0] // (1 + self.num_debiasing_prefixes)
+        regular_sentence_indices = range(batch_size)
+        for regular_sentence_idx in regular_sentence_indices:
+            bias_indices = self._get_bias_indices(regular_sentence_idx, batch_size)
+            if bias_indices:
+                self._debias_scores(scores, regular_sentence_idx, bias_indices)
+        return scores
+
+    def _get_bias_indices(
+        self, regular_sentence_idx: int, batch_size: int
+    ) -> List[int]:
+        """
+        Returns the indices of all self-debiasing inputs for a regular input
+        """
+        return [
+            regular_sentence_idx + (prefix_idx + 1) * batch_size
+            for prefix_idx in range(self.num_debiasing_prefixes)
+        ]
+
+    def _debias_scores(
+        self, scores: torch.FloatTensor, regular_sent_idx: int, bias_indices: List[int]
+    ) -> None:
+        """
+        Partially debiases the given scores considering a single sentence and the corresponding self-debiasing inputs
+        """
+        logits_biased = [scores[bias_idx] for bias_idx in bias_indices]
+
+        mask = self._generate_decay_mask(scores[regular_sent_idx], logits_biased)
+        scores[regular_sent_idx] = torch.log(
+            self._apply_decay_mask(scores[regular_sent_idx], mask)
+        )
+
+        for debiasing_sent_idx in bias_indices:
+            scores[debiasing_sent_idx] = scores[regular_sent_idx]
+
+    def _apply_decay_mask(
+        self, logits: torch.Tensor, decay_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Applies exponential decay to a tensor of logits
+        """
+        probabilities = logits.softmax(dim=-1)
+        decay_mask = torch.exp(-decay_mask * self.decay_constant)
+        decay_mask = torch.max(
+            decay_mask, torch.tensor([self.epsilon], device=decay_mask.device)
+        )
+        probabilities = probabilities * decay_mask
+        probabilities = probabilities / probabilities.sum(dim=-1)
+        return probabilities
+
+    def _generate_decay_mask(
+        self,
+        logits_regular: torch.FloatTensor,
+        logits_biased_list: List[torch.FloatTensor],
+    ) -> torch.Tensor:
+        """Computes the alpha values (see paper) for each token and stores them in a mask tensor"""
+        p_regular = logits_regular.softmax(dim=-1)
+        p_biased = None
+
+        for logits_biased in logits_biased_list:
+            if p_biased is None:
+                p_biased = logits_biased.softmax(dim=-1)
+            else:
+                p_biased = torch.max(p_biased, logits_biased.softmax(dim=-1))
+
+        if self.debug:
+            print(
+                f"== Before Debiasing ==\n"
+                f"Top 5 predictions (regular): {self._get_most_likely_tokens(p_regular, k=5)}\n"
+                f"Top 5 predictions (biased): {self._get_most_likely_tokens(p_biased, k=5)}"
+            )
+
+        mask = torch.max(
+            p_biased - p_regular, torch.tensor([0.0], device=p_regular.device)
+        )
+
+        if self.debug:
+            p_regular = self._apply_decay_mask(logits_regular, mask)
+            print(
+                f"== After Debiasing ==\n"
+                f"Top 5 predictions (regular): {self._get_most_likely_tokens(p_regular, k=5)}"
+            )
+
+        return mask
+
+    def _get_most_likely_tokens(
+        self, probabilities_tensor: torch.Tensor, k: int
+    ) -> List[Tuple[str, float]]:
+        """
+        Returns the most likely tokens according to a tensor of probabilities
+        """
+        assert len(probabilities_tensor.shape) == 1
+        values, indices = torch.topk(probabilities_tensor, k=k, dim=-1)
+        # tokens = self.tokenizer.convert_ids_to_tokens(indices)
+        tokens = self.tokenizer.decode(indices.tolist())
+        return list(zip(tokens, [pv.item() for pv in values]))
+
+
+logger = logging.getLogger(__name__)
+
+# Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+import logging
+import math
+from typing import Dict, List, Optional
+
+import torch
+import torch.nn as nn
+from torch import Tensor
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +186,13 @@ class SequenceGenerator(nn.Module):
         alpha_presence_src: float = 0.0,
         alpha_frequency_src: float = 0.0,
         alpha_src_penalty_end_idx: int = -1,
+        # added self-debiasing args
+        self_debiasing: bool = False,
+        num_debiasing_prefixes: int = 0,
+        decay_constant: float = 50,
+        epsilon: float = 0.01,
+        debug: bool = False,
+        tokenizer=None,
     ):
         """Generates translations of a given source sentence.
 
@@ -112,6 +269,14 @@ class SequenceGenerator(nn.Module):
         self.alpha_frequency_src = alpha_frequency_src
         self.alpha_src_penalty_end_idx = alpha_src_penalty_end_idx
 
+        # self-debiasing args
+        self.self_debiasing = self_debiasing
+        self.num_debiasing_prefixes = num_debiasing_prefixes
+        self.decay_constant = decay_constant
+        self.epsilon = epsilon
+        self.debug = debug
+        self.tokenizer = tokenizer
+
     def cuda(self):
         self.model.cuda()
         return self
@@ -156,6 +321,10 @@ class SequenceGenerator(nn.Module):
             src_lengths = (
                 (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
             )
+            print("src_lengths:", src_lengths) # [28, 41, 41, 37, 36, 44, 47]
+            print("src_lengths - src_lengths[0]", src_lengths - src_lengths[0])
+            print("original prompt:", self.tokenizer.decode(src_tokens[0].tolist()))
+            print("original prompt token:", src_tokens[0])
         elif "source" in net_input:
             src_tokens = net_input["source"]
             src_lengths = (
@@ -212,7 +381,7 @@ class SequenceGenerator(nn.Module):
         # first forward through all the fixed tokens with forced decoding we'll
         # need to handle normalization and prep for bookkeeping of incremental
         # decoding
-        start_step = src_tokens.shape[1]
+        start_step = src_tokens.shape[1]  # 30
         # set all the forced tokens
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
@@ -220,16 +389,32 @@ class SequenceGenerator(nn.Module):
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
+        print("--- 1. no error passing first decoder ---")
+
+        if self.self_debiasing:
+            # instantiate logits processors
+            logits_processor = SelfDebiasingLogitsProcessor(
+                    num_debiasing_prefixes=self.num_debiasing_prefixes,
+                    decay_constant=self.decay_constant, epsilon=self.epsilon,
+                    debug=self.debug, tokenizer=self.tokenizer)
+
+            # pre-process distribution
+            next_token_logits = model_out[0][:, -1, :]  # [7,30,50272] -> [7,50272]
+            next_token_scores = logits_processor(None, next_token_logits)  # [7,50272]
+
+            # plug back to model_predictions
+            model_out[0][:, -1, :] = next_token_scores
+
         # temperature and normalization
         # convert to float before the temparture divide to ensure good precision.
         # Avoid dividing by 1.0 to prevent unnecessary numerical instability
         # and always log in float
-        model_predictions = model_out[0].float()
+        model_predictions = model_out[0].float()  # [7,30,50272]
         if self.temperature > 0 and self.temperature != 1.0:
             model_predictions.div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
-        lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
+        lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)  # [7,30,50272]
 
         # don't allow generation of eos/pad
         model_predictions[:, :, self.eos] = -math.inf
@@ -244,23 +429,26 @@ class SequenceGenerator(nn.Module):
 
         # find and store the logprobs of each prompt token, cutting out the
         # rest of the vocab. Note the shift of 1 here b/c autoregressive.
-        prompt_tokens = tokens[:, 1:start_step].unsqueeze(-1)
+        prompt_tokens = tokens[:, 1:start_step].unsqueeze(-1)  # [7,29,1]
         # look up a specific vocab logprob, and broadcast it into scores
-        toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(-1)
-        scores[:, 1:start_step] = toscores.type_as(scores)
+        toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(-1)  # [7,29] find logprob correspond to original prompt tokens
+        scores[:, 1:start_step] = toscores.type_as(scores)  # [7,29]
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
         # decisions are only over the most recent token.
         lprobs_cut = []
-        for i in range(src_tokens.shape[0]):
-            prompt_len = src_lengths[i]
+        for i in range(src_tokens.shape[0]):  # 7
+            prompt_len = src_lengths[i]  # 10
             scores[i * beam_size : (i + 1) * beam_size, prompt_len + 1 :] = 0.0  # reset
-            lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
-        lprobs = torch.cat(lprobs_cut, dim=0)
+            # beam_size=1, scores[0:1, 10+1:]
+            lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])  # [1,50272]
+            # most recent token lprobs (10) [0:1, 10]
+        lprobs = torch.cat(lprobs_cut, dim=0)  # [7,50272] - lprobs for most recent token
 
-        eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
+        eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)  # [7] all False
 
-        for step in range(start_step, max_len + 1):
+        print("max_len:", max_len)
+        for step in range(start_step, max_len): # + 1
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
@@ -268,7 +456,7 @@ class SequenceGenerator(nn.Module):
                     lprobs[:, stop_token] = -math.inf
 
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
-            lprobs[:, self.pad] = -math.inf  # never select pad
+            lprobs[:, self.pad] = -math.inf  # never select pad  # [7,50272] col 1
 
             # handle max length constraint
             if step >= max_len:
@@ -286,7 +474,27 @@ class SequenceGenerator(nn.Module):
 
             # find our next tokens and record them
             # protect this step for the last token so we don't overflow
-            next_scores, next_toks = self._sample_topp(lprobs)
+            # get lprobs for the most probable next token
+            next_scores, next_toks = self._sample_topp(lprobs)  # [7]
+            # print("next_toks:", next_toks)
+            # next_toks: [50118,    47,    47, 50118, 50118,  8446, 29259]
+            # self.tokenizer.decode([100,206,37,197,33,10,865,15,5,97,526,9,5,8429,4,2])
+            # 'I think he should have a hand on the other side of the desk.</s>'
+            # self.tokenizer.decode(tokens[0].tolist())
+
+            # ensure that each debiasing sentence is continued
+            # in the same way as the original sentence
+            if self.self_debiasing:
+                batch_size = next_toks.shape[0] // (1 + logits_processor.num_debiasing_prefixes)
+                regular_sentence_indices = range(batch_size)
+                for regular_sentence_idx in regular_sentence_indices:
+                    debiasing_sentence_indices = logits_processor._get_bias_indices(regular_sentence_idx, batch_size)
+                    for debiasing_sentence_idx in debiasing_sentence_indices:
+                        next_toks[debiasing_sentence_idx] = next_toks[regular_sentence_idx]
+            # regular_sentence_idx = [0]
+            # debiasing_sentence_indices = [1, 2, 3, 4, 5, 6]
+            # next_toks: [50118, 50118, 50118, 50118, 50118, 50118, 50118]
+
             count_tokens = self._update_repetition_counts(next_toks, count_tokens)
             if step < max_len:
                 tokens[:, step] = next_toks
@@ -303,16 +511,35 @@ class SequenceGenerator(nn.Module):
                 break
 
             # forward through the next pass
+            print("--- passing into second decoder ---", step, "tokens[:, : step + 1]", tokens[:, : step + 1].shape)
             model_out = self.model.decoder(
-                tokens[:, : step + 1],
+                tokens[:, : step + 1],  # [7,31]
                 incremental_state=incremental_states,
             )
+            print("--- no error passing second decoder ---", step)
+
+            if self.self_debiasing:
+                # pre-process distribution
+                next_token_logits = model_out[0][:, -1, :]  # [7,1,50272] (only for the new token) -> [7,50272]
+                next_token_scores = logits_processor(None, next_token_logits)  # [7,50272]
+
+                # plug back to model_predictions
+                model_out[0][:, -1, :] = next_token_scores
+
             # see above for why this must remain float
-            model_predictions = model_out[0].float()
+            model_predictions = model_out[0].float()  # [7,1,50272]
             if self.temperature > 0 and self.temperature != 1.0:
                 model_predictions.div_(self.temperature)
-            lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
-            lprobs = lprobs[:, -1, :]
+            lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)  # [7,1,50272]
+            lprobs = lprobs[:, -1, :]  # [7,50272]
+
+        # remove debiasing inputs -> only return the first generation
+        if self.self_debiasing:
+            batch_size = bsz // (1 + self.num_debiasing_prefixes)
+            tokens = tokens[:batch_size, :]
+            scores = scores[:batch_size, :]
+            bsz = 1
+        print("debiased prompt:", self.tokenizer.decode(tokens[0].tolist()))
 
         # we want the highest scoring items to be top ranked
         beamscores = scores.view(bsz, beam_size, -1).cumsum(dim=-1)[:, :, -1]
@@ -404,7 +631,7 @@ class SequenceGenerator(nn.Module):
         """
         if self.temperature == 0.0 or self.sampling_topp == 0.0:
             # greedy search
-            return tuple(lprobs.max(dim=-1))
+            return tuple(lprobs.max(dim=-1)) # (output, index)
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
