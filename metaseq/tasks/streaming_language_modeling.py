@@ -251,6 +251,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
+            self.dictionary.add_symbol(token)
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
@@ -418,7 +419,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             # lot of downstream code that has isinstance checks.
             # So just to be safe and not change anything we use proper inheritance.
             self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
-                sentinel_token_expectation=self.args.cm3_num_sentinel_tokens,
+                sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
                 sentinel_tokens=self.cm3_sentinel_tokens_ind,
                 sentinel_method=self.args.cm3_sentinel_method,
                 sentinel_eos=self.cm3_sentinel_end_ind,
