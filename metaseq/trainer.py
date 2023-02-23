@@ -970,7 +970,7 @@ class Trainer(object):
         return logging_output
 
     @metrics.aggregate("valid")
-    def valid_step(self, sample, num_steps=0, raise_oom=False):
+    def valid_step(self, sample, num_step=0, raise_oom=False):
         """Do forward pass in evaluation mode."""
 
         # If EMA is enabled through store_ema=True
@@ -988,7 +988,7 @@ class Trainer(object):
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             try:
-                with set_rank_seed(self.cfg.common.seed, num_steps + self.get_num_updates()) \
+                with set_rank_seed(self.cfg.common.seed, num_step + self.get_num_updates()) \
                                 if self.cfg.common.seed_per_rank else contextlib.nullcontext():
                     _loss, sample_size, logging_output = self.task.valid_step(
                         sample, self.model, self.criterion
@@ -1005,7 +1005,7 @@ class Trainer(object):
                                 p.grad = None  # free some memory
                         if self.cuda:
                             torch.cuda.empty_cache()
-                        return self.valid_step(sample, num_steps, raise_oom=True)
+                        return self.valid_step(sample, num_step, raise_oom=True)
                 raise e
 
             logging_outputs = [logging_output]
@@ -1204,7 +1204,7 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.bf16:
+                if self.cfg.common.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
