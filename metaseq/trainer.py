@@ -775,7 +775,7 @@ class Trainer(object):
                     return contextlib.ExitStack()  # dummy contextmanager
 
             try:
-                with maybe_no_sync(), (set_rank_seed(self.cfg.common.seed, self.get_num_updates()) \
+                with maybe_no_sync(), (set_rank_seed(self.cfg.common.seed, self.get_num_updates())
                                 if self.cfg.common.seed_per_rank else contextlib.nullcontext()):
                     # forward and backward
                     loss, sample_size_i, logging_output = self.task.train_step(
@@ -880,7 +880,7 @@ class Trainer(object):
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
             self.zero_grad()
-            with NanDetector(self.get_model()), (set_rank_seed(self.cfg.common.seed, self.get_num_updates()) \
+            with NanDetector(self.get_model()), (set_rank_seed(self.cfg.common.seed, self.get_num_updates())
                                 if self.cfg.common.seed_per_rank else contextlib.nullcontext()):
                 for _, sample in enumerate(samples):
                     sample, _ = self._prepare_sample(sample)
