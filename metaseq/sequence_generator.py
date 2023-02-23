@@ -8,12 +8,16 @@
 
 import logging
 import math
+import sys
 from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
-from metaseq.models import BaseDecoder
 from torch import Tensor
+
+from metaseq import utils
+from metaseq.data import data_utils
+from metaseq.models import BaseDecoder
 
 logger = logging.getLogger(__name__)
 
