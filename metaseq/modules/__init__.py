@@ -4,9 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 """isort:skip_file"""
 
+from .adaptive_softmax import AdaptiveSoftmax
 from .dropout import Dropout
 from .activation_functions import ActivationFn, gelu
-from .layer_norm import Fp32LayerNorm, LayerNorm
+from .layer_norm import LayerNorm, LayerNormFp32
+from .group_norm_fp32 import GroupNormFp32
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .multihead_attention import ModelParallelMultiheadAttention
 from .positional_embedding import PositionalEmbedding
@@ -20,10 +22,12 @@ from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBloc
 
 __all__ = [
     "ActivationFn",
+    "AdaptiveSoftmax",
     "Dropout",
-    "Fp32LayerNorm",
     "gelu",
     "LayerNorm",
+    "LayerNormFp32",
+    "GroupNormFp32",
     "LearnedPositionalEmbedding",
     "ModelParallelMultiheadAttention",
     "PositionalEmbedding",

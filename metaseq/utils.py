@@ -6,14 +6,16 @@
 import copy
 import importlib
 import logging
+import math
 import os
 import random
 import re
 import sys
 import warnings
-import math
+from itertools import accumulate
 from typing import List, Optional
 
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
@@ -383,6 +385,31 @@ class set_torch_seed(object):
         set_rng_state(self.rng_state)
 
 
+class set_rank_seed(set_torch_seed):
+    def __init__(self, seed, update):
+        if dist.is_initialized():
+            rank, world = dist.get_rank(), dist.get_world_size()
+        else:
+            rank, world = 0, 1
+        rank_seed = seed + update * world + rank
+
+        # torch
+        super(set_rank_seed, self).__init__(rank_seed)
+
+        # numpy
+        self.np_state = np.random.get_state()
+        np.random.seed(rank_seed)
+
+        # random
+        self.random_state = random.getstate()
+        random.seed(rank_seed)
+
+    def __exit__(self, *exc):
+        random.setstate(self.random_state)
+        np.random.set_state(self.np_state)
+        super(set_rank_seed, self).__exit__(*exc)
+
+
 class CudaEnvironment(object):
     def __init__(self):
         cur_device = torch.cuda.current_device()
@@ -509,3 +536,47 @@ def scaled_init_method_normal(sigma, num_layers, truncate_init=False):
             return torch.nn.init.normal_(tensor, mean=0.0, std=std)
 
     return init_
+
+
+def get_token_to_word_mapping(tokens, exclude_list):
+    n = len(tokens)
+    word_start = [int(token not in exclude_list) for token in tokens]
+    word_idx = list(accumulate(word_start))
+    token_to_word = {i: word_idx[i] for i in range(n)}
+    return token_to_word
+
+
+def extract_hard_alignment(attn, src_sent, tgt_sent, pad, eos):
+    tgt_valid = (
+        ((tgt_sent != pad) & (tgt_sent != eos)).nonzero(as_tuple=False).squeeze(dim=-1)
+    )
+    src_invalid = (
+        ((src_sent == pad) | (src_sent == eos)).nonzero(as_tuple=False).squeeze(dim=-1)
+    )
+    src_token_to_word = get_token_to_word_mapping(src_sent, [eos, pad])
+    tgt_token_to_word = get_token_to_word_mapping(tgt_sent, [eos, pad])
+    alignment = []
+    if len(tgt_valid) != 0 and len(src_invalid) < len(src_sent):
+        attn_valid = attn[tgt_valid]
+        attn_valid[:, src_invalid] = float("-inf")
+        _, src_indices = attn_valid.max(dim=1)
+        for tgt_idx, src_idx in zip(tgt_valid, src_indices):
+            alignment.append(
+                (
+                    src_token_to_word[src_idx.item()] - 1,
+                    tgt_token_to_word[tgt_idx.item()] - 1,
+                )
+            )
+    return alignment
+
+
+def extract_soft_alignment(attn, src_sent, tgt_sent, pad, eos):
+    tgt_valid = ((tgt_sent != pad)).nonzero(as_tuple=False)
+    src_valid = ((src_sent != pad)).nonzero(as_tuple=False).squeeze(dim=-1)
+    alignment = []
+    if len(tgt_valid) != 0 and len(src_valid) != 0:
+        attn_valid = attn[tgt_valid, src_valid]
+        alignment = [
+            ["{:.6f}".format(p) for p in src_probs.tolist()] for src_probs in attn_valid
+        ]
+    return alignment

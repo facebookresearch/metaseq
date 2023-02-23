@@ -19,6 +19,7 @@ from metaseq.dataclass.configs import (
     GenerationConfig,
     OptimizationConfig,
     ReshardConfig,
+    EMAConfig,
 )
 from metaseq.dataclass.utils import gen_parser_from_dataclass
 
@@ -30,6 +31,7 @@ def get_training_parser(default_task="translation"):
     add_model_args(parser)
     add_optimization_args(parser)
     add_checkpoint_args(parser)
+    add_ema_args(parser)
     return parser
 
 
@@ -272,6 +274,12 @@ def add_generation_args(parser):
     group = parser.add_argument_group("Generation")
     add_common_eval_args(group)
     gen_parser_from_dataclass(group, GenerationConfig())
+    return group
+
+
+def add_ema_args(parser):
+    group = parser.add_argument_group("EMA configuration")
+    gen_parser_from_dataclass(group, EMAConfig())
     return group
 
 

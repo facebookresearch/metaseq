@@ -105,7 +105,7 @@ _code_to_dtype = {
     3: np.int16,
     4: np.int32,
     5: np.int64,
-    6: np.single,
+    6: np.single,  # np.float32?
     7: np.double,
     8: np.uint16,
     9: np.uint32,

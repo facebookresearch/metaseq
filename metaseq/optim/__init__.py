@@ -21,6 +21,7 @@ __all__ = [
     "FP16Optimizer",
     "MemoryEfficientFP16Optimizer",
     "shard_",
+    "register_optimizer",
 ]
 
 (

@@ -23,11 +23,13 @@ import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils
+from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
+from metaseq.models.ema import build_ema
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
+from metaseq.utils import set_rank_seed
 
 try:
     from megatron.mpu import (
@@ -129,6 +131,7 @@ class Trainer(object):
         self._wrapped_model = None
         self._ewm_loss = None
         self._skipped_loss_spikes = 0
+        self._ema = None
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -239,6 +242,41 @@ class Trainer(object):
             else:
                 self._wrapped_model = self._model
         return self._wrapped_model
+
+    @property
+    def ema(self):
+        if self._ema is None:
+            self._build_ema()
+        return self._ema
+
+    def _build_ema(self):
+        if self.cfg.ema.store_ema:
+            if self.is_fsdp:
+                # Build FSDP model
+                extra = {
+                    "is_moe": getattr(self.cfg.model, "moe_freq", 0) > 0,
+                    "use_sharded_state": self.use_sharded_state,
+                }
+                with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
+                    model = fsdp_wrap(self.task.build_model(self.cfg.model))
+
+                if self.cfg.common.memory_efficient_fp16:
+                    if self.cfg.common.bf16:
+                        model = model.bfloat16()
+                    else:
+                        model = model.half()
+
+                # Copy FSDP model state (since copy.deepcopy doesn't work)
+                state_dict = self.model.state_dict()
+                if not self.use_sharded_state:
+                    state_dict = distributed_utils.broadcast_object(
+                        state_dict, src_rank=0, group=self.model.process_group
+                    )
+                model.load_state_dict(state_dict)
+                self._ema = build_ema(model, self.cfg.ema, self.device)
+            else:
+                self._ema = build_ema(self._model, self.cfg.ema, self.device)
+            logger.info("Exponential Moving Average Shadow Model is initialized.")
 
     @property
     def optimizer(self):
@@ -366,6 +404,13 @@ class Trainer(object):
             }
 
             state_dict["last_optimizer_state"] = optimizer_state_dict
+
+            if self.cfg.ema.store_ema:
+                # Save EMA model state as extra state
+                state_dict["extra_state"]["ema"] = self.ema.get_model().state_dict()
+                if self.cfg.ema.ema_fp32:
+                    # Save EMA params in fp32
+                    state_dict["extra_state"]["ema_fp32_params"] = self.ema.fp32_params
 
             if self.is_fsdp and self.use_sharded_state:
                 state_dict[
@@ -561,6 +606,29 @@ class Trainer(object):
                     if isinstance(meter, meters.TimeMeter):
                         meter.reset()
 
+            if self.cfg.ema.store_ema:
+                if "ema" not in extra_state:
+                    logger.warn(
+                        "EMA not found in checkpoint. But store_ema is True. "
+                        "EMA is re-initialized from checkpoint."
+                    )
+                    self.ema.restore(
+                        state["model"], build_fp32_params=self.cfg.ema.ema_fp32
+                    )
+                else:
+                    logger.info("Loading EMA from checkpoint")
+                    self.ema.restore(extra_state["ema"], build_fp32_params=False)
+
+                    if self.cfg.ema.ema_fp32:
+                        if "ema_fp32_params" in extra_state:
+                            logger.info("Loading EMA fp32 params from checkpoint")
+                            self.ema.build_fp32_params(extra_state["ema_fp32_params"])
+                        else:
+                            logger.info(
+                                "Building EMA fp32 params from EMA model in checkpoint"
+                            )
+                            self.ema.build_fp32_params()
+
             logger.info(
                 f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
             )
@@ -669,6 +737,13 @@ class Trainer(object):
 
         metrics.log_start_time("train_wall", priority=800, round=0)
 
+        # If EMA is enabled through store_ema=True
+        # and task.uses_ema is True, pass the EMA model as a keyword
+        # argument to the task.
+        extra_kwargs = {}
+        if self.cfg.ema.store_ema and getattr(self.task, "uses_ema", False):
+            extra_kwargs["ema_model"] = self.ema.get_model()
+
         # forward and backward pass
         logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
@@ -701,7 +776,11 @@ class Trainer(object):
                     return contextlib.ExitStack()  # dummy contextmanager
 
             try:
-                with maybe_no_sync():
+                with maybe_no_sync(), (
+                    set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                    if self.cfg.common.seed_per_rank
+                    else contextlib.nullcontext()
+                ):
                     # forward and backward
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
@@ -805,7 +884,11 @@ class Trainer(object):
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
             self.zero_grad()
-            with NanDetector(self.get_model()):
+            with NanDetector(self.get_model()), (
+                set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                if self.cfg.common.seed_per_rank
+                else contextlib.nullcontext()
+            ):
                 for _, sample in enumerate(samples):
                     sample, _ = self._prepare_sample(sample)
                     self.task.train_step(
@@ -837,6 +920,21 @@ class Trainer(object):
         logging_output = None
         if not overflow:
             self.set_num_updates(self.get_num_updates() + 1)
+
+            # EMA update
+            if self.cfg.ema.store_ema:
+                # Step EMA forward with new model.
+                self.ema.step(
+                    self.get_model(),
+                    self.get_num_updates(),
+                )
+                metrics.log_scalar(
+                    "ema_decay",
+                    self.ema.get_decay(),
+                    priority=10000,
+                    round=5,
+                    weight=0,
+                )
 
             if self.cuda and self.cuda_env is not None:
                 # log minimum free memory over the iteration
@@ -879,8 +977,15 @@ class Trainer(object):
         return logging_output
 
     @metrics.aggregate("valid")
-    def valid_step(self, sample, raise_oom=False):
+    def valid_step(self, sample, num_step=0, raise_oom=False):
         """Do forward pass in evaluation mode."""
+
+        # If EMA is enabled through store_ema=True
+        # and task.uses_ema is True, pass the EMA model as a keyword
+        # argument to the task.
+        extra_kwargs = {}
+        if self.cfg.ema.store_ema and getattr(self.task, "uses_ema", False):
+            extra_kwargs["ema_model"] = self.ema.get_model()
 
         with torch.no_grad():
             self.model.eval()
@@ -890,9 +995,12 @@ class Trainer(object):
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             try:
-                _loss, sample_size, logging_output = self.task.valid_step(
-                    sample, self.model, self.criterion
-                )
+                with set_rank_seed(
+                    self.cfg.common.seed, num_step + self.get_num_updates()
+                ) if self.cfg.common.seed_per_rank else contextlib.nullcontext():
+                    _loss, sample_size, logging_output = self.task.valid_step(
+                        sample, self.model, self.criterion
+                    )
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
@@ -905,7 +1013,7 @@ class Trainer(object):
                                 p.grad = None  # free some memory
                         if self.cuda:
                             torch.cuda.empty_cache()
-                        return self.valid_step(sample, raise_oom=True)
+                        return self.valid_step(sample, num_step, raise_oom=True)
                 raise e
 
             logging_outputs = [logging_output]
@@ -1104,7 +1212,7 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.bf16:
+                if self.cfg.common.bf16 or self.cfg.bf16:
                     return t.bfloat16()
                 return t.half()
             return t

@@ -124,6 +124,9 @@ class CommonConfig(MetaseqDataclass):
     seed: int = field(
         default=1, metadata={"help": "pseudo random number generator seed"}
     )
+    seed_per_rank: bool = field(
+        default=False, metadata={"help": "use different seed per rank"}
+    )
     cpu: bool = field(default=False, metadata={"help": "use CPU instead of CUDA"})
     fp16: bool = field(default=False, metadata={"help": "use FP16"})
     memory_efficient_fp16: bool = field(
@@ -745,6 +748,33 @@ class EvalLMConfig(MetaseqDataclass):
 
 
 @dataclass
+class EMAConfig(MetaseqDataclass):
+    store_ema: bool = field(
+        default=False, metadata={help: "store exponential moving average shadow model"}
+    )
+    ema_decay: float = field(
+        default=0.9999, metadata={"help": "decay for exponential moving average model"}
+    )
+    ema_start_update: int = field(
+        default=0, metadata={"help": "start EMA update after this many model updates"}
+    )
+    ema_seed_model: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Seed to load EMA model from. "
+            "Used to load EMA model separately from the actual model."
+        },
+    )
+    ema_update_freq: int = field(
+        default=1, metadata={"help": "Do EMA update every this many model updates"}
+    )
+    ema_fp32: bool = field(
+        default=False,
+        metadata={"help": "If true, store EMA model in fp32 even if model is in fp16"},
+    )
+
+
+@dataclass
 class MetaseqConfig(MetaseqDataclass):
     common: CommonConfig = CommonConfig()
     common_eval: CommonEvalConfig = CommonEvalConfig()
@@ -755,6 +785,7 @@ class MetaseqConfig(MetaseqDataclass):
     generation: GenerationConfig = GenerationConfig()
     eval_lm: EvalLMConfig = EvalLMConfig()
     reshard: ReshardConfig = ReshardConfig()
+    ema: EMAConfig = EMAConfig()
     model: Any = MISSING
     task: Any = MISSING
     criterion: Any = MISSING
