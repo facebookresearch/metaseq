@@ -996,7 +996,7 @@ class Trainer(object):
 
             try:
                 with set_rank_seed(
-                    self.cfg.common.seed, num_steps + self.get_num_updates()
+                    self.cfg.common.seed, num_step + self.get_num_updates()
                 ) if self.cfg.common.seed_per_rank else contextlib.nullcontext():
                     _loss, sample_size, logging_output = self.task.valid_step(
                         sample, self.model, self.criterion
@@ -1212,7 +1212,7 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.common.bf16:
+                if self.cfg.common.bf16 or self.cfg.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
