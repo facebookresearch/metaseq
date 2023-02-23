@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """isort:skip_file"""
 
+from .adaptive_softmax import AdaptiveSoftmax
 from .dropout import Dropout
 from .activation_functions import ActivationFn, gelu
 from .layer_norm import LayerNorm, LayerNormFp32
@@ -21,6 +22,7 @@ from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBloc
 
 __all__ = [
     "ActivationFn",
+    "AdaptiveSoftmax",
     "Dropout",
     "gelu",
     "LayerNorm",
