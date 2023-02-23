@@ -9,6 +9,7 @@ on-the-fly tokenization.
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -47,6 +48,19 @@ DEFAULT_MULTICORPUS_MAX = -1
 LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
 
+def map_old_image_token_to_new_image_token(text):
+    text = text.replace("I", "IMGIMG")
+    for i in range(10):
+        text = text.replace(str(i), chr(ord("A") + i))
+
+    return text.replace(" ", "Z")
+
+
+def parse_doc(doc):
+    obj = re.match(r'<img alt="(.*?)" src="(I\d.*)">', doc)
+    text, image = obj.group(1), obj.group(2)
+    result = {'text': text, 'image': image}
+    return result
 
 @dataclass
 class StreamingLanguageModelingConfig(MetaseqDataclass):
@@ -134,7 +148,7 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         },
     )
     cm3_allow_across_eod_boundaries: bool = field(
-        default=True,
+        default=False,
         metadata={
             "help": "Whether or not we allow rotation of documents across documents"
             "(especially when training with token blocking set to None)."
@@ -142,6 +156,8 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "For FIM it's unclear whether or not they allow this."
         },
     )
+    prob_retrieve_from_image: float = field(default=0.5, metadata={"help": "probability of using retrieval based on image"})
+    num_retrieved_doc: int = field(default=2, metadata={"help": "number of retrieved documents"})
     # TODO common vars below add to parent
     seed: int = II("common.seed")
     batch_size: Optional[int] = II("dataset.batch_size")
@@ -246,15 +262,21 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def _create_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
+        self.cm3_break = "<racm3:break>"
+        self.dictionary.add_symbol(self.cm3_break)
+        self.dictionary.add_symbol(self.cm3_sentinel_end)
+        # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
-            f"<sentinel:{i}>" for i in range(self.args.num_sentinel_tokens)
+            f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
+            self.dictionary.add_symbol(token)
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
         self.cm3_sentinel_end_ind = self.dictionary.index(self.cm3_sentinel_end)
+        self.cm3_break_ind = self.dictionary.index(self.cm3_break)
 
     @classmethod
     def setup_task(cls, args, **kwargs):
@@ -267,6 +289,33 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.tokenizer.encode(text.rstrip()).ids
             + [self.eod]
         )
+
+    def tokenize_single_doc(self, doc, add_eod=False):
+        doc = parse_doc(doc)
+        text, image = doc['text'], doc['image']
+        image = map_old_image_token_to_new_image_token(image)
+        text_indexes, image_indexes = self.tokenizer.encode(text.rstrip()).ids, self.tokenizer.encode(image.rstrip()).ids
+        indexes = text_indexes+[self.cm3_break_ind]+image_indexes
+        if add_eod:
+            indexes = indexes+[self.eod]
+        return indexes
+
+    def _tokenize_ra_json(self, json):
+        query_index = self.tokenize_single_doc(json['text'], add_eod=True)
+        query_index = torch.LongTensor(query_index)
+        if np.random.rand() < self.args.prob_retrieve_from_image:
+            ra_docs = json['retrieved_docs_from_img']
+        else:
+            ra_docs = json['retrieved_docs_from_txt']
+        ra_docs = ra_docs[:self.args.num_retrieved_doc]
+        ra_indexes = []
+        for ra_doc in ra_docs:
+            ra_index = self.tokenize_single_doc(ra_doc, add_eod=False)
+            ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
+            ra_indexes.append(ra_index)
+        final_indexes = torch.cat(ra_indexes + [query_index])
+        # print(f"whole document length: {final_indexes.shape[0]}")
+        return final_indexes
 
     def _get_sample_prob(self, dataset_lens):
         """
@@ -400,6 +449,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self._tokenize_one_json,
+                    # tokenizer=self._tokenize_ra_json,
                     epoch=epoch,
                     data_subshard_count=data_subshard_count,
                 )
@@ -418,12 +468,12 @@ class StreamingLanguageModelingTask(LegacyTask):
             # lot of downstream code that has isinstance checks.
             # So just to be safe and not change anything we use proper inheritance.
             self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
-                sentinel_token_expectation=self.args.cm3_num_sentinel_tokens,
+                sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
                 sentinel_tokens=self.cm3_sentinel_tokens_ind,
-                sentinel_method=self.args.cm3_sentinel_method,
+                sentinel_method=self.cm3_sentinel_type,
                 sentinel_eos=self.cm3_sentinel_end_ind,
                 allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
-                eod=self.eod,
+                eod=self.cm3_break_ind,
                 dataset=dataset,
                 # We generate blocks with one extra token, so that we have a target
                 # for the final input token. This results in slight data loss.
@@ -457,6 +507,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         # generate inputs and targets
         input = tokens[:, :-1].contiguous()
         target = tokens[:, 1:].contiguous()
+        print(input.shape, target.shape)
 
         ids = torch.cat([x["ids"] for x in items if x is not None])
         if ids.numel() != torch.unique(ids).numel():
