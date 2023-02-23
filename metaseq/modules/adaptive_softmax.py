@@ -87,9 +87,7 @@ class AdaptiveSoftmax(nn.Module):
 
         self.vocab_size = vocab_size
         self.cutoff = cutoff
-        self.dropout_module = Dropout(
-            dropout, module_name=self.__class__.__name__
-        )
+        self.dropout_module = Dropout(dropout, module_name=self.__class__.__name__)
         self.input_dim = input_dim
         self.factor = factor
         self.q_noise = q_noise

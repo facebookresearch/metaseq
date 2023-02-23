@@ -124,7 +124,9 @@ class CommonConfig(MetaseqDataclass):
     seed: int = field(
         default=1, metadata={"help": "pseudo random number generator seed"}
     )
-    seed_per_rank: bool = field(default=False, metadata={"help": "use different seed per rank"})
+    seed_per_rank: bool = field(
+        default=False, metadata={"help": "use different seed per rank"}
+    )
     cpu: bool = field(default=False, metadata={"help": "use CPU instead of CUDA"})
     fp16: bool = field(default=False, metadata={"help": "use FP16"})
     memory_efficient_fp16: bool = field(
@@ -748,25 +750,22 @@ class EvalLMConfig(MetaseqDataclass):
 @dataclass
 class EMAConfig(MetaseqDataclass):
     store_ema: bool = field(
-        default=False, metadata={
-            help: "store exponential moving average shadow model"
-        }
+        default=False, metadata={help: "store exponential moving average shadow model"}
     )
     ema_decay: float = field(
-        default=0.9999, metadata={
-            "help": 'decay for exponential moving average model'
-        }
+        default=0.9999, metadata={"help": "decay for exponential moving average model"}
     )
-    ema_start_update : int = field(
+    ema_start_update: int = field(
         default=0, metadata={"help": "start EMA update after this many model updates"}
     )
-    ema_seed_model : Optional[str] = field(
-        default=None, metadata={
+    ema_seed_model: Optional[str] = field(
+        default=None,
+        metadata={
             "help": "Seed to load EMA model from. "
             "Used to load EMA model separately from the actual model."
-        }
+        },
     )
-    ema_update_freq : int = field(
+    ema_update_freq: int = field(
         default=1, metadata={"help": "Do EMA update every this many model updates"}
     )
     ema_fp32: bool = field(
