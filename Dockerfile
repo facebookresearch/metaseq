@@ -23,13 +23,13 @@ RUN pip3 install torch==1.10.1+cu113 torchvision==0.11.2+cu113 torchaudio==0.10.
 RUN git clone https://github.com/NVIDIA/apex.git
 WORKDIR /build/apex
 
-RUN git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
+RUN git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
 RUN pip3 install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
 
 # Install Megatron-LM branch
 WORKDIR /build
 
-RUN git clone --branch fairseq_v2 https://github.com/ngoyal2707/Megatron-LM.git
+RUN git clone --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
 WORKDIR /build/Megatron-LM
 RUN pip3 install six regex
 RUN pip3 install -e .
@@ -39,6 +39,7 @@ WORKDIR /build
 
 RUN git clone --branch prefetch_fsdp_params_simple https://github.com/facebookresearch/fairscale.git
 WORKDIR /build/fairscale
+RUN git checkout fixing_memory_issues_with_keeping_overlap_may24
 RUN pip3 install -e .
 
 # Install metaseq
@@ -46,4 +47,5 @@ WORKDIR /build
 RUN git clone https://github.com/facebookresearch/metaseq.git
 WORKDIR /build/metaseq
 RUN pip3 install -e .
-RUN python3 setup.py install
+# turn on pre-commit hooks
+RUN pre-commit install
