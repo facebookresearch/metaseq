@@ -76,8 +76,7 @@ class EMA(object):
         self.decay = config.ema_decay
         if isinstance(model, FullyShardedDataParallel):
             self.model = model
-            logger.warning("EMA got FSDP model, assuming assigned model is a "
-                           "copy")
+            logger.warning("EMA got FSDP model, assuming assigned model is a " "copy")
         else:
             self.model = copy.deepcopy(model)
         self.model.requires_grad_(False)
@@ -85,7 +84,9 @@ class EMA(object):
         self.fp32_params = {}
 
         if self.config.ema_seed_model is not None:
-            state = checkpoint_utils.load_ema_from_checkpoint(self.config.ema_seed_model)
+            state = checkpoint_utils.load_ema_from_checkpoint(
+                self.config.ema_seed_model
+            )
             self.model.load_state_dict(state["model"], strict=True)
 
         if device is not None:
@@ -127,12 +128,10 @@ class EMA(object):
 
         if device is not None:
             for param_key in self.fp32_params:
-                self.fp32_params[param_key] = \
-                    self.fp32_params[param_key].to(device)
-
+                self.fp32_params[param_key] = self.fp32_params[param_key].to(device)
 
     def restore(self, state_dict, build_fp32_params=False):
-        """ Load data from a model spec into EMA model """
+        """Load data from a model spec into EMA model"""
         self.model.load_state_dict(state_dict, strict=False)
         if build_fp32_params:
             self.build_fp32_params(state_dict)
@@ -144,16 +143,20 @@ class EMA(object):
         return self.decay
 
     def _step_internal(self, new_model, updates=None):
-        """ One update of the EMA model based on new model weights """
+        """One update of the EMA model based on new model weights"""
         decay = self.decay
 
         ema_state_dict = {}
-        ema_params = self.fp32_params if self.config.ema_fp32 else self.model.state_dict()
+        ema_params = (
+            self.fp32_params if self.config.ema_fp32 else self.model.state_dict()
+        )
         for key, param in new_model.state_dict().items():
             try:
                 ema_param = ema_params[key]
             except KeyError:
-                ema_param = param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
+                ema_param = (
+                    param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
+                )
 
             if param.shape != ema_param.shape:
                 raise ValueError(
@@ -164,7 +167,7 @@ class EMA(object):
                 # Do not decay a model.version pytorch param
                 continue
             ema_param.mul_(decay)
-            ema_param.add_(param.to(dtype=ema_param.dtype), alpha=1-decay)
+            ema_param.add_(param.to(dtype=ema_param.dtype), alpha=1 - decay)
             ema_state_dict[key] = ema_param
         self.restore(ema_state_dict, build_fp32_params=False)
 
@@ -181,8 +184,7 @@ class EMA(object):
         """
         self._set_decay(
             0
-            if updates is not None
-            and updates < self.config.ema_start_update
+            if updates is not None and updates < self.config.ema_start_update
             else self.config.ema_decay
         )
         if updates is not None and self.config.ema_update_freq > 1:

@@ -133,7 +133,6 @@ class Trainer(object):
         self._skipped_loss_spikes = 0
         self._ema = None
 
-
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
             self._grad_norm_buf = torch.cuda.DoubleTensor(self.data_parallel_world_size)
@@ -271,17 +270,13 @@ class Trainer(object):
                 state_dict = self.model.state_dict()
                 if not self.use_sharded_state:
                     state_dict = distributed_utils.broadcast_object(
-                        state_dict,
-                        src_rank=0,
-                        group=self.model.process_group
+                        state_dict, src_rank=0, group=self.model.process_group
                     )
                 model.load_state_dict(state_dict)
                 self._ema = build_ema(model, self.cfg.ema, self.device)
             else:
                 self._ema = build_ema(self._model, self.cfg.ema, self.device)
-            logger.info(
-                "Exponential Moving Average Shadow Model is initialized."
-            )
+            logger.info("Exponential Moving Average Shadow Model is initialized.")
 
     @property
     def optimizer(self):
@@ -617,7 +612,9 @@ class Trainer(object):
                         "EMA not found in checkpoint. But store_ema is True. "
                         "EMA is re-initialized from checkpoint."
                     )
-                    self.ema.restore(state["model"], build_fp32_params=self.cfg.ema.ema_fp32)
+                    self.ema.restore(
+                        state["model"], build_fp32_params=self.cfg.ema.ema_fp32
+                    )
                 else:
                     logger.info("Loading EMA from checkpoint")
                     self.ema.restore(extra_state["ema"], build_fp32_params=False)
@@ -627,10 +624,14 @@ class Trainer(object):
                             logger.info("Loading EMA fp32 params from checkpoint")
                             self.ema.build_fp32_params(extra_state["ema_fp32_params"])
                         else:
-                            logger.info("Building EMA fp32 params from EMA model in checkpoint")
+                            logger.info(
+                                "Building EMA fp32 params from EMA model in checkpoint"
+                            )
                             self.ema.build_fp32_params()
 
-            logger.info(f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)")
+            logger.info(
+                f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
+            )
         else:
             logger.info("No existing checkpoint found {}".format(filename))
 
@@ -775,8 +776,11 @@ class Trainer(object):
                     return contextlib.ExitStack()  # dummy contextmanager
 
             try:
-                with maybe_no_sync(), (set_rank_seed(self.cfg.common.seed, self.get_num_updates()) \
-                                if self.cfg.common.seed_per_rank else contextlib.nullcontext()):
+                with maybe_no_sync(), (
+                    set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                    if self.cfg.common.seed_per_rank
+                    else contextlib.nullcontext()
+                ):
                     # forward and backward
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
@@ -880,8 +884,11 @@ class Trainer(object):
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
             self.zero_grad()
-            with NanDetector(self.get_model()), (set_rank_seed(self.cfg.common.seed, self.get_num_updates()) \
-                                if self.cfg.common.seed_per_rank else contextlib.nullcontext()):
+            with NanDetector(self.get_model()), (
+                set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                if self.cfg.common.seed_per_rank
+                else contextlib.nullcontext()
+            ):
                 for _, sample in enumerate(samples):
                     sample, _ = self._prepare_sample(sample)
                     self.task.train_step(
@@ -988,8 +995,9 @@ class Trainer(object):
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             try:
-                with set_rank_seed(self.cfg.common.seed, num_step + self.get_num_updates()) \
-                                if self.cfg.common.seed_per_rank else contextlib.nullcontext():
+                with set_rank_seed(
+                    self.cfg.common.seed, num_steps + self.get_num_updates()
+                ) if self.cfg.common.seed_per_rank else contextlib.nullcontext():
                     _loss, sample_size, logging_output = self.task.valid_step(
                         sample, self.model, self.criterion
                     )
