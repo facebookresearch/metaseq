@@ -18,7 +18,7 @@ try:
     def get_aim_run(repo, run_hash):
         from aim import Run
 
-        return Run(run_hash=run_hash, repo=repo)
+        return Run(run_hash=run_hash, repo=repo, force_resume=True)
 
 except ImportError:
     get_aim_run = None

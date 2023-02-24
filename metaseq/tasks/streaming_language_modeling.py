@@ -304,6 +304,12 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.tokenizer.encode(text.rstrip()).ids,
             self.tokenizer.encode(image.rstrip()).ids,
         )
+        assert (
+            len(image_indexes) == 1024
+        ), f"Each image must be 1024 tokens, instead we got {len(image_indexes)}"
+        assert all(
+            [i > 4 for i in image_indexes]
+        ), f"Images should not have any special tokens: {image_indexes}"
         indexes = text_indexes + [self.cm3_break_ind] + image_indexes
         if add_eod:
             indexes = indexes + [self.eod]
@@ -314,14 +320,14 @@ class StreamingLanguageModelingTask(LegacyTask):
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
         random.shuffle(ra_docs)
-        
+
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
         for ra_doc in ra_docs:
             ra_index = self.tokenize_single_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
             ra_indexes.append(ra_index)
-        final_indexes = torch.cat(ra_indexes + [query_index])
+        final_indexes = torch.cat([torch.LongTensor([self.eod])] + ra_indexes + [query_index])
         return final_indexes
 
     def _get_sample_prob(self, dataset_lens):
@@ -515,7 +521,6 @@ class StreamingLanguageModelingTask(LegacyTask):
         # generate inputs and targets
         input = tokens[:, :-1].contiguous()
         target = tokens[:, 1:].contiguous()
-        print(input.shape, target.shape)
 
         ids = torch.cat([x["ids"] for x in items if x is not None])
         if ids.numel() != torch.unique(ids).numel():
