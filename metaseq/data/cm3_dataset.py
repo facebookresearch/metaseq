@@ -206,7 +206,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             item = packed_item["block"]
             assert len(item) > 0
             spans = self.get_spans_to_mask(len(item))
-            if not self.allow_rotation_across_eod:
+            if not self.allow_rotation_across_eod and spans is not None:
                 document_boundaries = self.get_document_boundaries(item)
                 spans = adjust_spans(spans, document_boundaries)
             if spans is None:

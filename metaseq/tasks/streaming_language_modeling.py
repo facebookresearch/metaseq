@@ -58,6 +58,8 @@ def map_old_image_token_to_new_image_token(text):
 
 def parse_doc(doc):
     obj = re.match(r'<img alt="(.*?)" src="(I\d.*)">', doc)
+    if obj is None:
+        raise ValueError(f"doc not correct formated: {doc}")
     text, image = obj.group(1), obj.group(2)
     result = {'text': text, 'image': image}
     return result
@@ -397,6 +399,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def get_shard_str(self, epoch, split):
         shards = {}
+        # print(self.args.data, split)
         for shard_id in os.listdir(os.path.join(self.args.data, split)):
             assert (
                 int(shard_id) not in shards
@@ -448,8 +451,8 @@ class StreamingLanguageModelingTask(LegacyTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self._tokenize_one_json,
-                    # tokenizer=self._tokenize_ra_json,
+                    # tokenizer=self._tokenize_one_json,
+                    tokenizer=self._tokenize_ra_json,
                     epoch=epoch,
                     data_subshard_count=data_subshard_count,
                 )
