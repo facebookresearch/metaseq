@@ -8,6 +8,7 @@ on-the-fly tokenization.
 """
 
 import logging
+import random
 import os
 import re
 from dataclasses import dataclass, field
@@ -48,6 +49,7 @@ DEFAULT_MULTICORPUS_MAX = -1
 LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
 
+
 def map_old_image_token_to_new_image_token(text):
     text = text.replace("I", "IMGIMG")
     for i in range(10):
@@ -61,8 +63,9 @@ def parse_doc(doc):
     if obj is None:
         raise ValueError(f"doc not correct formated: {doc}")
     text, image = obj.group(1), obj.group(2)
-    result = {'text': text, 'image': image}
+    result = {"text": text, "image": image}
     return result
+
 
 @dataclass
 class StreamingLanguageModelingConfig(MetaseqDataclass):
@@ -158,8 +161,9 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "For FIM it's unclear whether or not they allow this."
         },
     )
-    prob_retrieve_from_image: float = field(default=0.5, metadata={"help": "probability of using retrieval based on image"})
-    num_retrieved_doc: int = field(default=2, metadata={"help": "number of retrieved documents"})
+    num_retrieved_doc: int = field(
+        default=2, metadata={"help": "number of retrieved documents"}
+    )
     # TODO common vars below add to parent
     seed: int = II("common.seed")
     batch_size: Optional[int] = II("dataset.batch_size")
@@ -251,7 +255,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.args.cm3_num_sentinel_tokens > 0
         ), "cm3_num_sentinel_tokens must be > 0"
         assert (
-            self.args.cm3_num_sentinel_tokens > self.args.cm3_lambda_sentinel_tokens
+            self.args.cm3_num_sentinel_tokens >= self.args.cm3_lambda_sentinel_tokens
         ), "cm3_lambda_sentinel_tokens must be > cm3_num_sentinel_tokens"
         if self.args.cm3_mode == "fim":
             assert (
@@ -294,29 +298,30 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def tokenize_single_doc(self, doc, add_eod=False):
         doc = parse_doc(doc)
-        text, image = doc['text'], doc['image']
+        text, image = doc["text"], doc["image"]
         image = map_old_image_token_to_new_image_token(image)
-        text_indexes, image_indexes = self.tokenizer.encode(text.rstrip()).ids, self.tokenizer.encode(image.rstrip()).ids
-        indexes = text_indexes+[self.cm3_break_ind]+image_indexes
+        text_indexes, image_indexes = (
+            self.tokenizer.encode(text.rstrip()).ids,
+            self.tokenizer.encode(image.rstrip()).ids,
+        )
+        indexes = text_indexes + [self.cm3_break_ind] + image_indexes
         if add_eod:
-            indexes = indexes+[self.eod]
+            indexes = indexes + [self.eod]
         return indexes
 
     def _tokenize_ra_json(self, json):
-        query_index = self.tokenize_single_doc(json['text'], add_eod=True)
+        query_index = self.tokenize_single_doc(json["text"], add_eod=True)
         query_index = torch.LongTensor(query_index)
-        if np.random.rand() < self.args.prob_retrieve_from_image:
-            ra_docs = json['retrieved_docs_from_img']
-        else:
-            ra_docs = json['retrieved_docs_from_txt']
-        ra_docs = ra_docs[:self.args.num_retrieved_doc]
+        ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
+        random.shuffle(ra_docs)
+        
+        ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
         for ra_doc in ra_docs:
             ra_index = self.tokenize_single_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
             ra_indexes.append(ra_index)
         final_indexes = torch.cat(ra_indexes + [query_index])
-        # print(f"whole document length: {final_indexes.shape[0]}")
         return final_indexes
 
     def _get_sample_prob(self, dataset_lens):
@@ -399,7 +404,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def get_shard_str(self, epoch, split):
         shards = {}
-        # print(self.args.data, split)
+        print(self.args.data, split)
         for shard_id in os.listdir(os.path.join(self.args.data, split)):
             assert (
                 int(shard_id) not in shards
