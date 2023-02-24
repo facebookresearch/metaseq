@@ -211,9 +211,9 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         self.has_cm3 = args.language_modeling_type == "cm3"
         if self.has_cm3:
+            self.cm3_sentinel_type = self.args.cm3_mode
             self._check_cm3_parameterization()
             self._create_cm3_special_tokens()
-            self.cm3_sentinel_type = self.args.cm3_mode
 
         final_vocab_size = args.final_vocab_size
         if final_vocab_size is not None:
@@ -233,8 +233,8 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.args.cm3_num_sentinel_tokens > 0
         ), "cm3_num_sentinel_tokens must be > 0"
         assert (
-            self.args.cm3_num_sentinel_tokens > self.args.cm3_lambda_sentinel_tokens
-        ), "cm3_lambda_sentinel_tokens must be > cm3_num_sentinel_tokens"
+            self.args.cm3_num_sentinel_tokens >= self.args.cm3_lambda_sentinel_tokens
+        ), "cm3_lambda_sentinel_tokens must be >= cm3_num_sentinel_tokens"
         if self.args.cm3_mode == "fim":
             assert (
                 self.args.cm3_num_sentinel_tokens == 1
@@ -247,7 +247,7 @@ class StreamingLanguageModelingTask(LegacyTask):
     def _create_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
         self.cm3_sentinel_tokens = [
-            f"<sentinel:{i}>" for i in range(self.args.num_sentinel_tokens)
+            f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
@@ -421,7 +421,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
                 sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
                 sentinel_tokens=self.cm3_sentinel_tokens_ind,
-                sentinel_method=self.args.cm3_sentinel_method,
+                sentinel_method=self.cm3_sentinel_type,
                 sentinel_eos=self.cm3_sentinel_end_ind,
                 allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
                 eod=self.eod,

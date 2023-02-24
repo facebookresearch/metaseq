@@ -95,7 +95,9 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         self.sentinel_method = sentinel_method
         self.tokens_per_sample = block_size
         self.eos = sentinel_eos
-        assert self.sentinel_method == "fixed" or self.sentinel_method == "poisson"
+        assert (
+            self.sentinel_method == "fixed" or self.sentinel_method == "poisson"
+        ), self.sentinel_method
         assert len(self.sentinel_tokens) >= 1
         assert self.tokens_per_sample > 1
         assert (
@@ -194,7 +196,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         boundaries = (item == self.eod).nonzero().cpu().squeeze().numpy().tolist()
         if boundaries[0] != 0:
             boundaries = [0] + boundaries
-        if boundaries[-1] != item.size(0)-1:
+        if boundaries[-1] != item.size(0) - 1:
             boundaries = boundaries + [item.size(0)]
         spans = []
         for i in range(1, len(boundaries)):
