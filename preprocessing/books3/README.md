@@ -3,7 +3,7 @@ Source/References:
 * [sosek/bookscorpus](https://github.com/soskek/bookcorpus/issues/27#issuecomment-716104208)
 * [HuggingFace datasets](https://github.com/huggingface/datasets/pull/856)
 
-From the [sosek]((https://github.com/soskek/bookcorpus/issues/27#issuecomment-716104208)) download, filenames will need to be normalized first before putting into HDFS to coalesce.  The following series of bash commands can be applied to clean up filenames:
+From the [sosek](https://github.com/soskek/bookcorpus/issues/27#issuecomment-716104208) download, filenames need to be normalized first before putting into HDFS to coalesce.  The following series of bash commands can be applied to clean up filenames:
 
 ```
 First try:
@@ -39,7 +39,8 @@ done
 
 After the files are placed into HDFS, it is possible to extract the core contents of each book via `BooksHeaderCleaner.scala` and `BooksFooterCleaner.scala`, followed by applying the deduplication logic `BooksDedup.scala`.
 
-Code here can be executed directly in spark-shell with the following settings:
+### spark-shell settings
+Code here can be executed directly in spark-shell with the following settings (can reduce `--num-executors` if needed):
 ```
 spark-shell --master yarn --deploy-mode client \
 --driver-memory 200g \
