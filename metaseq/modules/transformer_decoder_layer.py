@@ -157,6 +157,7 @@ class TransformerDecoderLayer(nn.Module):
             input_dim,
             output_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
+            bias=not disable_bias,
             dtype=utils.get_model_init_dtype(self.args),
         )
 

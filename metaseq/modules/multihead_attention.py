@@ -97,9 +97,10 @@ class MultiheadAttention(nn.Module):
 
     def reset_parameters(self):
         def _init_method_bias(weight, bias):
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
-            bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(bias, -bound, bound)
+            if bias is not None:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(bias, -bound, bound)
 
         if self.qkv_same_dim:
             # Empirically observed the convergence to be much better with
