@@ -23,11 +23,13 @@ install_dep_common: &install_dep_common
       command: |
         source $BASH_ENV
         source activate metaseq
-        # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install setuptools==59.5.0
-        pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
+
+        pip install --upgrade pip
+        pip install --upgrade setuptools
+        pip install packaging
+
         # Need to install ninja build system
         sudo apt-get update
         sudo apt-get install ninja-build
