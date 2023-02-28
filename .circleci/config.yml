@@ -6,7 +6,7 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.6"
+    CUDA_VERSION: "11.8"
   machine:
     image: linux-cuda-11:2023.02.1
     resource_class: gpu.nvidia.medium.multi
@@ -78,7 +78,7 @@ install_dep_pt19: &install_dep_pt19
         source $BASH_ENV
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+        pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
