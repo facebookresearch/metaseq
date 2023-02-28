@@ -113,19 +113,22 @@ create_conda_env: &create_conda_env
   run:
       name: Install and Create Conda Environment
       command: |
-        curl -o ~/miniconda.sh -O  https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        chmod +x ~/miniconda.sh
-        bash ~/miniconda.sh -b -p $HOME/miniconda
-        rm ~/miniconda.sh
-        echo 'export PATH=$HOME/miniconda/bin:$PATH' >> $BASH_ENV
-        source $BASH_ENV
-        if [ ! -d ~/miniconda/envs/metaseq ]
-        then
-          conda create -y -n metaseq python=3.8
-        fi
-        source activate metaseq
-        python --version
-        pip install --upgrade pip
+        conda create --name metaseq python=3.9 -y
+        conda activate metaseq
+
+        # curl -o ~/miniconda.sh -O  https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        # chmod +x ~/miniconda.sh
+        # bash ~/miniconda.sh -b -p $HOME/miniconda
+        # rm ~/miniconda.sh
+        # echo 'export PATH=$HOME/miniconda/bin:$PATH' >> $BASH_ENV
+        # source $BASH_ENV
+        # if [ ! -d ~/miniconda/envs/metaseq ]
+        # then
+        #   conda create -y -n metaseq python=3.8
+        # fi
+        # source activate metaseq
+        # python --version
+        # pip install --upgrade pip
 
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
@@ -160,7 +163,7 @@ commands:
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
           paths:
-            - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
+            - ~/miniconda/envs/metaseq/lib/python3.9/site-packages
           key: *cache_key
       - run:
           name: Run Unit Tests
