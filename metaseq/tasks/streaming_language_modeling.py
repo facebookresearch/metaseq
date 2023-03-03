@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MULTICORPUS_MAX = -1
 
-LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3"])
+LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
 
 
@@ -231,7 +231,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert self.dictionary.unk_index == 3
         assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
 
-        self.has_cm3 = args.language_modeling_type == "cm3"
+        self.has_cm3 = args.language_modeling_type in ["cm3", "racm3"]
+        self.has_retrieval = args.language_modeling_type == "racm3"
         if self.has_cm3:
             self._check_cm3_parameterization()
             self._create_cm3_special_tokens()
@@ -327,7 +328,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             ra_index = self.tokenize_single_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
             ra_indexes.append(ra_index)
-        final_indexes = torch.cat([torch.LongTensor([self.eod])] + ra_indexes + [query_index])
+        final_indexes = torch.cat(
+            [torch.LongTensor([self.eod])] + ra_indexes + [query_index]
+        )
         return final_indexes
 
     def _get_sample_prob(self, dataset_lens):
@@ -463,7 +466,9 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     # tokenizer=self._tokenize_one_json,
-                    tokenizer=self._tokenize_ra_json,
+                    tokenizer=self._tokenize_ra_json
+                    if self.has_retrieval
+                    else self._tokenize_one_json,
                     epoch=epoch,
                     data_subshard_count=data_subshard_count,
                 )
