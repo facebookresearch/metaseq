@@ -20,19 +20,16 @@ from omegaconf import II
 
 from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 
-from metaseq import utils
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.models import (
-    LanguageModel,
+    BaseModel,
     register_model,
     register_model_architecture,
 )
 from metaseq.models.transformer_decoder import (
     DEFAULT_MIN_PARAMS_TO_WRAP,
-    TransformerDecoder,
     ModelParallelTransformerDecoder,
 )
-from metaseq.modules.embedding import Embedding
 from metaseq.modules.activation_functions import get_available_activation_fns
 
 import logging
@@ -198,44 +195,13 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
 
 
 @register_model("transformer_lm", dataclass=TransformerLanguageModelConfig)
-class TransformerLanguageModel(LanguageModel):
+class TransformerLanguageModel(BaseModel):
     def __init__(self, decoder):
         super().__init__(decoder)
 
-    @classmethod
-    def build_model(cls, args, task):
-        """Build a new model instance."""
-
-        if getattr(args, "max_target_positions", None) is None:
-            args.max_target_positions = getattr(
-                args, "tokens_per_sample", DEFAULT_MAX_TARGET_POSITIONS
-            )
-
-        embed_tokens = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_embed_dim
-        )
-        decoder = TransformerDecoder(
-            args,
-            task.target_dictionary,
-            embed_tokens,
-        )
-        return cls(decoder)
-
-    @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, path=None):
-        return Embedding(
-            len(dictionary),
-            embed_dim,
-            dictionary.pad(),
-            initialize_params_on_gpu=getattr(
-                args, "tensor_parallel_init_model_on_gpu", False
-            ),
-            dtype=utils.get_model_init_dtype(args),
-        )
-
 
 @register_model("model_parallel_transformer_lm")
-class ModelParallelTransformerLanguageModel(TransformerLanguageModel):
+class ModelParallelTransformerLanguageModel(BaseModel):
     @classmethod
     def build_model(cls, args, task):
         """Build a new model instance."""

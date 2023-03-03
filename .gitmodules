@@ -1,0 +1,6 @@
+[submodule "third_party/clip"]
+	path = third_party/clip
+	url = https://github.com/openai/CLIP.git
+[submodule "third_party/stable-diffusion"]
+	path = third_party/stable-diffusion
+	url = https://github.com/CompVis/stable-diffusion.git

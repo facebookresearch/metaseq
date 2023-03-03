@@ -277,6 +277,8 @@ def _find_extra_valid_paths(dataset_path: str) -> set:
     paths = utils.split_paths(dataset_path)
     all_valid_paths = set()
     for sub_dir in paths:
+        if "://" in sub_dir:
+            continue
         contents = PathManager.ls(sub_dir)
         valid_paths = [c for c in contents if re.match("valid*[0-9].*", c) is not None]
         all_valid_paths |= {os.path.basename(p) for p in valid_paths}

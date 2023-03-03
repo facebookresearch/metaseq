@@ -17,17 +17,19 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
-
+import os
 import torch
 import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils
+from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
+from metaseq.models.ema import build_ema
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
+from metaseq.utils import set_rank_seed
 
 try:
     from megatron.mpu import (
@@ -66,6 +68,7 @@ class Trainer(object):
         shared_params = _catalog_shared_params(model)
         self.cuda = torch.cuda.is_available() and not cfg.common.cpu
 
+        self.quiet_logs = getattr(cfg.common, "quiet_logs", False)
         if self.cuda:
             self.device = torch.device("cuda")
         else:
@@ -74,11 +77,6 @@ class Trainer(object):
         if self.is_fsdp:
             import fairscale
 
-            if self.cfg.distributed_training.zero_sharding != "none":
-                raise ValueError(
-                    "FullyShardedDataParallel is not compatible with --zero-sharding "
-                    "option (it's already built in)"
-                )
             if (
                 max(self.cfg.optimization.update_freq) > 1
                 and fairscale.__version__ < "0.4.0"
@@ -133,6 +131,7 @@ class Trainer(object):
         self._wrapped_model = None
         self._ewm_loss = None
         self._skipped_loss_spikes = 0
+        self._ema = None
 
         # TODO(myleott): support tpu
         if self.cuda and self.data_parallel_world_size > 1:
@@ -245,6 +244,41 @@ class Trainer(object):
         return self._wrapped_model
 
     @property
+    def ema(self):
+        if self._ema is None:
+            self._build_ema()
+        return self._ema
+
+    def _build_ema(self):
+        if self.cfg.ema.store_ema:
+            if self.is_fsdp:
+                # Build FSDP model
+                extra = {
+                    "is_moe": getattr(self.cfg.model, "moe_freq", 0) > 0,
+                    "use_sharded_state": self.use_sharded_state,
+                }
+                with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
+                    model = fsdp_wrap(self.task.build_model(self.cfg.model))
+
+                if self.cfg.common.memory_efficient_fp16:
+                    if self.cfg.common.bf16:
+                        model = model.bfloat16()
+                    else:
+                        model = model.half()
+
+                # Copy FSDP model state (since copy.deepcopy doesn't work)
+                state_dict = self.model.state_dict()
+                if not self.use_sharded_state:
+                    state_dict = distributed_utils.broadcast_object(
+                        state_dict, src_rank=0, group=self.model.process_group
+                    )
+                model.load_state_dict(state_dict)
+                self._ema = build_ema(model, self.cfg.ema, self.device)
+            else:
+                self._ema = build_ema(self._model, self.cfg.ema, self.device)
+            logger.info("Exponential Moving Average Shadow Model is initialized.")
+
+    @property
     def optimizer(self):
         if self._optimizer is None:
             self._build_optimizer()
@@ -298,19 +332,6 @@ class Trainer(object):
                 "However, the sharding will result in slightly different results when "
                 "using non-pointwise optimizers (e.g., Adagrad, Adafactor, LAMB)"
             )
-
-        if self.cfg.distributed_training.zero_sharding == "os":
-            if (
-                self.cfg.common.fp16
-                and not self.cfg.common.memory_efficient_fp16
-                and not self.cfg.common.fp16_no_flatten_grads
-            ):
-                raise ValueError(
-                    "ZeRO is incompatible with fp16 and flattened grads. "
-                    "Please use --fp16-no-flatten-grads"
-                )
-            else:
-                optim.shard_(self._optimizer, self.data_parallel_process_group)
 
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
@@ -384,6 +405,13 @@ class Trainer(object):
 
             state_dict["last_optimizer_state"] = optimizer_state_dict
 
+            if self.cfg.ema.store_ema:
+                # Save EMA model state as extra state
+                state_dict["extra_state"]["ema"] = self.ema.get_model().state_dict()
+                if self.cfg.ema.ema_fp32:
+                    # Save EMA params in fp32
+                    state_dict["extra_state"]["ema_fp32_params"] = self.ema.fp32_params
+
             if self.is_fsdp and self.use_sharded_state:
                 state_dict[
                     "shard_metadata"
@@ -418,14 +446,14 @@ class Trainer(object):
                 def perform_save():
                     try:
                         logger.info(f"Beginning asynchronous torch.save to {filename}")
-                        torch.save(state_dict, filename)
-                        if async_callback_fn is not None:
-                            async_callback_fn(filename)
+                        async_callback_fn(filename)
                         logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
 
-                self.async_checkpoint.submit(perform_save)
+                torch.save(state_dict, filename)
+                if async_callback_fn is not None:
+                    self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(
@@ -444,19 +472,33 @@ class Trainer(object):
         extra_state, self._optim_history, last_optim_state = None, [], None
 
         is_distributed = self.data_parallel_world_size > 1
-        bexists = PathManager.isfile(filename)
+        bexists = False
+
+        logger.info(f"attempting to load checkpoint from: {filename}")
+
+        if PathManager.isfile(filename):
+            bexists = True
+        else:
+            # this is a big hacky as when we increase the world size, then filename doesn't really point
+            # to a real file, we convert it to multiple files to be loaded later.
+            # so here we just check if there are some files existing in the dir.
+            files_in_local_dir = os.listdir(os.path.dirname(filename))
+            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(
+                self.checkpoint_suffix, ""
+            )
+            matched_files = [
+                f for f in files_in_local_dir if f.startswith(filename_prefix)
+            ]
+            bexists = len(matched_files) > 0
+
         if bexists:
             logger.info(f"Preparing to load checkpoint {filename}")
-            load_on_all_ranks = (
-                self.cfg.checkpoint.load_checkpoint_on_all_dp_ranks
-                # FSDP requires loading checkpoint shards on all ranks
-                or self.is_fsdp
-            )
+            # FSDP requires loading checkpoint shards on all ranks
+            load_on_all_ranks = self.is_fsdp
 
             if load_on_all_ranks or self.is_data_parallel_master:
                 state = checkpoint_utils.load_checkpoint_to_cpu(
                     filename,
-                    load_on_all_ranks=load_on_all_ranks,
                 )
                 last_optim_state = state.get("last_optimizer_state", None)
                 if last_optim_state == -1:
@@ -467,16 +509,6 @@ class Trainer(object):
 
                 logger.info(f"Loaded state for {filename}")
 
-                # If doing zero_sharding, do not broadcast global optimizer
-                # state. Later we will broadcast sharded states to each rank
-                # to avoid memory exploding.
-                if (
-                    not load_on_all_ranks
-                    and self.cfg.distributed_training.zero_sharding == "os"
-                    and "last_optimizer_state" in state
-                    and is_distributed
-                ):
-                    state["last_optimizer_state"] = "SHARDED"
             else:
                 last_optim_state = None
                 state = None
@@ -573,6 +605,29 @@ class Trainer(object):
                 for meter in metrics.get_meters("default"):
                     if isinstance(meter, meters.TimeMeter):
                         meter.reset()
+
+            if self.cfg.ema.store_ema:
+                if "ema" not in extra_state:
+                    logger.warn(
+                        "EMA not found in checkpoint. But store_ema is True. "
+                        "EMA is re-initialized from checkpoint."
+                    )
+                    self.ema.restore(
+                        state["model"], build_fp32_params=self.cfg.ema.ema_fp32
+                    )
+                else:
+                    logger.info("Loading EMA from checkpoint")
+                    self.ema.restore(extra_state["ema"], build_fp32_params=False)
+
+                    if self.cfg.ema.ema_fp32:
+                        if "ema_fp32_params" in extra_state:
+                            logger.info("Loading EMA fp32 params from checkpoint")
+                            self.ema.build_fp32_params(extra_state["ema_fp32_params"])
+                        else:
+                            logger.info(
+                                "Building EMA fp32 params from EMA model in checkpoint"
+                            )
+                            self.ema.build_fp32_params()
 
             logger.info(
                 f"Loaded checkpoint {filename} (epoch {epoch} @ {self.get_num_updates()} updates)"
@@ -682,6 +737,13 @@ class Trainer(object):
 
         metrics.log_start_time("train_wall", priority=800, round=0)
 
+        # If EMA is enabled through store_ema=True
+        # and task.uses_ema is True, pass the EMA model as a keyword
+        # argument to the task.
+        extra_kwargs = {}
+        if self.cfg.ema.store_ema and getattr(self.task, "uses_ema", False):
+            extra_kwargs["ema_model"] = self.ema.get_model()
+
         # forward and backward pass
         logging_outputs, sample_size = [], 0
         for i, sample in enumerate(samples):  # delayed update loop
@@ -714,7 +776,11 @@ class Trainer(object):
                     return contextlib.ExitStack()  # dummy contextmanager
 
             try:
-                with maybe_no_sync():
+                with maybe_no_sync(), (
+                    set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                    if self.cfg.common.seed_per_rank
+                    else contextlib.nullcontext()
+                ):
                     # forward and backward
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
@@ -799,9 +865,18 @@ class Trainer(object):
             ewm_loss_ratio = self.skip_spike(
                 logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
             )
+            # downscale grads by ewm_loss_ratio ** 4
+            if ewm_loss_ratio > 1.0:
+                grad_mult_factor = 1.0 / (ewm_loss_ratio**4)
+                curr_lr = self.optimizer.get_lr()
+                new_lr = curr_lr * grad_mult_factor
+                self.optimizer.set_lr(new_lr)
+                logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
             # take an optimization step
             self.task.optimizer_step(
-                self.optimizer, model=self.model, update_num=self.get_num_updates()
+                self.optimizer,
+                model=self.model,
+                update_num=self.get_num_updates(),
             )
             logger.debug(f"[{self.get_num_updates()}] done with optimizer step")
 
@@ -809,7 +884,11 @@ class Trainer(object):
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
             self.zero_grad()
-            with NanDetector(self.get_model()):
+            with NanDetector(self.get_model()), (
+                set_rank_seed(self.cfg.common.seed, self.get_num_updates())
+                if self.cfg.common.seed_per_rank
+                else contextlib.nullcontext()
+            ):
                 for _, sample in enumerate(samples):
                     sample, _ = self._prepare_sample(sample)
                     self.task.train_step(
@@ -828,10 +907,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
-        except SpikeError as e:
-            overflow = True
-            logger.info(str(e))
-            self.zero_grad()
+        # except SpikeError as e:
+        # overflow = True
+        # logger.info(str(e))
+        # self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -841,6 +920,21 @@ class Trainer(object):
         logging_output = None
         if not overflow:
             self.set_num_updates(self.get_num_updates() + 1)
+
+            # EMA update
+            if self.cfg.ema.store_ema:
+                # Step EMA forward with new model.
+                self.ema.step(
+                    self.get_model(),
+                    self.get_num_updates(),
+                )
+                metrics.log_scalar(
+                    "ema_decay",
+                    self.ema.get_decay(),
+                    priority=10000,
+                    round=5,
+                    weight=0,
+                )
 
             if self.cuda and self.cuda_env is not None:
                 # log minimum free memory over the iteration
@@ -883,8 +977,15 @@ class Trainer(object):
         return logging_output
 
     @metrics.aggregate("valid")
-    def valid_step(self, sample, raise_oom=False):
+    def valid_step(self, sample, num_step=0, raise_oom=False):
         """Do forward pass in evaluation mode."""
+
+        # If EMA is enabled through store_ema=True
+        # and task.uses_ema is True, pass the EMA model as a keyword
+        # argument to the task.
+        extra_kwargs = {}
+        if self.cfg.ema.store_ema and getattr(self.task, "uses_ema", False):
+            extra_kwargs["ema_model"] = self.ema.get_model()
 
         with torch.no_grad():
             self.model.eval()
@@ -894,9 +995,12 @@ class Trainer(object):
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             try:
-                _loss, sample_size, logging_output = self.task.valid_step(
-                    sample, self.model, self.criterion
-                )
+                with set_rank_seed(
+                    self.cfg.common.seed, num_step + self.get_num_updates()
+                ) if self.cfg.common.seed_per_rank else contextlib.nullcontext():
+                    _loss, sample_size, logging_output = self.task.valid_step(
+                        sample, self.model, self.criterion
+                    )
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     self._log_oom(e)
@@ -909,7 +1013,7 @@ class Trainer(object):
                                 p.grad = None  # free some memory
                         if self.cuda:
                             torch.cuda.empty_cache()
-                        return self.valid_step(sample, raise_oom=True)
+                        return self.valid_step(sample, num_step, raise_oom=True)
                 raise e
 
             logging_outputs = [logging_output]
@@ -1026,21 +1130,22 @@ class Trainer(object):
             self._ewm_loss = loss_t
 
         ewm_t_1 = self._ewm_loss
-        alpha = 2 / (span + 1)
-        ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
-        ewm_ratio = loss_t / ewm_t
+        ewm_ratio = loss_t / ewm_t_1
 
-        if ewm_ratio_to_skip_batch != -1 and ewm_ratio > ewm_ratio_to_skip_batch:
+        if ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
-            raise SpikeError(
-                f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
-                f"The ewm for the loss was only at {ewm_t:.2f} . "
-                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
-                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
-            )
-        # the current loss is only included in ewm if the current batch is not skipped
-        self._ewm_loss = ewm_t
+            # raise SpikeError(
+            #     f"Skip batch as we encountered a loss spike. In "
+            #     f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+            #     f"The ewm for the loss was only at {ewm_t:.2f} . "
+            #     f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+            #     f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            # )
+        else:
+            # update the moving average only if we are not loss spiking
+            alpha = 2 / (span + 1)
+            ewm_t = (1 - alpha) * ewm_t_1 + alpha * loss_t
+            self._ewm_loss = ewm_t
 
         return ewm_ratio
 
@@ -1073,10 +1178,41 @@ class Trainer(object):
         if self.cuda:
             sample = utils.move_to_cuda(sample)
 
+            # if False:  # turn on to double-check we do not have data loader issues
+            #     # When we finish an epoch some dataloaders run short on data one iteration before others.
+            #     # We want to check that the data loaders that are running short are returning correct data
+            #     # on all their previous iterations.
+            #
+            #     # If they are returning the correct data, then we can rule out a lot of reasons why they would
+            #     # run short.
+            #
+            #     ipt = sample["net_input"]["src_tokens"]
+            #     if not hasattr(self, "input_errors"):
+            #         self.input_errors = torch.tensor(
+            #             0, dtype=torch.int, device=ipt.device
+            #         )
+            #
+            #     min_ipt = ipt.clone()
+            #
+            #     torch.distributed.all_reduce(
+            #         min_ipt,
+            #         op=torch.distributed.ReduceOp.MIN,
+            #         group=distributed_utils.get_model_parallel_group(),
+            #     )
+            #
+            #     self.input_errors += (min_ipt != ipt).any()
+            #
+            #     if self.get_num_updates() % self.cfg.common.log_interval == 0:
+            #         if int(self.input_errors) > 0:
+            #             logger.error(
+            #                 f"Data {self.data_parallel_rank} Model {distributed_utils.get_model_parallel_rank()} "
+            #                 f"has {self.input_errors} data mismatch errors!"
+            #             )
+
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.bf16:
+                if self.cfg.common.bf16 or self.cfg.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
@@ -1229,6 +1365,38 @@ class Trainer(object):
     def _reduce_and_log_stats(
         self, logging_outputs, sample_size, grad_norm=None, ewm_loss_ratio=0
     ):
+        # perform a bunch of arch-specific gradient metrics
+        for name, param in self.model.named_parameters():
+            if (not self.is_fsdp) or self.quiet_logs:
+                break
+            if param.grad is None:
+                continue
+            nice_name = name.replace("module._fsdp_wrapped_module._fpw_module.", "")
+            nice_name = nice_name.replace("_fsdp_wrapped_module._fpw_module.", "")
+            nice_name = nice_name.replace("._fsdp_wrapped_module.flat_param_0", "")
+            nice_name = nice_name.replace("decoder.layers.", "layer")
+            # threshold for near zeros
+            threshold = torch.finfo(param.grad.dtype).tiny * 2
+            with torch.no_grad():
+                g = param.grad
+                if hasattr(self.optimizer, "_multiply_factor"):
+                    g = self.optimizer._multiply_factor * g
+                norm = g.norm(p=2, dim=-1, dtype=torch.float32)
+                max_ = g.max()
+                nz = ((g > -threshold) & (g < threshold)).sum() / g.numel()
+            # priorities for printing order
+            metrics.log_scalar(f"gnorm_{nice_name}", norm, priority=10)
+            metrics.log_scalar(f"gmax_{nice_name}", max_, priority=11)
+            metrics.log_scalar(f"gzero_{nice_name}", nz, priority=12)
+            with torch.no_grad():
+                norm = param.norm(p=2, dim=-1, dtype=torch.float32)
+                max_ = param.max()
+                nz = ((param > -threshold) & (param < threshold)).sum() / param.numel()
+            # priorities for printing order
+            metrics.log_scalar(f"pnorm_{nice_name}", norm, priority=13)
+            metrics.log_scalar(f"pmax_{nice_name}", max_, priority=14)
+            metrics.log_scalar(f"pzero_{nice_name}", nz, priority=15)
+
         # standard code
         if grad_norm is not None and (
             not torch.is_tensor(grad_norm) or torch.isfinite(grad_norm)
