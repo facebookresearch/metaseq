@@ -161,6 +161,14 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "For FIM it's unclear whether or not they allow this."
         },
     )
+    cm3_boundary_token: str = field(
+        default="<racm3:break>",
+        metadata={
+            "help": "This is a token to indicate the boundaries of document,"
+            "in image text case, a boundary_token was manually added."
+            "in long text case, we should use eod token to separate documents."
+        },
+    )
     num_retrieved_doc: int = field(
         default=2, metadata={"help": "number of retrieved documents"}
     )
@@ -269,16 +277,16 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def _create_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
-        self.cm3_break = "<racm3:break>"
-        self.dictionary.add_symbol(self.cm3_break)
-        self.dictionary.add_symbol(self.cm3_sentinel_end)
+        self.cm3_break = self.args.cm3_boundary_token
+        assert self.cm3_break in self.dictionary, self.cm3_break
+        assert self.cm3_sentinel_end in self.dictionary, self.cm3_sentinel_end
         # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
-            self.dictionary.add_symbol(token)
+            assert token in self.dictionary, token
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)

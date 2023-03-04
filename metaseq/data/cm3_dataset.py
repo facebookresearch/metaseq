@@ -192,9 +192,15 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
 
     def get_document_boundaries(self, item: torch.Tensor):
         boundaries = (item == self.eod).nonzero().cpu().squeeze().numpy().tolist()
+        if isinstance(
+            boundaries, int
+        ):  # TODO check if we can consolidate these two corner cases
+            boundaries = [boundaries]
+        if len(boundaries) == 0:
+            boundaries = [0]
         if boundaries[0] != 0:
             boundaries = [0] + boundaries
-        if boundaries[-1] != item.size(0)-1:
+        if boundaries[-1] != item.size(0) - 1:
             boundaries = boundaries + [item.size(0)]
         spans = []
         for i in range(1, len(boundaries)):
