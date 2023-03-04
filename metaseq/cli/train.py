@@ -112,9 +112,6 @@ def main(cfg: DictConfig) -> None:
     # Print args
     logger.info(cfg)
 
-    # Setup task, e.g., translation, language modeling, etc.
-    task = tasks.setup_task(cfg.task)
-
     assert cfg.criterion, "Please specify criterion to train a model"
 
     # Build model and criterion
@@ -122,6 +119,15 @@ def main(cfg: DictConfig) -> None:
         extra = {
             "use_sharded_state": cfg.distributed_training.use_sharded_state,
         }
+        memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
+        with fsdp_enable_wrap(cfg.distributed_training, **extra):
+            # Setup task, e.g., translation, language modeling, etc.
+            task = tasks.setup_task(cfg.task)
+        cfg.distributed_training.memory_efficient_fp16 = memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = fp32_reduce_scatter
 
         with fsdp_enable_wrap(cfg.distributed_training, **extra):
             model = fsdp_wrap(
@@ -129,7 +135,9 @@ def main(cfg: DictConfig) -> None:
                 process_group=distributed_utils.get_data_parallel_group(),
             )
     else:
+        task = tasks.setup_task(cfg.task)
         model = task.build_model(cfg.model)
+
     # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
 
