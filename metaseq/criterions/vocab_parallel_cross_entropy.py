@@ -44,7 +44,6 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
         if has_pad:
             loss = loss * (target != self.padding_idx)
-        loss = loss.sum()
         # When using target loss only, use num tokens in target only as the sample_size
         # See StreamingSrcTgtDataset
         sample_size = (
@@ -53,11 +52,23 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             else sample["ntokens"]
         )
         logging_output = {
-            "loss": loss.data,
+            "loss": loss.sum().data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
         }
+
+        mask = target != self.padding_idx
+        loss_split_idx = (1024, 2048, 3072, 4096, 5120)
+        splited_loss = torch.tensor_split(loss, loss_split_idx, dim=1)
+        splited_mask = torch.tensor_split(mask, loss_split_idx, dim=1)
+        for i, (loss_split, splited_mask) in enumerate(zip(splited_loss, splited_mask)):
+            if loss_split.shape[1] != 0:
+                rescaler = sample_size / splited_mask.sum()
+                logging_output[f"loss{i}k"] = loss_split.sum().data * rescaler
+
+        loss = loss.sum()
+
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
         if (
@@ -111,6 +122,23 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
         )
+
+        for i in range(
+            5
+        ):  # could done better, but don't want to touch the log of metrics passing around
+            split_loss_name = f"loss{i}k"
+            try:
+                split_loss_sum = sum(
+                    log.get(split_loss_name, 0) for log in logging_outputs
+                )
+                metrics.log_scalar(
+                    split_loss_name,
+                    split_loss_sum / sample_size / math.log(2),
+                    sample_size,
+                    round=3,
+                )
+            except:
+                pass
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:
