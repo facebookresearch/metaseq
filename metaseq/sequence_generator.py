@@ -179,6 +179,7 @@ class SequenceGenerator(nn.Module):
         epsilon: float = 0.01,
         debug: bool = False,
         tokenizer=None,
+        collect_metrics: bool = False,
     ):
         """Generates translations of a given source sentence.
 
@@ -269,6 +270,9 @@ class SequenceGenerator(nn.Module):
         self.epsilon = epsilon
         self.debug = debug
         self.tokenizer = tokenizer
+
+        # metrics
+        self.collect_metrics = collect_metrics
 
     def cuda(self):
         self.model.cuda()
@@ -441,6 +445,11 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
+        if self.collect_metrics:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+
         for step in range(start_step, max_len):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -536,11 +545,27 @@ class SequenceGenerator(nn.Module):
             "tokens": tokens.view(bsz, beam_size, -1),
             "scores": scores.view(bsz, beam_size, -1),
         }
+
         if all_lprobs is not None:
             all_lprobs = all_lprobs[sorted_indices]
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
+
+        if self.collect_metrics:
+            end.record()
+            torch.cuda.synchronize()
+            gpu_time_seconds = start.elapsed_time(end)
+            gpu_peak_mem_bytes = torch.cuda.memory_stats()["allocated_bytes.all.peak"]
+            gen_tokens = tokens[:, start_step:]
+            output_tokens = (gen_tokens.ne(self.eos) & gen_tokens.ne(self.pad)).long().sum().item()
+            retval["metrics"] = {
+                "gpu_time_seconds": gpu_time_seconds,
+                "gpu_peak_mem_bytes": gpu_peak_mem_bytes,
+                "input_tokens": src_lengths.sum().item(),
+                "output_tokens": output_tokens,
+            }
+
         return retval
 
     def _initialize_generation_buffers(
@@ -613,10 +638,6 @@ class SequenceGenerator(nn.Module):
         if self.temperature == 0.0 or self.sampling_topp == 0.0:
             # greedy search
             return tuple(lprobs.max(dim=-1))  # (output, index)
-
-        # torch.multinomial gives error when every entry in lprobs are -inf
-        # similar issue in https://github.com/huggingface/transformers/issues/15169
-        lprobs[lprobs == -math.inf] = torch.finfo(lprobs.dtype).min
 
         # torch.multinomial gives error when every entry in lprobs are -inf
         # similar issue in https://github.com/huggingface/transformers/issues/15169

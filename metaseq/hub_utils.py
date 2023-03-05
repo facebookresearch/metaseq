@@ -216,6 +216,7 @@ class GeneratorInterface:
         # added self-debiasing
         self_debiasing: bool = False,
         num_debiasing_prefixes: int = 0,
+        collect_metrics: bool = False,
     ):
         """
         Generate from sequences.
@@ -251,6 +252,7 @@ class GeneratorInterface:
             incoming context
         alpha_src_penalty_end_idx: index of the last token in incoming
             context to consider for repetition penalty
+        collect_metrics: collect efficiency metrics (latency, memory, etc.)
         """
         if seed:
             utils.set_torch_seed(seed)
@@ -324,6 +326,7 @@ class GeneratorInterface:
                 "self_debiasing": self_debiasing,
                 "num_debiasing_prefixes": num_debiasing_prefixes,
                 "tokenizer": self.bpe.bpe,
+                "collect_metrics": collect_metrics,
             }
             logger.info(
                 f"Preparing generator with extra_gen_cls_kwargs {extra_gen_cls_kwargs}"
@@ -421,6 +424,9 @@ class GeneratorInterface:
 
                     else:
                         result["top_logprobs"] = None
+
+                    if "metrics" in translations:
+                        result["metrics"] = translations["metrics"]
 
                     beams.append(result)
                 retval.append(beams)
