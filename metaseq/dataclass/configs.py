@@ -14,7 +14,6 @@ from metaseq.dataclass.constants import (
     DATASET_IMPL_CHOICES,
     DDP_BACKEND_CHOICES,
     LOG_FORMAT_CHOICES,
-    ZERO_SHARDING_CHOICES,
     CLIP_GRAD_NORM_TYPE_CHOICES,
 )
 
@@ -125,6 +124,9 @@ class CommonConfig(MetaseqDataclass):
     seed: int = field(
         default=1, metadata={"help": "pseudo random number generator seed"}
     )
+    seed_per_rank: bool = field(
+        default=False, metadata={"help": "use different seed per rank"}
+    )
     cpu: bool = field(default=False, metadata={"help": "use CPU instead of CUDA"})
     fp16: bool = field(default=False, metadata={"help": "use FP16"})
     memory_efficient_fp16: bool = field(
@@ -193,6 +195,12 @@ class CommonConfig(MetaseqDataclass):
     )
     log_nvidia_smi: bool = field(
         default=False, metadata={"help": "log output from nvidia-smi during training"}
+    )
+    quiet_logs: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Don't log grad/param norms for each parameter.",
+        },
     )
 
 
@@ -268,9 +276,7 @@ class DistributedTrainingConfig(MetaseqDataclass):
             "batchnorm population statistics"
         },
     )
-    zero_sharding: ZERO_SHARDING_CHOICES = field(
-        default="none", metadata={"help": "ZeRO sharding"}
-    )
+
     fp16: bool = II("common.fp16")
     memory_efficient_fp16: bool = II("common.memory_efficient_fp16")
     bf16: bool = II("common.bf16")
@@ -498,6 +504,13 @@ class CheckpointConfig(MetaseqDataclass):
     save_interval_updates: int = field(
         default=0, metadata={"help": "save a checkpoint (and validate) every N updates"}
     )
+    local_save_interval_updates: int = field(
+        default=0,
+        metadata={
+            "help": "save a checkpoint (and validate) every N updates to local SSD. "
+            "Only applicable when copying to NFS asynchronously"
+        },
+    )
     save_last_checkpoint: bool = field(
         default=True,
         metadata={"help": "store a last checkpoint at the end of the training run."},
@@ -518,13 +531,6 @@ class CheckpointConfig(MetaseqDataclass):
             "if the checkpoint is over 300GB, it is preferable "
             "to split it into shards to prevent OOM on CPU while loading "
             "the checkpoint"
-        },
-    )
-    load_checkpoint_on_all_dp_ranks: bool = field(
-        default=False,
-        metadata={
-            "help": "load checkpoints on all data parallel devices "
-            "(default: only load on rank 0 and broadcast to other devices)"
         },
     )
     # TODO: remove write_checkpoints_asynchronously flag; metaseq-internal has dependency here so keeping for now.
@@ -742,6 +748,33 @@ class EvalLMConfig(MetaseqDataclass):
 
 
 @dataclass
+class EMAConfig(MetaseqDataclass):
+    store_ema: bool = field(
+        default=False, metadata={help: "store exponential moving average shadow model"}
+    )
+    ema_decay: float = field(
+        default=0.9999, metadata={"help": "decay for exponential moving average model"}
+    )
+    ema_start_update: int = field(
+        default=0, metadata={"help": "start EMA update after this many model updates"}
+    )
+    ema_seed_model: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Seed to load EMA model from. "
+            "Used to load EMA model separately from the actual model."
+        },
+    )
+    ema_update_freq: int = field(
+        default=1, metadata={"help": "Do EMA update every this many model updates"}
+    )
+    ema_fp32: bool = field(
+        default=False,
+        metadata={"help": "If true, store EMA model in fp32 even if model is in fp16"},
+    )
+
+
+@dataclass
 class MetaseqConfig(MetaseqDataclass):
     common: CommonConfig = CommonConfig()
     common_eval: CommonEvalConfig = CommonEvalConfig()
@@ -752,6 +785,7 @@ class MetaseqConfig(MetaseqDataclass):
     generation: GenerationConfig = GenerationConfig()
     eval_lm: EvalLMConfig = EvalLMConfig()
     reshard: ReshardConfig = ReshardConfig()
+    ema: EMAConfig = EMAConfig()
     model: Any = MISSING
     task: Any = MISSING
     criterion: Any = MISSING

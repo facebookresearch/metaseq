@@ -452,7 +452,10 @@ class BaseTask(object):
             nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
             metrics.log_scalar("bsz", nsentences, priority=190, round=1)
 
-        criterion.__class__.reduce_metrics(logging_outputs)
+        if hasattr(criterion, "unwrapped_module"):
+            criterion.unwrapped_module.__class__.reduce_metrics(logging_outputs)
+        else:
+            criterion.__class__.reduce_metrics(logging_outputs)
 
     def state_dict(self):
         if self.state is not None:

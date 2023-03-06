@@ -8,7 +8,7 @@ from torch import nn as nn
 from metaseq.modules import Linear
 
 
-def FeedForwardNetwork(x, fc1, activation_fn, fc2, dropout_module):
+def FeedForward(x, fc1, activation_fn, fc2, dropout_module):
     """
     Feedforward network consisting of two linear layers (fc1, fc2), where activation_fn is applied
     between the two layers and dropout_module is applied at the end.
