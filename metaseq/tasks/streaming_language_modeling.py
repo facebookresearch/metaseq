@@ -267,23 +267,44 @@ class StreamingLanguageModelingTask(LegacyTask):
             ), "FIM requires cm3_lambda_sentinel_tokens to be 1"
             self.cm3_sentinel_type = "fixed"
 
+    # def _create_cm3_special_tokens(self):
+    #     self.cm3_sentinel_end = "<eoss>"
+    #     self.cm3_break = "<racm3:break>"
+    #     self.dictionary.add_symbol(self.cm3_break)
+    #     self.dictionary.add_symbol(self.cm3_sentinel_end)
+    #     # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
+    #     self.cm3_sentinel_tokens = [
+    #         f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
+    #     ]
+    #     self.cm3_sentinel_tokens_ind = []
+    #     for token in self.cm3_sentinel_tokens:
+    #         self.dictionary.add_symbol(token)
+    #         token_index = self.dictionary.index(token)
+    #         assert token_index != self.dictionary.unk_index
+    #         self.cm3_sentinel_tokens_ind.append(token_index)
+    #     self.cm3_sentinel_end_ind = self.dictionary.index(self.cm3_sentinel_end)
+    #     self.cm3_break_ind = self.dictionary.index(self.cm3_break)
+
     def _create_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
         self.cm3_break = "<racm3:break>"
-        self.dictionary.add_symbol(self.cm3_break)
-        self.dictionary.add_symbol(self.cm3_sentinel_end)
+        assert self.cm3_break in self.dictionary, self.cm3_break
+        assert self.cm3_sentinel_end in self.dictionary, self.cm3_sentinel_end
         # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
-            self.dictionary.add_symbol(token)
+            assert token in self.dictionary, token
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
         self.cm3_sentinel_end_ind = self.dictionary.index(self.cm3_sentinel_end)
         self.cm3_break_ind = self.dictionary.index(self.cm3_break)
+        assert self.cm3_sentinel_end_ind == 65537
+        assert self.cm3_break_ind == 65536
+        assert self.cm3_sentinel_tokens_ind[0] == 65538
 
     @classmethod
     def setup_task(cls, args, **kwargs):
