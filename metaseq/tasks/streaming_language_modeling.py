@@ -29,6 +29,8 @@ from metaseq.data import (
 from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
+from metaseq.dataclass import ChoiceEnum
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -41,6 +43,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 DEFAULT_MULTICORPUS_MAX = -1
+
+LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3"])
+CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
 
 
 @dataclass
@@ -100,7 +105,43 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
         },
     )
-
+    # language modeling type
+    language_modeling_type: LANGUAGE_MODELING_MODE = field(
+        default="standard",
+        metadata={
+            "help": "Number of data subshards to use while training."
+            "Subsharding allows us to virtually split the dataset to speed up dataset fast forwarding."
+        },
+    )
+    # CM3 Specific Parameters
+    cm3_num_sentinel_tokens: int = field(
+        default=512,
+        metadata={"help": "Number of special sentinel tokens to add to the vocabulary"},
+    )
+    cm3_lambda_sentinel_tokens: int = field(
+        default=1,
+        metadata={
+            "help": "if CM3_MODE is `poisson` then the Poisson Lambda for the cm3 objective."
+            "if CM3_MODE is `fixed` then represents the number of fixed masks per example to use."
+            "if CM3_MODE is `fim` then will be forced to be 1."
+        },
+    )
+    cm3_mode: CM3_MODE = field(
+        default="poisson",
+        metadata={
+            "help": "The type of infilling objective to do; poisson (original CM3),"
+            "fixed (CM3 with fixed number of masks), fim (CM3 with 1 mask)."
+        },
+    )
+    cm3_allow_across_eod_boundaries: bool = field(
+        default=True,
+        metadata={
+            "help": "Whether or not we allow rotation of documents across documents"
+            "(especially when training with token blocking set to None)."
+            "By default the original CM3 objective allows rotation across document boundaries."
+            "For FIM it's unclear whether or not they allow this."
+        },
+    )
     # TODO common vars below add to parent
     seed: int = II("common.seed")
     batch_size: Optional[int] = II("dataset.batch_size")
@@ -157,16 +198,6 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         for id in range(self.dictionary.nspecial, tok_vocab_size):
             self.dictionary.add_symbol(self.tokenizer.id_to_token(id))
-        final_vocab_size = args.final_vocab_size
-        # final_vocab_size = 51200 for roberta dictionary
-        if final_vocab_size is not None:
-            if final_vocab_size < tok_vocab_size:
-                raise ValueError(
-                    f"incompatible: {final_vocab_size}, tok_vocab_size: {tok_vocab_size}"
-                )
-            self.dictionary.pad_to_multiple_(final_vocab_size)
-        else:
-            self.dictionary.pad_to_multiple_(8)
 
         # confirm that metaseq dictionary and BPE have matching special symbols
         assert self.dictionary.bos_index == 0
@@ -177,6 +208,54 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert self.tokenizer.id_to_token(2) in {"<EOS>", "</s>"}
         assert self.dictionary.unk_index == 3
         assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
+
+        self.has_cm3 = args.language_modeling_type == "cm3"
+        if self.has_cm3:
+            self.cm3_sentinel_type = self.args.cm3_mode
+            self._check_cm3_parameterization()
+            self._create_cm3_special_tokens()
+
+        final_vocab_size = args.final_vocab_size
+        if final_vocab_size is not None:
+            if final_vocab_size < tok_vocab_size:
+                raise ValueError(
+                    f"incompatible: {final_vocab_size}, tok_vocab_size: {tok_vocab_size}"
+                )
+            self.dictionary.pad_to_multiple_(final_vocab_size)
+        else:
+            self.dictionary.pad_to_multiple_(8)
+
+    def _check_cm3_parameterization(self):
+        assert (
+            self.args.cm3_lambda_sentinel_tokens > 0
+        ), "cm3_lambda_sentinel_tokens must be > 0"
+        assert (
+            self.args.cm3_num_sentinel_tokens > 0
+        ), "cm3_num_sentinel_tokens must be > 0"
+        assert (
+            self.args.cm3_num_sentinel_tokens >= self.args.cm3_lambda_sentinel_tokens
+        ), "cm3_lambda_sentinel_tokens must be >= cm3_num_sentinel_tokens"
+        if self.args.cm3_mode == "fim":
+            assert (
+                self.args.cm3_num_sentinel_tokens == 1
+            ), "FIM requires cm3_num_sentinel_tokens to be 1"
+            assert (
+                self.args.cm3_lambda_sentinel_tokens == 1
+            ), "FIM requires cm3_lambda_sentinel_tokens to be 1"
+            self.cm3_sentinel_type = "fixed"
+
+    def _create_cm3_special_tokens(self):
+        self.cm3_sentinel_end = "<eoss>"
+        self.cm3_sentinel_tokens = [
+            f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
+        ]
+        self.cm3_sentinel_tokens_ind = []
+        for token in self.cm3_sentinel_tokens:
+            self.dictionary.add_symbol(token)
+            token_index = self.dictionary.index(token)
+            assert token_index != self.dictionary.unk_index
+            self.cm3_sentinel_tokens_ind.append(token_index)
+        self.cm3_sentinel_end_ind = self.dictionary.index(self.cm3_sentinel_end)
 
     @classmethod
     def setup_task(cls, args, **kwargs):
@@ -335,17 +414,36 @@ class StreamingLanguageModelingTask(LegacyTask):
         dataset = torch.utils.data.ConcatDataset(datasets)
 
         # chunk into blocks of tokens
-        self.datasets[split] = DocumentToSequenceDataset(
-            dataset,
-            # We generate blocks with one extra token, so that we have a target
-            # for the final input token. This results in slight data loss.
-            block_size=self.args.tokens_per_sample + 1,
-            break_mode=self.args.sample_break_mode,
-            # we drop the remainder block during training
-            drop_last=(split == "train"),
-            padding_idx=self.source_dictionary.pad(),
-            seed=self.args.seed,
-        )
+        if self.has_cm3:
+            # We chose not to use compositional inheritance because there's a
+            # lot of downstream code that has isinstance checks.
+            # So just to be safe and not change anything we use proper inheritance.
+            self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
+                sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
+                sentinel_tokens=self.cm3_sentinel_tokens_ind,
+                sentinel_method=self.cm3_sentinel_type,
+                sentinel_eos=self.cm3_sentinel_end_ind,
+                allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
+                eod=self.eod,
+                dataset=dataset,
+                # We generate blocks with one extra token, so that we have a target
+                # for the final input token. This results in slight data loss.
+                block_size=self.args.tokens_per_sample + 1,
+                break_mode=self.args.sample_break_mode,
+                # we drop the remainder block during training
+                drop_last=(split == "train"),
+                padding_idx=self.source_dictionary.pad(),
+                seed=self.args.seed,
+            )
+        else:
+            self.datasets[split] = DocumentToSequenceDataset(
+                dataset,
+                block_size=self.args.tokens_per_sample + 1,
+                break_mode=self.args.sample_break_mode,
+                drop_last=(split == "train"),
+                padding_idx=self.source_dictionary.pad(),
+                seed=self.args.seed,
+            )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
         # StreamingTokenBlockDataset returns None as filler
