@@ -22,6 +22,10 @@ The OPT models are now supported in the [Colossal-AI](https://github.com/hpcaite
 
 The OPT 125M--66B models can be executed with [CTranslate2](https://github.com/OpenNMT/CTranslate2/), which is a fast inference engine for Transformer models. The project integrates the [SmoothQuant](https://github.com/mit-han-lab/smoothquant) technique to allow 8-bit quantization of OPT models. See the [usage example](https://opennmt.net/CTranslate2/guides/transformers.html#opt) to get started.
 
+### Using OPT with FasterTransformer
+
+The OPT models can be served with [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), a highly optimized inference framework written and maintained by NVIDIA. We provide instructions to convert OPT checkpoints into FasterTransformer format and [a usage example](docs/faster-transformer.md) with some benchmark results.
+
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
 
