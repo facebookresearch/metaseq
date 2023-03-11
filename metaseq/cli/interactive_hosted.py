@@ -147,6 +147,9 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                         "alpha_presence_src",
                         "alpha_frequency_src",
                         "alpha_src_penalty_end_idx",
+                        # added self-debiasing args
+                        "self_debiasing",
+                        "num_debiasing_prefixes",
                     ]:
                         if key in ro:
                             request_object[key] = ro[key]
@@ -360,6 +363,14 @@ def completions(engine=None):
         )
     else:
         generation_args["alpha_src_penalty_end_idx"] = -1
+
+    # added self-debiasing args
+    if "num_debiasing_prefixes" in generation_args:
+        generation_args["num_debiasing_prefixes"] = int(
+            generation_args["num_debiasing_prefixes"]
+        )
+    else:
+        generation_args["num_debiasing_prefixes"] = 0
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):

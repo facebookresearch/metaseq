@@ -294,15 +294,6 @@ class GeneratorInterface:
             src_tokens = batch["net_input"]["src_tokens"]
             src_lengths = batch["net_input"]["src_lengths"]
             batchsize = src_tokens.size(0)
-            
-            # test on decoding
-            # tokens = src_tokens[1, :].tolist()
-            # all_tokens = translations["tokens"].cpu()[: len(inputs)]
-            # self.bpe.bpe.decode(all_tokens[0,0].tolist())
-            # "</s>And that Lars fuck should have his hands bound with<pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>\nI think he was just holding the camera in place.</s><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>"
-            # text = self.bpe.bpe.decode(tokens)
-            # tokens: [1, 1, 1, 1, 1, 1, 2, 133, 511, 2788, 6308, 21820, 6, 26401, 6, 50, 24941, 2777, 35, 50118, 2409, 14, 18665, 26536, 197, 33, 39, 1420, 8191, 19]
-            # text: '<pad><pad><pad><pad><pad><pad></s>The following text contains rude, disrespectful, or unreasonable language:\nAnd that Lars fuck should have his hands bound with'
 
             # set generation args
             # prevent us from ever generating past our max sequence length
@@ -335,6 +326,9 @@ class GeneratorInterface:
                 "num_debiasing_prefixes": num_debiasing_prefixes,
                 "tokenizer": self.bpe.bpe,
             }
+            logger.info(
+                f"Preparing generator with extra_gen_cls_kwargs {extra_gen_cls_kwargs}"
+            )
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
