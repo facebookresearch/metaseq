@@ -97,6 +97,13 @@ def save_checkpoint(
             async_callback_fn=async_callback_fn if save_to_NFS else None,
         )
 
+        if len(checkpoints) > 1:
+            # Create symlink between identical checkpoints (differing in naming for epoch/update/last).
+            for other_checkpoint in checkpoints[1:]:
+                assert PathManager.symlink(
+                    checkpoints[0], other_checkpoint, overwrite=True
+                ), f"Failed to symlink {checkpoints[0]} to {other_checkpoint}"
+
         write_timer.stop()
         logger.info(
             f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
