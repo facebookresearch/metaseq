@@ -180,6 +180,7 @@ def do_setup(package_data):
             ]
         ),
         extras_require={
+            # install via: pip install -e ".[dev]"
             "dev": [
                 "flake8",
                 "black==22.3.0",
@@ -189,7 +190,17 @@ def do_setup(package_data):
                 "pyarrow",
                 "boto3",
                 "pandas",
-            ]
+            ],
+            # install via: pip install -e ".[multimodal]"
+            "multimodal": [
+                "albumentations",
+                "dalle_pytorch",
+                "einops",
+                "matplotlib",
+                "pytorchvideo==0.1.5",
+                "wandb",
+                "webdataset==0.1.103",
+            ],
         },
         package_data=package_data,
         ext_modules=extensions,
