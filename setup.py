@@ -180,6 +180,7 @@ def do_setup(package_data):
             ]
         ),
         extras_require={
+            # install via: pip install -e ".[dev]"
             "dev": [
                 "flake8",
                 "black==22.3.0",
@@ -190,6 +191,7 @@ def do_setup(package_data):
                 "boto3",
                 "pandas",
             ],
+            # install via: pip install -e ".[multimodal]"
             "multimodal": [
                 "albumentations",
                 "dalle_pytorch",
