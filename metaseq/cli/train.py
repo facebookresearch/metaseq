@@ -115,6 +115,7 @@ def main(cfg: DictConfig) -> None:
     # Setup task, e.g., translation, language modeling, etc.
     if cfg.distributed_training.task_ddp_backend == "fully_sharded":
         # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
         orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
         orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
         # Clobber memory_efficient_fp16 and fp32_reduce_scatter
