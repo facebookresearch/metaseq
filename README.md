@@ -48,7 +48,7 @@ We welcome PRs from the community!
 You can find information about contributing to metaseq in our [Contributing](docs/CONTRIBUTING.md) document.
 
 ## The Team
-Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), [David Esiobu](https://github.com/davides), [Igor Molybog](https://github.com/igormolybogFB), [Peter Albert](https://github.com/Xirider), [Sharan Narang](https://github.com/sharannarang), [Andrew Poulton](https://github.com/andrewPoulton), [Nikolay Bashlykov](https://github.com/bashnick), and [Binh Tang](https://github.com/tangbinh).
+Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), [David Esiobu](https://github.com/davides), [Igor Molybog](https://github.com/igormolybogFB), [Peter Albert](https://github.com/Xirider), [Sharan Narang](https://github.com/sharannarang), [Andrew Poulton](https://github.com/andrewPoulton), [Nikolay Bashlykov](https://github.com/bashnick), [Binh Tang](https://github.com/tangbinh), and [Uriel Singer](https://github.com/urielsinger).
 
 Previous maintainers include:
 [Stephen Roller](https://github.com/stephenroller), [Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).
