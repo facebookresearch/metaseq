@@ -64,6 +64,12 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
         cfg.distributed_training,
         use_sharded_state=cfg.distributed_training.use_sharded_state,
     ):
+        if (
+            getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
+            and cfg.common.model_parallel_size == 1
+        ):
+            cfg.model.arch = "transformer_lm_gpt"
+            cfg.model._name = "transformer_lm_gpt"
         models, _model_args, _task = checkpoint_utils.load_model_ensemble_and_task(
             utils.split_paths(cfg.common_eval.path),
             arg_overrides=None,
