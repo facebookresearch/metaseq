@@ -169,6 +169,13 @@ def do_setup(package_data):
             "torch",
             "tqdm",
             "typing_extensions",
+            "einops",
+            "webdataset==0.1.103",
+            "matplotlib",
+            "pytorchvideo==0.1.5",
+            "wandb",
+            "albumentations",
+            "dalle_pytorch",
         ],
         dependency_links=dependency_links,
         packages=find_packages(

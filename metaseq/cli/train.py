@@ -112,17 +112,25 @@ def main(cfg: DictConfig) -> None:
     # Print args
     logger.info(cfg)
 
-    # Setup task, e.g., translation, language modeling, etc.
-    task = tasks.setup_task(cfg.task)
-
     assert cfg.criterion, "Please specify criterion to train a model"
 
-    # Build model and criterion
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
-        extra = {
-            "use_sharded_state": cfg.distributed_training.use_sharded_state,
-        }
+    # Build task, model and criterion
+    extra = {"use_sharded_state": cfg.distributed_training.use_sharded_state,}
+    if cfg.distributed_training.task_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we witch flags to more optimized ones.
+        memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
+        with fsdp_enable_wrap(cfg.distributed_training, **extra):
+            # Setup task, e.g., translation, language modeling, etc.
+            task = tasks.setup_task(cfg.task)
+        cfg.distributed_training.memory_efficient_fp16 = memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = fp32_reduce_scatter
+    else:
+        task = tasks.setup_task(cfg.task)
 
+    if cfg.distributed_training.ddp_backend == "fully_sharded":
         with fsdp_enable_wrap(cfg.distributed_training, **extra):
             model = fsdp_wrap(
                 task.build_model(cfg.model),
@@ -130,6 +138,7 @@ def main(cfg: DictConfig) -> None:
             )
     else:
         model = task.build_model(cfg.model)
+
     # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
 
