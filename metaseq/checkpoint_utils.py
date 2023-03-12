@@ -547,17 +547,6 @@ def load_model_ensemble_and_task(
                     f"!!! cfg does not exist in state keys = {state.keys()} !!!"
                 )
 
-            # Load 175B model trained on megatron (model parallel) branch
-            # "cfg.common.model_parallel_size == 1" checks if model parallel is
-            # enabled at load time. If it's not, fall back to non-MP
-            # transformer code path.
-            if (
-                getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
-                and cfg.common.model_parallel_size == 1
-            ):
-                cfg.model.arch = "transformer_lm_gpt"
-                cfg.model._name = "transformer_lm_gpt"
-
             # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
             oproj_key = "decoder.output_projection.weight"
             emb_key = "decoder.embed_tokens.weight"
