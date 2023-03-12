@@ -189,7 +189,16 @@ def do_setup(package_data):
                 "pyarrow",
                 "boto3",
                 "pandas",
-            ]
+            ],
+            "multimodal": [
+                "albumentations",
+                "dalle_pytorch",
+                "einops",
+                "matplotlib",
+                "pytorchvideo==0.1.5",
+                "wandb",
+                "webdataset==0.1.103",
+            ],
         },
         package_data=package_data,
         ext_modules=extensions,
