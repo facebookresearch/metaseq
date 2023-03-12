@@ -247,6 +247,9 @@ class DistributedTrainingConfig(MetaseqDataclass):
     ddp_backend: DDP_BACKEND_CHOICES = field(
         default="pytorch_ddp", metadata={"help": "DistributedDataParallel backend"}
     )
+    task_ddp_backend: DDP_BACKEND_CHOICES = field(
+        default="pytorch_ddp", metadata={"help": "DistributedDataParallel backend for task"}
+    )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}
     )
