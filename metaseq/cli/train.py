@@ -117,6 +117,7 @@ def main(cfg: DictConfig) -> None:
     # Build task, model and criterion
     extra = {"use_sharded_state": cfg.distributed_training.use_sharded_state,}
     if cfg.distributed_training.task_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we witch flags to more optimized ones.
         memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
         fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
         cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
