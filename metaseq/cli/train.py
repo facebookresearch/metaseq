@@ -511,7 +511,7 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
+def post_checkpoint_callback(cfg, num_updates, training_finished, filename, files_to_symlink_to):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_logs = filename + "_azcopy_logs"
@@ -540,6 +540,9 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
                 f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
             )
             os.remove(filename)
+
+            # TODO[Susan]: Add symlink logic here? Check what cloud_upload_path is being used for Uriel's jobs.
+
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
             path, basename = os.path.split(filename)
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
@@ -579,6 +582,8 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
             )
             os.remove(filename)
 
+            # TODO[Susan]: Add symlink logic here.
+
             # Start running evals on uploaded checkpoint
             nfs_evaluation(
                 cfg,
@@ -601,6 +606,16 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
                 )
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
+
+            # TODO[Susan]: Add symlink logic here.
+
+    # if files_to_symlink_to is not None and len(files_to_symlink_to) > 1:
+    #     for other_checkpoint in files_to_symlink_to:
+    #         if PathManager.islink(other_checkpoint):
+    #             PathManager.rm(other_checkpoint)
+    #         assert PathManager.symlink(
+    #             filename, other_checkpoint
+    #         ), f"Failed to symlink {filename} to {other_checkpoint}"
 
 
 def nfs_evaluation(
