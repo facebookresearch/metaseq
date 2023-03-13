@@ -13,6 +13,7 @@ from omegaconf import II, MISSING
 from metaseq.dataclass.constants import (
     DATASET_IMPL_CHOICES,
     DDP_BACKEND_CHOICES,
+    TASK_DDP_BACKEND_CHOICES,
     LOG_FORMAT_CHOICES,
     CLIP_GRAD_NORM_TYPE_CHOICES,
 )
@@ -246,6 +247,11 @@ class DistributedTrainingConfig(MetaseqDataclass):
     )
     ddp_backend: DDP_BACKEND_CHOICES = field(
         default="pytorch_ddp", metadata={"help": "DistributedDataParallel backend"}
+    )
+    # Reference: https://github.com/facebookresearch/metaseq/pull/668
+    task_ddp_backend: TASK_DDP_BACKEND_CHOICES = field(
+        default="none",
+        metadata={"help": "If set to fully_sharded, will fsdp wrap task."},
     )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}

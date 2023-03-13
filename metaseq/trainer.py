@@ -254,7 +254,6 @@ class Trainer(object):
             if self.is_fsdp:
                 # Build FSDP model
                 extra = {
-                    "is_moe": getattr(self.cfg.model, "moe_freq", 0) > 0,
                     "use_sharded_state": self.use_sharded_state,
                 }
                 with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
@@ -1212,11 +1211,12 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.common.bf16 or self.cfg.bf16:
+                if self.cfg.common.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
 
+        # TODO[Susan]: sample dict is full of int64 tensors - check this.
         if self.cfg.common.fp16:
             sample = utils.apply_to_sample(lower_precision, sample)
 

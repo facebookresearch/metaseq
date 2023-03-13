@@ -113,23 +113,42 @@ def main(cfg: DictConfig) -> None:
     logger.info(cfg)
 
     # Setup task, e.g., translation, language modeling, etc.
-    task = tasks.setup_task(cfg.task)
+    if cfg.distributed_training.task_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
+        orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # Clobber memory_efficient_fp16 and fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
 
-    assert cfg.criterion, "Please specify criterion to train a model"
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
+            task = tasks.setup_task(cfg.task)
+
+        # Reset memory_efficient_fp16 and fp32_reduce_scatter values.
+        cfg.distributed_training.memory_efficient_fp16 = orig_memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = orig_fp32_reduce_scatter
+    else:
+        task = tasks.setup_task(cfg.task)
 
     # Build model and criterion
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
-        extra = {
-            "use_sharded_state": cfg.distributed_training.use_sharded_state,
-        }
+    assert cfg.criterion, "Please specify criterion to train a model"
 
-        with fsdp_enable_wrap(cfg.distributed_training, **extra):
+    if cfg.distributed_training.ddp_backend == "fully_sharded":
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
             model = fsdp_wrap(
                 task.build_model(cfg.model),
                 process_group=distributed_utils.get_data_parallel_group(),
             )
     else:
         model = task.build_model(cfg.model)
+
     # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
 
