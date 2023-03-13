@@ -254,7 +254,6 @@ class Trainer(object):
             if self.is_fsdp:
                 # Build FSDP model
                 extra = {
-                    "is_moe": getattr(self.cfg.model, "moe_freq", 0) > 0,
                     "use_sharded_state": self.use_sharded_state,
                 }
                 with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
