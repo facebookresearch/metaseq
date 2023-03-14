@@ -325,8 +325,11 @@ def train(
                 params = [(n,p) for n,p in trainer.model.named_parameters()]
 
                 if hasattr(cfg['model'], 'frozen_layers'):
-                  first_frozen = int(cfg['model'].frozen_layers.split(',')[0])
-                  stats["sum_layer_" + str(first_frozen)] = params[first_frozen + 1][1].sum().item()
+                  if cfg['model'].frozen_layers == 'grad':
+                    first_frozen = 1
+                  else:
+                    first_frozen = int(cfg['model'].frozen_layers.split(',')[0])
+                  stats["sum_layer_" + str(first_frozen)] = params[first_frozen][1].sum().item()
 
                 progress.log(stats, tag="train_inner", step=num_updates)
 

@@ -881,10 +881,26 @@ class Trainer(object):
             if hasattr(self.cfg['model'], 'frozen_layers'):
               frozen_layers = self.cfg['model'].frozen_layers.split(',')
 
+
+              if frozen_layers[0] == "grad":
+                num_updates = self.get_num_updates()
+                frozen_layers = [1, 24]
+                if num_updates > 10000:
+                  frozen_layers += [2, 23]
+                if num_updates > 20000:
+                  frozen_layers += [3, 4, 21, 22]
+                if num_updates > 30000:
+                  frozen_layers += [5, 6, 19, 20]
+                if num_updates > 40000:
+                  frozen_layers += [7, 8, 9, 16, 17, 18]
+                if num_updates > 50000:
+                  frozen_layers += [10, 11, 12, 13, 14, 15]
+
+              frozen_layers = [int(x) for x in frozen_layers]
               for n,p in self.model.named_parameters():
                 if "layers" in n:
                   layer_num = n.split("layers.")[1].split(".")[0]
-                  if layer_num in frozen_layers:
+                  if int(layer_num) + 1 in frozen_layers: # using layers 1-24 instead of 0-23
                     p.grad = None#.zero_()
 
             # take an optimization step
