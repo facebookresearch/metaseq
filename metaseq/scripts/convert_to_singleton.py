@@ -62,13 +62,13 @@ def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"
     HF_TOKENIZER = model_path + "/gpt2-unified.json"
 
     if os.path.exists(HF_TOKENIZER):
-        print(f'Using unified tokenizer file {HF_TOKENIZER}')
+        print(f"Using unified tokenizer file {HF_TOKENIZER}")
         TOKENIZER_ARGS = [
             "--hf-tokenizer",
             HF_TOKENIZER,
         ]
     else:
-        print(f'Using vocab and merges files {BPE_VOCAB} {BPE_MERGES}')
+        print(f"Using vocab and merges files {BPE_VOCAB} {BPE_MERGES}")
         TOKENIZER_ARGS = [
             "--bpe-merges",
             BPE_MERGES,
@@ -81,25 +81,29 @@ def create_generation_config_with_defaults(model_path, ddp_backend="pytorch_ddp"
         ]
 
     # Skeleton out all the annoying command line args we can infer
-    ARGS = [
-        "--model-parallel-size",
-        str(MP),
-        "--distributed-world-size",
-        str(MP),
-        "--ddp-backend",
-        ddp_backend,
-        "--task",
-        "language_modeling",
-    ] + TOKENIZER_ARGS + [
-        "--bpe",
-        "hf_byte_bpe",
-        "--path",
-        model_path + "/reshard.pt",
-        "--checkpoint-shard-count",
-        "1",
-        "--use-sharded-state",
-        model_path,
-    ]
+    ARGS = (
+        [
+            "--model-parallel-size",
+            str(MP),
+            "--distributed-world-size",
+            str(MP),
+            "--ddp-backend",
+            ddp_backend,
+            "--task",
+            "language_modeling",
+        ]
+        + TOKENIZER_ARGS
+        + [
+            "--bpe",
+            "hf_byte_bpe",
+            "--path",
+            model_path + "/reshard.pt",
+            "--checkpoint-shard-count",
+            "1",
+            "--use-sharded-state",
+            model_path,
+        ]
+    )
     print(ARGS)
 
     # build up the config file
