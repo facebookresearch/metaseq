@@ -56,8 +56,7 @@ class ModelParallelMultiheadAttention(nn.Module):
         self,
         embed_dim,
         num_heads,
-        kdim=None,
-        vdim=None,
+        n_kv_heads = 8,
         dropout=0.0,
         bias=True,
         self_attention=False,
@@ -77,9 +76,15 @@ class ModelParallelMultiheadAttention(nn.Module):
                 "\n\nPlease install megatron using the setup instructions!"
             )
         self.embed_dim = embed_dim
-        self.kdim = kdim if kdim is not None else embed_dim
-        self.vdim = vdim if vdim is not None else embed_dim
+        self.kdim = n_kv_heads
+        self.vdim = n_kv_heads
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+
+        # self.n_kv_heads = n_kv_heads
+        # self.n_local_kv_heads = self.n_kv_heads // self.model_parallel_size
+        assert n_kv_heads % self.model_parallel_size == 0
+        assert num_heads % n_kv_heads == 0
+    
         self.model_parallel_size = get_tensor_model_parallel_world_size()
         self.num_heads_partition = num_heads // self.model_parallel_size
         assert (
@@ -94,12 +99,11 @@ class ModelParallelMultiheadAttention(nn.Module):
         self.scaling = self.head_dim**-0.5
         self.self_attention = self_attention
 
-        assert (
-            not self.self_attention or self.qkv_same_dim
-        ), "Self-attention requires query, key and value to be of the same size"
+        # assert (
+        #     not self.self_attention or self.qkv_same_dim
+        # ), "Self-attention requires query, key and value to be of the same size"
 
-        # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
-        self.combine_qkv_proj = True
+        self.combine_qkv_proj = self.qkv_same_dim
         if self.combine_qkv_proj:
 
             def _init_method_weight_cpu(weight):
