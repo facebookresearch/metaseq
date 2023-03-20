@@ -165,38 +165,32 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
-    if (
-        getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
-        or cfg.common.model_parallel_size > 1
-    ):
-        try:
-            from megatron.mpu import (
-                initialize_model_parallel,
-                model_parallel_cuda_manual_seed,
-            )
+    try:
+        from megatron.mpu import (
+            initialize_model_parallel,
+            model_parallel_cuda_manual_seed,
+        )
 
-            # Following initializes memory buffer in Megatron code which uses
-            # buffered memory for tensor parallel GPU comms protocols
-            from megatron.global_vars import (
-                _GLOBAL_MEMORY_BUFFER,
-                _set_global_memory_buffer,
-            )
-        except ImportError:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-        global _USE_MEGATRON
-        _USE_MEGATRON = True
-        initialize_model_parallel(cfg.common.model_parallel_size)
-        if torch.cuda.is_available():
-            dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
-        model_parallel_cuda_manual_seed(cfg.common.seed)
-        # This check should not be usually needed as we call init only once
-        # but seems like tests are calling it multiple times.
-        if _GLOBAL_MEMORY_BUFFER is None:
-            _set_global_memory_buffer()
-        model_part_number = get_model_parallel_rank()
-        cfg.checkpoint.checkpoint_suffix += "-model_part-{0}".format(model_part_number)
+        # Following initializes memory buffer in Megatron code which uses
+        # buffered memory for tensor parallel GPU comms protocols
+        from megatron.global_vars import (
+            _GLOBAL_MEMORY_BUFFER,
+            _set_global_memory_buffer,
+        )
+    except ImportError:
+        raise ImportError("\n\nPlease install megatron using the setup instructions!")
+    global _USE_MEGATRON
+    _USE_MEGATRON = True
+    initialize_model_parallel(cfg.common.model_parallel_size)
+    if torch.cuda.is_available():
+        dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
+    model_parallel_cuda_manual_seed(cfg.common.seed)
+    # This check should not be usually needed as we call init only once
+    # but seems like tests are calling it multiple times.
+    if _GLOBAL_MEMORY_BUFFER is None:
+        _set_global_memory_buffer()
+    model_part_number = get_model_parallel_rank()
+    cfg.checkpoint.checkpoint_suffix += "-model_part-{0}".format(model_part_number)
 
     return cfg.distributed_training.distributed_rank
 
