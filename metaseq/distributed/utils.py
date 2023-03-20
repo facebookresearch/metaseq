@@ -178,9 +178,7 @@ def distributed_init(cfg: MetaseqConfig):
             _set_global_memory_buffer,
         )
     except ImportError:
-        raise ImportError(
-            "\n\nPlease install megatron using the setup instructions!"
-        )
+        raise ImportError("\n\nPlease install megatron using the setup instructions!")
     global _USE_MEGATRON
     _USE_MEGATRON = True
     initialize_model_parallel(cfg.common.model_parallel_size)
