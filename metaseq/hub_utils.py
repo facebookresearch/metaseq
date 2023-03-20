@@ -12,6 +12,7 @@ import time
 from argparse import Namespace
 from typing import List, Optional
 from tokenizers import ByteLevelBPETokenizer
+import copy
 
 import numpy as np
 import torch
