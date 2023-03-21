@@ -37,11 +37,15 @@ metaseq-train --task streaming_language_modeling \
   --criterion cross_entropy \
   --batch-size 8 \
   --save-dir /checkpoints/lm_transformer_pile-00 \
-  --arch transformer_lm --share-decoder-input-output-embed \
+  --arch transformer_lm_gpt2_tiny --share-decoder-input-output-embed \
   --dropout 0.1 \
   --optimizer adam --weight-decay 0.01 --clip-norm 0.0 \
   --lr 0.0005 --lr-scheduler inverse_sqrt --warmup-updates 4000 --warmup-init-lr 1e-07 \
   --tokens-per-sample 1024 --sample-break-mode none --fp16 \
+  --use-sharded-state \
+  --decoder-learned-pos \
+  --log-format json \
+  --log-interval 1 \
   --aim-repo /path/to/log/dir
 ```
 
