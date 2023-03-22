@@ -1216,6 +1216,7 @@ class Trainer(object):
                 return t.half()
             return t
 
+        # TODO[Susan]: sample dict is full of int64 tensors - check this.
         if self.cfg.common.fp16:
             sample = utils.apply_to_sample(lower_precision, sample)
 

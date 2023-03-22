@@ -112,26 +112,36 @@ def main(cfg: DictConfig) -> None:
     # Print args
     logger.info(cfg)
 
-    assert cfg.criterion, "Please specify criterion to train a model"
-
-    # Build task, model and criterion
-    extra = {"use_sharded_state": cfg.distributed_training.use_sharded_state,}
+    # Setup task, e.g., translation, language modeling, etc.
     if cfg.distributed_training.task_ddp_backend == "fully_sharded":
-        # As the task is non-trainable, we witch flags to more optimized ones.
-        memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
-        fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
+        orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # Clobber memory_efficient_fp16 and fp32_reduce_scatter
         cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
         cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
-        with fsdp_enable_wrap(cfg.distributed_training, **extra):
-            # Setup task, e.g., translation, language modeling, etc.
+
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
             task = tasks.setup_task(cfg.task)
-        cfg.distributed_training.memory_efficient_fp16 = memory_efficient_fp16
-        cfg.distributed_training.fp32_reduce_scatter = fp32_reduce_scatter
+
+        # Reset memory_efficient_fp16 and fp32_reduce_scatter values.
+        cfg.distributed_training.memory_efficient_fp16 = orig_memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = orig_fp32_reduce_scatter
     else:
         task = tasks.setup_task(cfg.task)
 
+    # Build model and criterion
+    assert cfg.criterion, "Please specify criterion to train a model"
+
     if cfg.distributed_training.ddp_backend == "fully_sharded":
-        with fsdp_enable_wrap(cfg.distributed_training, **extra):
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
             model = fsdp_wrap(
                 task.build_model(cfg.model),
                 process_group=distributed_utils.get_data_parallel_group(),
