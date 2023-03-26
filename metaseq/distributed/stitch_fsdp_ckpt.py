@@ -69,10 +69,10 @@ def consolidate_fsdp_shards(
             expert_dest_paths.append(f"{save_prefix}-rank-{r}.pt")
         else:
             ckpt = load_and_pop_last_optimizer_state(p)
-            if 'ema_fp32_params' in ckpt["extra_state"]:
+            if "ema_fp32_params" in ckpt["extra_state"]:
                 ema_key = "ema_fp32_params"
-            elif 'ema' in ckpt["extra_state"]:
-                ema_key = 'ema'
+            elif "ema" in ckpt["extra_state"]:
+                ema_key = "ema"
             else:
                 ema_key = None
             if is_ema and ema_key is not None:

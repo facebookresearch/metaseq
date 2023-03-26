@@ -328,8 +328,10 @@ def train(
                 len_cache = tuple(dataset.len_cache.data)
                 cache_hash = hash(len_cache)
                 contains_zero = any([x == 0 for x in len_cache])
-                log_seq += [f"len_cache_hash={cache_hash}",
-                            f"len_cache_has_zeros={contains_zero}",]
+                log_seq += [
+                    f"len_cache_hash={cache_hash}",
+                    f"len_cache_has_zeros={contains_zero}",
+                ]
             logger.warning(" ".join(log_seq))
 
         valid_losses, should_stop = validate_and_save(
