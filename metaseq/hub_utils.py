@@ -105,7 +105,7 @@ class GeneratorInterface:
         Decode a list of tokens x to a string
         """
         assert self.bpe is not None
-        return self.bpe.bpe.decode(x)
+        return self.bpe.bpe.decode(x, skip_special_tokens=False)
 
     def load_model(self):
         if self.cfg.common.model_parallel_size == 1:
@@ -206,6 +206,8 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
+        seq_gen_cls=None,
+        extra_gen_cls_kwargs={},
     ):
         """
         Generate from sequences.
@@ -283,10 +285,14 @@ class GeneratorInterface:
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
+
+            gen_kwargs = {"stop": stop, "need_logprobs": need_logprobs}
+            gen_kwargs.update(extra_gen_cls_kwargs)
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
+                seq_gen_cls,
+                extra_gen_cls_kwargs=gen_kwargs,
             )
 
             # okay actually generate
