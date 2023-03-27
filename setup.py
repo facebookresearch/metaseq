@@ -196,7 +196,7 @@ def do_setup(package_data):
                 "albumentations",
                 "dalle_pytorch",
                 "einops",
-                "matplotlib",
+                "matplotlib==3.5.0",
                 "pytorchvideo==0.1.5",
                 "wandb",
                 "webdataset==0.1.103",

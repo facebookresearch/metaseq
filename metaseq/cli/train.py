@@ -315,23 +315,24 @@ def train(
         end_of_epoch = not itr.has_next()
         if end_of_epoch:
             grank = distributed_utils.get_global_rank()
+
+            log_seq = [f"End of Epoch on rank {grank}:"]
+            if hasattr(itr, "sequences_consumed"):
+                log_seq += [f"sequences_consumed={itr.sequences_consumed}"]
+            log_seq += [f"n={itr.n}"]
+
             dataset = epoch_itr.dataset
-            while not hasattr(dataset, "len_cache"):
+            while not hasattr(dataset, "len_cache") and hasattr(dataset, "dataset"):
                 dataset = dataset.dataset
-            len_cache = tuple(dataset.len_cache.data)
-            cache_hash = hash(len_cache)
-            contains_zero = any([x == 0 for x in len_cache])
-            logger.warning(
-                " ".join(
-                    [
-                        f"End of Epoch on rank {grank}:",
-                        f"sequences_consumed={itr.sequences_consumed}",
-                        f"n={itr.n}",
-                        f"len_cache_hash={cache_hash}",
-                        f"len_cache_has_zeros={contains_zero}",
-                    ]
-                )
-            )
+            if hasattr(dataset, "len_cache"):
+                len_cache = tuple(dataset.len_cache.data)
+                cache_hash = hash(len_cache)
+                contains_zero = any([x == 0 for x in len_cache])
+                log_seq += [
+                    f"len_cache_hash={cache_hash}",
+                    f"len_cache_has_zeros={contains_zero}",
+                ]
+            logger.warning(" ".join(log_seq))
 
         valid_losses, should_stop = validate_and_save(
             cfg,
