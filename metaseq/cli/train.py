@@ -263,6 +263,17 @@ def train(
     trainer.begin_epoch(epoch_itr.epoch)
     valid_subsets = cfg.dataset.valid_subset.split(",")
     should_stop = False
+    if cfg.dataset.validate_at_beginning:
+        valid_losses, should_stop = validate_and_save(
+            cfg,
+            trainer,
+            task,
+            epoch_itr,
+            valid_subsets,
+            end_of_epoch=False,
+            was_successful_step=True,
+            force_validate=True,
+        )
     logger.info("Start iterating over samples")
 
     def train(
@@ -385,6 +396,7 @@ def validate_and_save(
     valid_subsets: List[str],
     end_of_epoch: bool,
     was_successful_step: bool,
+    force_validate: bool = False,
 ) -> Tuple[List[Optional[float]], bool]:
     num_updates = trainer.get_num_updates()
     max_update = cfg.optimization.max_update or math.inf
@@ -427,6 +439,7 @@ def validate_and_save(
             and num_updates % cfg.dataset.validate_interval_updates == 0
             and was_successful_step
         )
+        or force_validate
     ) and not cfg.dataset.disable_validation
 
     # Save checkpoint before validating.
