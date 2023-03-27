@@ -213,6 +213,9 @@ class GeneratorInterface:
         alpha_presence_src: float = 0.0,
         alpha_frequency_src: float = 0.0,
         alpha_src_penalty_end_idx: int = -1,
+        # added self-debiasing
+        self_debiasing: bool = False,
+        num_debiasing_prefixes: int = 0,
     ):
         """
         Generate from sequences.
@@ -317,7 +320,14 @@ class GeneratorInterface:
                 "alpha_presence_src": alpha_presence_src,
                 "alpha_frequency_src": alpha_frequency_src,
                 "alpha_src_penalty_end_idx": alpha_src_penalty_end_idx,
+                # added self-debiasing args
+                "self_debiasing": self_debiasing,
+                "num_debiasing_prefixes": num_debiasing_prefixes,
+                "tokenizer": self.bpe.bpe,
             }
+            logger.info(
+                f"Preparing generator with extra_gen_cls_kwargs {extra_gen_cls_kwargs}"
+            )
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
