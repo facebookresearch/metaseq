@@ -290,12 +290,46 @@ class StreamingLanguageModelingTask(LegacyTask):
         return cls(args)
 
     def _tokenize_one_json(self, json):
-        text = json["text"]
-        return torch.LongTensor(
-            # append an end-of-document symbol after each document
-            self.tokenizer.encode(text.rstrip()).ids
+        if "query1" in json:  # when we have two images, such as pix2pix, controlnet
+            line = self._read_img2img(json)
+        elif "retrieved_docs_from_img" in json:
+            line = self._tokenize_ra_json(json)
+        elif "image" in json:  # text-focused, ocr, grounding
+            line = self._read_textimg(json)
+        else:
+            raise ValueError(f"doc not know format")
+        assert line.numel() > 1023
+        return line
+
+    def _read_img2img(self, json):
+        line = torch.LongTensor(
+            [self.eod]
+            + self.tokenizer.encode(json["query1"].rstrip()).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(
+                map_old_image_token_to_new_image_token(json["image1"]).rstrip()
+            ).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(json["query2"].rstrip()).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(
+                map_old_image_token_to_new_image_token(json["image2"]).rstrip()
+            ).ids
             + [self.eod]
         )
+        return line
+
+    def _read_textimg(self, json):
+        line = torch.LongTensor(
+            [self.eod]
+            + self.tokenizer.encode(json["text"].rstrip()).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(
+                map_old_image_token_to_new_image_token(json["image"]).rstrip()
+            ).ids
+            + [self.eod]
+        )
+        return line
 
     def tokenize_single_doc(self, doc, add_eod=False):
         doc = parse_doc(doc)
@@ -352,6 +386,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         """
         Up or down sample corpora with alpha sampling.
         """
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
         dataset_lengths = np.array(
             [len(d) for d in datasets],
             dtype=float,
