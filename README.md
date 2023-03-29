@@ -39,7 +39,7 @@ Follow [setup instructions here](docs/setup.md) to get started.
 * [Chronicles of training OPT-175B](projects/OPT/chronicles/README.md)
 
 ## Support
-If you have any questions, bug reports, or feature requests regarding either the codebase or the models released in the projects section, please don't hesitate to post on our [Github Issues page](https://github.com/facebookresearch/metaseq/issues).
+If you have any questions, bug reports, or feature requests regarding either the codebase or the models released in the projects section, please don't hesitate to post on our [GitHub Issues page](https://github.com/facebookresearch/metaseq/issues).
 
 Please remember to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
