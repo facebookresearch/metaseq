@@ -254,7 +254,12 @@ def subprocess_run_mock(cmd, stdout, stderr, events):
 
 
 def save_checkpoint_mock(
-    self, filename, extra_state, training_finished=False, async_callback_fn=None
+    self,
+    filename,
+    extra_state,
+    training_finished=False,
+    async_callback_fn=None,
+    files_to_symlink_to=None,
 ):
     logger = logging.getLogger("metaseq.trainer")
     """Save all training state in a checkpoint file."""

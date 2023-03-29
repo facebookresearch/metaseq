@@ -539,20 +539,22 @@ def post_checkpoint_callback(
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
             azcopy_log_dir = os.path.dirname(filename)
-            _copy_to_azure(filename, cfg.checkpoint.cloud_upload_path, azcopy_log_dir)
+            final_path = _get_destination_path(
+                filename, cfg.checkpoint.cloud_upload_path
+            )
+            _copy_to_azure(filename, final_path, azcopy_log_dir)
 
             # Delete original checkpoint on local storage
             # TODO make this configurable
             os.remove(filename)
 
             # Azure Blob doesn't support symlinks so make full copies
-            source = _get_destination_path(filename, cfg.checkpoint.cloud_upload_path)
             if files_to_symlink_to:
                 for other_checkpoint in files_to_symlink_to:
                     dest = _get_destination_path(
                         other_checkpoint, cfg.checkpoint.cloud_upload_path
                     )
-                    _copy_to_azure(source, dest, azcopy_log_dir)
+                    _copy_to_azure(final_path, dest, azcopy_log_dir)
 
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
             basename = os.path.basename(filename)
