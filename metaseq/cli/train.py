@@ -19,6 +19,7 @@ import time
 import socket
 import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
+from urllib.parse import urlparse
 import warnings
 
 import numpy as np
@@ -512,8 +513,24 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
+def _get_basename(path):
+    res = urlparse(path)
+    if res.scheme:
+        return os.path.basename(res.path)
+    else:
+        return os.path.basename(path)
+
+
 def _get_destination_path(path, destination):
-    return os.path.join(destination, os.path.basename(path))
+    """Calculates the destination path with handling for remote paths."""
+    basename = _get_basename(path)
+    res = urlparse(destination)
+    if res.scheme:
+        new_path = os.path.join(res.path, basename)
+        res = res._replace(path=new_path)
+        return res.geturl()
+    else:
+        return os.path.join(destination, basename)
 
 
 def post_checkpoint_callback(
@@ -679,7 +696,7 @@ def nfs_evaluation(
 
 def _copy_to_azure(source, destination, log_dir):
     # /dir/checkpoint_last.pt -> /dir/checkpoint_last.pt_azcopy_logs_2000-01-01T00_00_00
-    basename = os.path.basename(destination)
+    basename = _get_basename(destination)
     timestamp = datetime.utcnow().isoformat().replace(":", "_")[:-7]
     azcopy_logs = os.path.join(log_dir, f"{basename}_azcopy_logs_{timestamp}")
     os.environ["AZCOPY_CONCURRENCY_VALUE"] = "10"
