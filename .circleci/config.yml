@@ -6,9 +6,9 @@ version: 2.1
 # -------------------------------------------------------------------------------------
 gpu: &gpu
   environment:
-    CUDA_VERSION: "11.1"
+    CUDA_VERSION: "11.6"
   machine:
-    image: ubuntu-1604-cuda-11.1:202012-01
+    image: nvidia/cuda:11.6.1-base-ubuntu20.04
     resource_class: gpu.nvidia.medium.multi
 
 
@@ -30,7 +30,6 @@ install_dep_common: &install_dep_common
         # Need to install ninja build system
         sudo apt-get update
         sudo apt-get install ninja-build
-
 install_dep_fused_ops: &install_dep_fused_ops
   - run:
       name: Install Megatron/Apex Dependencies
@@ -41,7 +40,7 @@ install_dep_fused_ops: &install_dep_fused_ops
         if ! python -c 'import apex'; then
           git clone https://github.com/NVIDIA/apex
           cd apex
-          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
+          git checkout 265b451de8ba9bfcb67edc7360f3d8772d0a8bea
           pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
           cd ~/
         fi
@@ -52,7 +51,6 @@ install_dep_fused_ops: &install_dep_fused_ops
           pip install -e .
           cd ~/
         fi
-
 # Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
@@ -67,17 +65,14 @@ install_fairscale: &install_fairscale
             pip install .
             cd ~/
         fi
-
 install_dep_pt19: &install_dep_pt19
   - run:
       name: Install Pytorch Dependencies
       command: |
         source activate metaseq
         pip install --upgrade setuptools
-        pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+        pip install torch==1.10.2+cu111 torchvision==0.11.3+cu111 torchaudio==0.10.2+cu111 -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
-
-
 install_pytorch_dep: &install_pytorch_dep
   - parameters:
         version_str:
@@ -91,7 +86,6 @@ install_pytorch_dep: &install_pytorch_dep
         echo "<<parameters.version_str>>"
         pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
-
 install_repo: &install_repo
   - run:
       name: Install Repository
@@ -99,8 +93,6 @@ install_repo: &install_repo
         source activate metaseq
         pip install -e .[dev,few_shot,gpu]
         python setup.py build_ext --inplace
-
-
 check_nvidia_driver: &check_nvidia_driver
   - run:
       name: Check NVIDIA Driver
@@ -108,7 +100,6 @@ check_nvidia_driver: &check_nvidia_driver
       command: |
         pyenv versions
         nvidia-smi
-
 create_conda_env: &create_conda_env
   run:
       name: Install and Create Conda Environment
@@ -126,7 +117,6 @@ create_conda_env: &create_conda_env
         source activate metaseq
         python --version
         pip install --upgrade pip
-
 download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_with_hf_dependencies
   - run:
       name: Download and configure a 125m checkpoint with HF dependencies
@@ -137,7 +127,6 @@ download_and_configure_125m_with_hf_dependencies: &download_and_configure_125m_w
         tar -xvzf ./125m_with_hf_dependencies.tar.gz -C .
         python -m metaseq.scripts.convert_to_singleton ./125m
         python -m transformers.models.opt.convert_opt_original_pytorch_checkpoint_to_pytorch --pytorch_dump_folder_path ./125m/ --hf_config ./125m/config.json --fairseq_path ./125m/restored.pt 
-
 commands:
 
   gpu_pre: &gpu_pre
