@@ -168,6 +168,12 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "For FIM it's unclear whether or not they allow this."
         },
     )
+    cm3_percent_full_document_rotation: float = field(
+        default=0.0,
+        metadata={
+            "help": "What percent of the time to rotate full documents while still abiding by the number of sentinel tokens used."
+        },
+    )
     num_retrieved_doc: int = field(
         default=2, metadata={"help": "number of retrieved documents"}
     )
@@ -597,6 +603,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 drop_last=(split == "train"),
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
+                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation
             )
         else:
             self.datasets[split] = DocumentToSequenceDataset(
