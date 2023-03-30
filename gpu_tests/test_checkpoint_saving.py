@@ -90,7 +90,9 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
                     "96.0",
                 ],
             )
-            self.assertTrue(os.path.basename(worker_cmd["command"][-1]) in expected_file_names)
+            self.assertTrue(
+                os.path.basename(worker_cmd["command"][-1]) in expected_file_names
+            )
             self.assertEqual(
                 worker_cmd["checkpoint_model_dir"], common_checkpoint_model_dir
             )
