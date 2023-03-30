@@ -12,6 +12,7 @@ import multiprocessing
 from functools import partial, partialmethod
 import unittest
 from unittest.mock import patch, Mock, MagicMock
+from urllib.parse import urlparse
 import torch
 from metaseq.dataclass.configs import DistributedTrainingConfig
 from metaseq.launcher.opt_baselines import cli_main as sweep_cli_main
@@ -81,14 +82,16 @@ class TestCheckpointSavingAndUploading(unittest.TestCase):
         self.assertEqual(file_names_saved_azure, expected_file_names)
         for worker_cmd in upload_events:
             self.assertEqual(
-                worker_cmd["command"],
+                worker_cmd["command"][:4],
                 [
                     "azcopy",
                     "copy",
                     "--cap-mbps",
                     "96.0",
-                    "https://myaccount.blob.core.windows.net/test",
                 ],
+            )
+            self.assertTrue(
+                os.path.basename(worker_cmd["command"][-1]) in expected_file_names
             )
             self.assertEqual(
                 worker_cmd["checkpoint_model_dir"], common_checkpoint_model_dir
@@ -235,18 +238,22 @@ def download_checkpoint_mock(blob_url, checkpoint_path, suffix, events):
 
 
 def subprocess_run_mock(cmd, stdout, stderr, events):
-    # replaces subprocess.run azcopy command that uploads to azure
-    _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = cmd[4].split("/")
-    events.append(
-        {
-            "type": "upload",
-            "command": cmd[:4] + cmd[5:],
-            "checkpoint_dir": checkpoint_dir,
-            "checkpoint_model_dir": checkpoint_model_dir,
-            "checkpoint_file": checkpoint_file,
-            "file_saved_locally": os.path.exists(cmd[4]),
-        }
-    )
+    source = cmd[4]
+    dest = cmd[5]
+
+    # Only interested in local -> remote transfers (not asserting remote copies/aliases)
+    if urlparse(source).scheme == "" and urlparse(dest).scheme == "https":
+        _, checkpoint_dir, checkpoint_model_dir, checkpoint_file = source.split("/")
+        events.append(
+            {
+                "type": "upload",
+                "command": cmd[:4] + cmd[5:],
+                "checkpoint_dir": checkpoint_dir,
+                "checkpoint_model_dir": checkpoint_model_dir,
+                "checkpoint_file": checkpoint_file,
+                "file_saved_locally": os.path.exists(source),
+            }
+        )
 
     res = Mock()
     res.returncode = 0
@@ -254,7 +261,12 @@ def subprocess_run_mock(cmd, stdout, stderr, events):
 
 
 def save_checkpoint_mock(
-    self, filename, extra_state, training_finished=False, async_callback_fn=None
+    self,
+    filename,
+    extra_state,
+    training_finished=False,
+    async_callback_fn=None,
+    files_to_symlink_to=None,
 ):
     logger = logging.getLogger("metaseq.trainer")
     """Save all training state in a checkpoint file."""
@@ -278,7 +290,7 @@ def save_checkpoint_mock(
                     logger.info(f"Beginning asynchronous torch.save to {filename}")
                     torch.save(state_dict, filename)
                     if async_callback_fn is not None:
-                        async_callback_fn(filename)
+                        async_callback_fn(filename, files_to_symlink_to)
                     logger.info(f"Asynchronous torch.save to {filename} complete.")
                 except Exception as e:
                     logger.exception(f"Asynchronous save failed: {e}")

@@ -95,6 +95,7 @@ def save_checkpoint(
             extra_state,
             training_finished=training_finished,
             async_callback_fn=async_callback_fn if save_to_NFS else None,
+            files_to_symlink_to=checkpoints[1:] if len(checkpoints) > 1 else None,
         )
 
         write_timer.stop()
@@ -102,6 +103,50 @@ def save_checkpoint(
             f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
+
+        # See if there's any older checkpoints to delete after saving a new one.
+        # Only deletes if keep_last_updates > 0 or keep_last_epochs > 0 (default -1 for both).
+        delete_old_checkpoint_files(cfg, end_of_epoch, suffix)
+
+
+def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffix: str):
+    if not end_of_epoch and cfg.keep_last_updates > 0:
+        # remove old checkpoints; checkpoints are sorted in descending order
+        checkpoints = checkpoint_paths(
+            cfg.save_dir, pattern=r"checkpoint_\d+_(\d+){}\.pt".format(suffix)
+        )
+        for old_chk in checkpoints[cfg.keep_last_updates :]:
+            if os.path.lexists(old_chk):
+                os.remove(old_chk)
+
+    if cfg.keep_last_epochs > 0:
+        # remove old epoch checkpoints; checkpoints are sorted in descending order
+        checkpoints = checkpoint_paths(
+            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
+        )
+        for old_chk in checkpoints[cfg.keep_last_epochs :]:
+            if os.path.lexists(old_chk):
+                os.remove(old_chk)
+
+
+# Reference:
+# https://github.com/facebookresearch/fairseq/blob/0338cdc3094ca7d29ff4d36d64791f7b4e4b5e6e/fairseq/checkpoint_utils.py#L538
+def checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
+    """Retrieves all checkpoints found in `path` directory.
+    Checkpoints are identified by matching filename to the specified pattern. If
+    the pattern contains groups, the result will be sorted by the first group in
+    descending order.
+    """
+    pt_regexp = re.compile(pattern)
+    files = os.listdir(path)
+
+    entries = []
+    for i, f in enumerate(files):
+        m = pt_regexp.fullmatch(f)
+        if m is not None:
+            idx = float(m.group(1)) if len(m.groups()) > 0 else i
+            entries.append((idx, m.group(0)))
+    return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):

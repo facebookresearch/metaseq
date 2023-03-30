@@ -421,7 +421,12 @@ class Trainer(object):
         return state_dicts
 
     def save_checkpoint(
-        self, filename, extra_state, training_finished=False, async_callback_fn=None
+        self,
+        filename,
+        extra_state,
+        training_finished=False,
+        async_callback_fn=None,
+        files_to_symlink_to=None,
     ):
         """Save all training state in a checkpoint file."""
 
@@ -445,7 +450,7 @@ class Trainer(object):
                 def perform_save():
                     try:
                         logger.info(f"Beginning asynchronous torch.save to {filename}")
-                        async_callback_fn(filename)
+                        async_callback_fn(filename, files_to_symlink_to)
                         logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")

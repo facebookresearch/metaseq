@@ -8,6 +8,7 @@ Train a new model on one or across multiple GPUs.
 """
 
 import argparse
+from datetime import datetime
 import functools
 import logging
 import math
@@ -18,6 +19,7 @@ import time
 import socket
 import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
+from urllib.parse import urlparse
 import warnings
 
 import numpy as np
@@ -512,37 +514,51 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
+def _get_basename(path):
+    res = urlparse(path)
+    if res.scheme:
+        return os.path.basename(res.path)
+    else:
+        return os.path.basename(path)
+
+
+def _get_destination_path(path, destination):
+    """Calculates the destination path with handling for remote paths."""
+    basename = _get_basename(path)
+    res = urlparse(destination)
+    if res.scheme:
+        new_path = os.path.join(res.path, basename)
+        res = res._replace(path=new_path)
+        return res.geturl()
+    else:
+        return os.path.join(destination, basename)
+
+
+def post_checkpoint_callback(
+    cfg, num_updates, training_finished, filename, files_to_symlink_to
+):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
-            azcopy_logs = filename + "_azcopy_logs"
-            os.environ["AZCOPY_CONCURRENCY_VALUE"] = "10"
-            os.environ["AZCOPY_LOG_LOCATION"] = azcopy_logs
-            os.makedirs(azcopy_logs, exist_ok=True)
-            logger.info(
-                f"preparing to azcopy {filename} to {cfg.checkpoint.cloud_upload_path}; logs in {azcopy_logs}"
+            azcopy_log_dir = os.path.dirname(filename)
+            final_path = _get_destination_path(
+                filename, cfg.checkpoint.cloud_upload_path
             )
-            cmd = [
-                "azcopy",  # TODO(susanz): require azcopy to be installed.
-                "copy",
-                "--cap-mbps",
-                "96.0",
-                filename,
-                cfg.checkpoint.cloud_upload_path,
-            ]
-            res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if res.returncode != 0:
-                print("Error: {}, azcopy failed".format(res.returncode))
-                print("Azcopy stdout = {}".format(res.stdout))
-                sys.exit(1)
+            _copy_to_azure(filename, final_path, azcopy_log_dir)
+
             # Delete original checkpoint on local storage
             # TODO make this configurable
-            logger.info(
-                f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
-            )
             os.remove(filename)
+
+            # Azure Blob doesn't support symlinks so make full copies
+            if files_to_symlink_to:
+                for other_checkpoint in files_to_symlink_to:
+                    dest = _get_destination_path(
+                        other_checkpoint, cfg.checkpoint.cloud_upload_path
+                    )
+                    _copy_to_azure(final_path, dest, azcopy_log_dir)
+
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            path, basename = os.path.split(filename)
+            basename = os.path.basename(filename)
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
             temporary_checkpoint_file = f"_{checkpoint_file}"
@@ -566,6 +582,9 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
             )
 
             logger.info(f"Renaming {temporary_checkpoint_file} -> {checkpoint_file}")
+            final_path = os.path.join(
+                destination_checkpoints_dir, checkpoint_dir, checkpoint_file
+            )
             # atomic rename _checkpointfile -> checkpointfile
             # this way we know that if present the checkpoint file is complete
             os.rename(
@@ -574,11 +593,19 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
                     checkpoint_dir,
                     temporary_checkpoint_file,
                 ),
-                os.path.join(
-                    destination_checkpoints_dir, checkpoint_dir, checkpoint_file
-                ),
+                final_path,
             )
             os.remove(filename)
+
+            if files_to_symlink_to:
+                dest_dir = os.path.dirname(final_path)
+                for other_checkpoint in files_to_symlink_to:
+                    dest = _get_destination_path(other_checkpoint, dest_dir)
+                    if PathManager.islink(dest):
+                        PathManager.rm(dest)
+                    assert PathManager.symlink(
+                        final_path, dest
+                    ), f"Failed to symlink {final_path} to {dest}"
 
             # Start running evals on uploaded checkpoint
             nfs_evaluation(
@@ -593,13 +620,18 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
             try:
                 # PathManager only supports writing to S3, but this function call
                 # can be replaced with other APIs for copying checkpoints.
-                PathManager.copy_from_local(
-                    filename,
-                    os.path.join(
-                        cfg.checkpoint.cloud_upload_path, os.path.basename(filename)
-                    ),
-                    overwrite=True,
+                final_path = _get_destination_path(
+                    filename, cfg.checkpoint.cloud_upload_path
                 )
+                PathManager.copy_from_local(filename, final_path, overwrite=True)
+
+                # Some non-native PathHandlers don't support symlinks so default to full copies
+                if files_to_symlink_to:
+                    for other_checkpoint in files_to_symlink_to:
+                        dest = _get_destination_path(
+                            other_checkpoint, cfg.checkpoint.cloud_upload_path
+                        )
+                        PathManager.copy(final_path, dest, overwrite=True)
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
 
@@ -663,6 +695,31 @@ def nfs_evaluation(
                 "checkpoint parts were copied to NFS within waiting time"
             )
         )
+
+
+def _copy_to_azure(source, destination, log_dir):
+    # /dir/checkpoint_last.pt -> /dir/checkpoint_last.pt_azcopy_logs_2000-01-01T00_00_00
+    basename = _get_basename(destination)
+    timestamp = datetime.utcnow().isoformat().replace(":", "_")[:-7]
+    azcopy_logs = os.path.join(log_dir, f"{basename}_azcopy_logs_{timestamp}")
+    os.environ["AZCOPY_CONCURRENCY_VALUE"] = "10"
+    os.environ["AZCOPY_LOG_LOCATION"] = azcopy_logs
+    os.makedirs(azcopy_logs, exist_ok=True)
+    logger.info(f"preparing to azcopy {source} to {destination}; logs in {azcopy_logs}")
+    cmd = [
+        "azcopy",  # TODO(susanz): require azcopy to be installed.
+        "copy",
+        "--cap-mbps",
+        "96.0",
+        source,
+        destination,
+    ]
+    res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode != 0:
+        print("Error: {}, azcopy failed".format(res.returncode))
+        print("Azcopy stdout = {}".format(res.stdout))
+        sys.exit(1)
+    logger.info(f"Successfully copied {source} to {destination}")
 
 
 def _run_azcopy(cmd, stdout, stderr):
