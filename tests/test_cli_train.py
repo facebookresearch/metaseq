@@ -40,10 +40,7 @@ class TestPostCheckpointCallback(unittest.TestCase):
         )
 
     def test_nfs_copy(self):
-        with (
-            tempfile.TemporaryDirectory() as local_dir,
-            tempfile.TemporaryDirectory() as nfs_dir,
-        ):
+        with tempfile.TemporaryDirectory() as local_dir, tempfile.TemporaryDirectory() as nfs_dir:
             checkpoint_path = os.path.join(
                 local_dir, "checkpoint_100-model_part-0-shard0.pt"
             )
