@@ -558,7 +558,9 @@ class SequenceGenerator(nn.Module):
             gpu_time_seconds = start.elapsed_time(end)
             gpu_peak_mem_bytes = torch.cuda.memory_stats()["allocated_bytes.all.peak"]
             gen_tokens = tokens[:, start_step:]
-            output_tokens = (gen_tokens.ne(self.eos) & gen_tokens.ne(self.pad)).long().sum().item()
+            output_tokens = (
+                (gen_tokens.ne(self.eos) & gen_tokens.ne(self.pad)).long().sum().item()
+            )
             retval["metrics"] = {
                 "gpu_time_seconds": gpu_time_seconds,
                 "gpu_peak_mem_bytes": gpu_peak_mem_bytes,

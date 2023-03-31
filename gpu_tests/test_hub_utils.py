@@ -42,7 +42,9 @@ def generate_using_generator_interface(cfg: MetaseqConfig, **kwargs):
     return generated_text
 
 
-def generate_using_generator_interface_and_collect_metrics(cfg: MetaseqConfig, **kwargs):
+def generate_using_generator_interface_and_collect_metrics(
+    cfg: MetaseqConfig, **kwargs
+):
     generator = GeneratorInterface(cfg)
     models = generator.load_model()  # noqa: F841
 

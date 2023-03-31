@@ -1,6 +1,6 @@
 metrics:
   gpu_peak_mem_bytes: 792964608
-  gpu_time_seconds: 1.4725439548492432
+  gpu_time_seconds: 0.2959040105342865
   input_tokens: 15
   output_tokens: 0
 text: The man turned on the faucet so the toilet filled with water.
