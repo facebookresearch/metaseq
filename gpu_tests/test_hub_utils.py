@@ -121,9 +121,16 @@ def test_generator_interface_with_metrics(data_regression, num_regression):
                 np.nan if elem is None else elem
                 for elem in generated_beam["token_scores"]
             ]
-        )
+        ),
     }
     generated_beam.pop("token_scores")
+
+    # Just check presence of noisy / env-sensitive metrics
+    assert "metrics" in generated_beam
+    assert "gpu_peak_mem_bytes" in generated_beam["metrics"]
+    assert "gpu_time_seconds" in generated_beam["metrics"]
+    generated_beam["metrics"].pop("gpu_peak_mem_bytes")
+    generated_beam["metrics"].pop("gpu_time_seconds")
 
     num_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
     data_regression.check(generated_beam)
