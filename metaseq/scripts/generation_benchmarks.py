@@ -143,7 +143,6 @@ def load_mp_model_and_run_eval(cfg: MetaseqConfig, **kwargs):
 
 
 def generation_statistics(model_path):
-
     cfg = create_generation_config_with_defaults(model_path)
     thread_times = dist_utils.call_main(
         cfg,

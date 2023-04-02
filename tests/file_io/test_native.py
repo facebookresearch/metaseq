@@ -17,7 +17,6 @@ from typing import Optional
 
 
 class TestNativeIO(unittest.TestCase):
-
     _tmpdir: Optional[str] = None
     _filename: Optional[str] = None
     _tmpfile: Optional[str] = None

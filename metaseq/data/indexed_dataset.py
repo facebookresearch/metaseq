@@ -19,7 +19,6 @@ from . import BaseDataset
 def best_fitting_int_dtype(
     max_int_to_represent,
 ) -> Union[np.uint16, np.uint32, np.int64]:
-
     if max_int_to_represent is None:
         return np.uint32  # Safe guess
     elif max_int_to_represent < 65500:

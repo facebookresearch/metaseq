@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class StatefulContainer(object):
-
     _state: Dict[str, Any] = dict()
     _factories: Dict[str, Callable[[], Any]] = dict()
 

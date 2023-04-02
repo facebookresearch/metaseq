@@ -49,7 +49,6 @@ class TokenBlockDataset(BaseDataset):
         split_path=None,
         plasma_path=None,
     ):
-
         super().__init__()
         self.dataset = dataset
         self.pad = pad

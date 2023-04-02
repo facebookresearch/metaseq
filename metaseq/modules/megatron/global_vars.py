@@ -19,15 +19,15 @@ _GLOBAL_MEMORY_BUFFER = None
 
 def get_args():
     """Return arguments."""
-    _ensure_var_is_initialized(_GLOBAL_ARGS, 'args')
+    _ensure_var_is_initialized(_GLOBAL_ARGS, "args")
     return _GLOBAL_ARGS
 
 
 def get_global_memory_buffer():
-    _ensure_var_is_initialized(_GLOBAL_MEMORY_BUFFER, 'global memory buffer')
+    _ensure_var_is_initialized(_GLOBAL_MEMORY_BUFFER, "global memory buffer")
     return _GLOBAL_MEMORY_BUFFER
 
 
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
-    assert var is not None, '{} is not initialized.'.format(name)
+    assert var is not None, "{} is not initialized.".format(name)

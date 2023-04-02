@@ -38,7 +38,7 @@ jobs:
     - name: Lint with black
       run: |
         pip install black
-        black --check --diff .
+        python -m black --check --diff .
 
     - name: Type Checking with MyPy
       run:  |

@@ -177,7 +177,7 @@ def _checkpointed_forward(
     offload_to_cpu: bool,
     distribute_checkpointed_activations: bool,
     *args: Any,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Any:
     module = weak_self()
 
@@ -209,7 +209,7 @@ def _checkpointed_forward(
         original_forward,
         parent_ctx_dict,
         kwarg_keys,
-        *flat_args
+        *flat_args,
     )
     output_requires_grad = parent_ctx_dict["output_requires_grad"]
     if not isinstance(output, torch.Tensor):
@@ -278,7 +278,7 @@ class CheckpointFunction(torch.autograd.Function):
         parent_ctx_dict: Dict[str, Any],
         kwarg_keys: Tuple[str, ...],
         *args: Any,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Any:
         torch_checkpoint.check_backward_validity(args)
 

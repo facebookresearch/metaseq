@@ -42,7 +42,6 @@ def tombstones_procedure(
     period_before_tombstone_detected=datetime.timedelta(seconds=60),
     period_after_tombstone_detected=datetime.timedelta(seconds=3),
 ):
-
     tombstone_detected = False
     period = period_before_tombstone_detected
 
