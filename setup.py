@@ -9,7 +9,6 @@ import sys
 
 from setuptools import Extension, find_packages, setup
 
-
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
 
@@ -37,10 +36,8 @@ def write_version_py():
 
 version = write_version_py()
 
-
 with open("README.md") as f:
     readme = f.read()
-
 
 if sys.platform == "darwin":
     extra_compile_args = ["-stdlib=libc++", "-O3"]
@@ -68,10 +65,15 @@ class NumpyExtension(Extension):
 
 def _fused_extension(name, sources, extra_cuda_flags):
     from torch.utils.cpp_extension import CppExtension
-    return CppExtension(name,
-                        sources=[str(source) for source in sources],
-                        extra_cflags=['-O3', ],
-                        extra_cuda_cflags=['-O3', '--use_fast_math'] + extra_cuda_flags)
+
+    return CppExtension(
+        name,
+        sources=[str(source) for source in sources],
+        extra_cflags=[
+            "-O3",
+        ],
+        extra_cuda_cflags=["-O3", "--use_fast_math"] + extra_cuda_flags,
+    )
 
 
 extensions = [
@@ -87,35 +89,35 @@ extensions = [
         language="c++",
         extra_compile_args=extra_compile_args,
     ),
-    _fused_extension('metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda',
-                     sources=[
-                         "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
-                         "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
-                     ],
-                     extra_cuda_flags=[
-                         '-U__CUDA_NO_HALF_OPERATORS__',
-                         '-U__CUDA_NO_HALF_CONVERSIONS__',
-                         '--expt-relaxed-constexpr',
-                         '--expt-extended-lambda'
-                     ]
+    _fused_extension(
+        "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
+        sources=[
+            "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
+            "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
+        ],
+        extra_cuda_flags=[
+            "-U__CUDA_NO_HALF_OPERATORS__",
+            "-U__CUDA_NO_HALF_CONVERSIONS__",
+            "--expt-relaxed-constexpr",
+            "--expt-extended-lambda",
+        ],
     ),
-    _fused_extension('metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda',
-                     sources=[
-                         "metaseq/modules/fused_kernels/scaled_masked_softmax.cpp",
-                         "metaseq/modules/fused_kernels/scaled_masked_softmax_cuda.cu",
-                     ],
-                     extra_cuda_flags=[
-                         '-U__CUDA_NO_HALF_OPERATORS__',
-                         '-U__CUDA_NO_HALF_CONVERSIONS__',
-                         '--expt-relaxed-constexpr',
-                         '--expt-extended-lambda'
-                     ]
+    _fused_extension(
+        "metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda",
+        sources=[
+            "metaseq/modules/fused_kernels/scaled_masked_softmax.cpp",
+            "metaseq/modules/fused_kernels/scaled_masked_softmax_cuda.cu",
+        ],
+        extra_cuda_flags=[
+            "-U__CUDA_NO_HALF_OPERATORS__",
+            "-U__CUDA_NO_HALF_CONVERSIONS__",
+            "--expt-relaxed-constexpr",
+            "--expt-extended-lambda",
+        ],
     ),
 ]
 
-
 cmdclass = {}
-
 
 try:
     # torch is not available when generating docs
@@ -125,7 +127,6 @@ try:
 
 except ImportError:
     pass
-
 
 if "READTHEDOCS" in os.environ:
     # don't build extensions when generating docs
@@ -139,7 +140,6 @@ if "READTHEDOCS" in os.environ:
     ]
 else:
     dependency_links = []
-
 
 if "clean" in sys.argv[1:]:
     # Source: https://bit.ly/2NLVsgE

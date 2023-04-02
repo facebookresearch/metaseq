@@ -21,7 +21,7 @@ from .initialize import get_tensor_model_parallel_rank
 from .initialize import get_tensor_model_parallel_world_size
 
 # Default name for the model parallel rng tracker.
-_MODEL_PARALLEL_RNG_TRACKER_NAME = 'model-parallel-rng'
+_MODEL_PARALLEL_RNG_TRACKER_NAME = "model-parallel-rng"
 
 
 def _set_cuda_rng_state(new_state, device=-1):
@@ -33,19 +33,20 @@ def _set_cuda_rng_state(new_state, device=-1):
     with a single change: the input state is not cloned. Cloning caused
     major performance issues for +4 GPU cases.
     """
-    if hasattr(_C, '_cuda_setRNGState') and callable(_C._cuda_setRNGState):
+    if hasattr(_C, "_cuda_setRNGState") and callable(_C._cuda_setRNGState):
         # older PyTorch
         def cb():
             with device_ctx_manager(device):
                 _C._cuda_setRNGState(new_state)
+
     else:
         # newer PyTorch
         if device == -1:
-            device = torch.device('cuda')
+            device = torch.device("cuda")
         elif isinstance(device, str):
             device = torch.device(device)
         elif isinstance(device, int):
-            device = torch.device('cuda', device)
+            device = torch.device("cuda", device)
 
         def cb():
             idx = device.index
@@ -59,14 +60,16 @@ def _set_cuda_rng_state(new_state, device=-1):
 
 def split_tensor_into_1d_equal_chunks(tensor, new_buffer=False):
     """Break a tensor into equal 1D chunks."""
-    partition_size = torch.numel(tensor) // \
-                     get_tensor_model_parallel_world_size()
+    partition_size = torch.numel(tensor) // get_tensor_model_parallel_world_size()
     start_index = partition_size * get_tensor_model_parallel_rank()
     end_index = start_index + partition_size
     if new_buffer:
-        data = torch.empty(partition_size, dtype=tensor.dtype,
-                           device=torch.cuda.current_device(),
-                           requires_grad=False)
+        data = torch.empty(
+            partition_size,
+            dtype=tensor.dtype,
+            device=torch.cuda.current_device(),
+            requires_grad=False,
+        )
         data.copy_(tensor.view(-1)[start_index:end_index])
     else:
         data = tensor.view(-1)[start_index:end_index]
@@ -75,18 +78,21 @@ def split_tensor_into_1d_equal_chunks(tensor, new_buffer=False):
 
 def gather_split_1d_tensor(tensor):
     """Opposite of above function, gather values from model parallel ranks."""
-    numel_gathered = torch.numel(tensor) * \
-                     get_tensor_model_parallel_world_size()
-    gathered = torch.empty(numel_gathered, dtype=tensor.dtype,
-                           device=torch.cuda.current_device(),
-                           requires_grad=False)
+    numel_gathered = torch.numel(tensor) * get_tensor_model_parallel_world_size()
+    gathered = torch.empty(
+        numel_gathered,
+        dtype=tensor.dtype,
+        device=torch.cuda.current_device(),
+        requires_grad=False,
+    )
     # TODO: This API is experimental in pytorch (as of Feb 2022) and
     # this might break in future pytorch releases. We chose this API
     # as opposed to torch.distributed.all_gather for efficiency reasons.
     # This API calls directly NCCL all-gather versus the former does
     # internal copies and can potentially cause slow down.
-    torch.distributed._all_gather_base(gathered, tensor,
-                                       group=get_tensor_model_parallel_group())
+    torch.distributed._all_gather_base(
+        gathered, tensor, group=get_tensor_model_parallel_group()
+    )
     return gathered
 
 
@@ -127,11 +133,11 @@ class CudaRNGStatesTracker:
         """Track the rng state."""
         # Check seed is not already used.
         if seed in self.seeds_:
-            raise Exception('seed {} already exists'.format(seed))
+            raise Exception("seed {} already exists".format(seed))
         self.seeds_.add(seed)
         # Check that state is not already defined.
         if name in self.states_:
-            raise Exception('cuda rng state {} already exists'.format(name))
+            raise Exception("cuda rng state {} already exists".format(name))
         # Get the current rng state.
         orig_rng_state = torch.cuda.get_rng_state()
         # Set the new state and store it.
@@ -146,7 +152,7 @@ class CudaRNGStatesTracker:
         the original state."""
         # Check if we have added the state
         if name not in self.states_:
-            raise Exception('cuda rng state {} is not added'.format(name))
+            raise Exception("cuda rng state {} is not added".format(name))
         # Store current rng state.
         orig_cuda_rng_state = torch.cuda.get_rng_state()
         # Set rng state to the desired one
@@ -194,15 +200,22 @@ def model_parallel_cuda_manual_seed(seed):
     data_parallel_seed = seed
 
     if torch.distributed.get_rank() == 0:
-        print('> initializing model parallel cuda seeds on global rank {}, '
-              'model parallel rank {}, and data parallel rank {} with '
-              'model parallel seed: {} and data parallel seed: {}'.format(
-            torch.distributed.get_rank(), get_tensor_model_parallel_rank(),
-            get_data_parallel_rank(), tensor_model_parallel_seed,
-            data_parallel_seed), flush=True)
+        print(
+            "> initializing model parallel cuda seeds on global rank {}, "
+            "model parallel rank {}, and data parallel rank {} with "
+            "model parallel seed: {} and data parallel seed: {}".format(
+                torch.distributed.get_rank(),
+                get_tensor_model_parallel_rank(),
+                get_data_parallel_rank(),
+                tensor_model_parallel_seed,
+                data_parallel_seed,
+            ),
+            flush=True,
+        )
     _CUDA_RNG_STATE_TRACKER.reset()
     # Set the default state.
     torch.cuda.manual_seed(data_parallel_seed)
     # and model parallel state.
-    _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME,
-                                tensor_model_parallel_seed)
+    _CUDA_RNG_STATE_TRACKER.add(
+        _MODEL_PARALLEL_RNG_TRACKER_NAME, tensor_model_parallel_seed
+    )

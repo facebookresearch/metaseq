@@ -25,7 +25,7 @@ from metaseq.modules.megatron import (
     LinearWithGradAccumulationAndAsyncCommunication,
     gather_from_tensor_model_parallel_region,
     scatter_to_sequence_parallel_region,
-    copy_to_tensor_model_parallel_region
+    copy_to_tensor_model_parallel_region,
 )
 from torch import Tensor
 

@@ -13,7 +13,9 @@ from metaseq.modules.megatron import (
     _reduce_scatter_along_first_dim,
     _gather_along_first_dim,
 )
-from metaseq.modules.megatron.fused_kernels import scaled_upper_triang_masked_softmax_cuda
+from metaseq.modules.megatron.fused_kernels import (
+    scaled_upper_triang_masked_softmax_cuda,
+)
 
 # Not importing here cause cpu tests don't like it
 # imported from apex

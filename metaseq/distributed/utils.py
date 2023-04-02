@@ -168,6 +168,7 @@ def distributed_init(cfg: MetaseqConfig):
         initialize_model_parallel,
         model_parallel_cuda_manual_seed,
     )
+
     try:
         # Following initializes memory buffer in Megatron code which uses
         # buffered memory for tensor parallel GPU comms protocols
@@ -346,6 +347,7 @@ def get_data_parallel_group():
     global _USE_MEGATRON
     if _USE_MEGATRON:
         from metaseq.modules import megatron
+
         return megatron.get_data_parallel_group()
     else:
         return get_global_group()
@@ -373,6 +375,7 @@ def get_model_parallel_group():
     global _USE_MEGATRON
     if _USE_MEGATRON:
         from metaseq.modules import megatron
+
         return megatron.get_tensor_model_parallel_group()
     else:
         return None
