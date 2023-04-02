@@ -8,8 +8,11 @@
 
 
 import torch
-import torch.nn as nn
-from megatron.fused_kernels import scaled_masked_softmax_cuda, scaled_upper_triang_masked_softmax_cuda
+
+from metaseq.modules.megatron.fused_kernels import (
+    scaled_masked_softmax_cuda,
+    scaled_upper_triang_masked_softmax_cuda,
+)
 
 
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):

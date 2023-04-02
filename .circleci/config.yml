@@ -33,7 +33,7 @@ install_dep_common: &install_dep_common
 
 install_dep_fused_ops: &install_dep_fused_ops
   - run:
-      name: Install Megatron/Apex Dependencies
+      name: Install Apex Dependencies
       working_directory: ~/
       # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
       command: |
@@ -43,13 +43,6 @@ install_dep_fused_ops: &install_dep_fused_ops
           cd apex
           git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
           pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
-          cd ~/
-        fi
-        if ! python -c 'import megatron_lm'; then
-          git clone --depth=1 --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
-          cd Megatron-LM
-          pip install -r requirements.txt
-          pip install -e .
           cd ~/
         fi
 

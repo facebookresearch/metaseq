@@ -17,6 +17,8 @@ from .mpu.layers import RowParallelLinear
 from .mpu.layers import VocabParallelEmbedding
 
 from .mpu.mappings import gather_from_tensor_model_parallel_region
+from .mpu.mappings import scatter_to_sequence_parallel_region
+from .mpu.mappings import copy_to_tensor_model_parallel_region
 from .mpu.mappings import _reduce_scatter_along_first_dim
 from .mpu.mappings import _gather_along_first_dim
 

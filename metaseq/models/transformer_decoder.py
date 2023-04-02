@@ -23,7 +23,9 @@ from metaseq.modules import (
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
 from metaseq.modules.megatron import (
     LinearWithGradAccumulationAndAsyncCommunication,
-    gather_from_tensor_model_parallel_region
+    gather_from_tensor_model_parallel_region,
+    scatter_to_sequence_parallel_region,
+    copy_to_tensor_model_parallel_region
 )
 from torch import Tensor
 
@@ -339,7 +341,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
 
         is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
         if is_sequence_parallel:
-            x = mpu.scatter_to_sequence_parallel_region(x)
+            x = scatter_to_sequence_parallel_region(x)
         return x, embed, positions
 
     def extract_features(
@@ -404,7 +406,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         if is_sequence_parallel:
             input_parallel = features
         else:
-            input_parallel = mpu.copy_to_tensor_model_parallel_region(features)
+            input_parallel = copy_to_tensor_model_parallel_region(features)
 
         # project back to size of vocabulary
         x = LinearWithGradAccumulationAndAsyncCommunication.apply(
