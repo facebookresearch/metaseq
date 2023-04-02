@@ -19,9 +19,8 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import torch
 import torch.distributed as dist
-from omegaconf import open_dict
-
 from metaseq.dataclass.configs import DistributedTrainingConfig, MetaseqConfig
+from omegaconf import open_dict
 
 # Flag to indicate if we're using Megatron
 # NOTE: this is a temporary hack until we move away from Megatron's model parallel init
@@ -165,12 +164,11 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
+    from metaseq.modules.megatron import (
+        initialize_model_parallel,
+        model_parallel_cuda_manual_seed,
+    )
     try:
-        from megatron.mpu import (
-            initialize_model_parallel,
-            model_parallel_cuda_manual_seed,
-        )
-
         # Following initializes memory buffer in Megatron code which uses
         # buffered memory for tensor parallel GPU comms protocols
         from megatron.global_vars import (
@@ -347,9 +345,8 @@ def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     global _USE_MEGATRON
     if _USE_MEGATRON:
-        from megatron import mpu
-
-        return mpu.get_data_parallel_group()
+        from metaseq.modules import megatron
+        return megatron.get_data_parallel_group()
     else:
         return get_global_group()
 
@@ -375,9 +372,8 @@ def get_data_parallel_world_size():
 def get_model_parallel_group():
     global _USE_MEGATRON
     if _USE_MEGATRON:
-        from megatron import mpu
-
-        return mpu.get_tensor_model_parallel_group()
+        from metaseq.modules import megatron
+        return megatron.get_tensor_model_parallel_group()
     else:
         return None
 

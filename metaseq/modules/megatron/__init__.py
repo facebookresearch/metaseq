@@ -6,6 +6,10 @@
 from .mpu.cross_entropy import vocab_parallel_cross_entropy
 
 from .mpu.initialize import get_tensor_model_parallel_world_size
+from .mpu.initialize import initialize_model_parallel
+from .mpu.initialize import get_tensor_model_parallel_group
+from .mpu.initialize import get_data_parallel_group
+from .mpu.initialize import destroy_model_parallel
 
 from .mpu.layers import LinearWithGradAccumulationAndAsyncCommunication
 from .mpu.layers import ColumnParallelLinear
@@ -17,6 +21,7 @@ from .mpu.mappings import _reduce_scatter_along_first_dim
 from .mpu.mappings import _gather_along_first_dim
 
 from .mpu.random import get_cuda_rng_tracker
+from .mpu.random import model_parallel_cuda_manual_seed
 
 from .mpu.utils import split_tensor_along_last_dim
 
