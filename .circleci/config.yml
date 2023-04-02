@@ -71,20 +71,6 @@ install_dep_pt19: &install_dep_pt19
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
 
-install_pytorch_dep: &install_pytorch_dep
-  - parameters:
-        version_str:
-          type: string
-          default: "/dev/non_exist"  # Default to error out
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        echo "<<parameters.version_str>>"
-        pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
-
 install_repo: &install_repo
   - run:
       name: Install Repository
@@ -156,7 +142,13 @@ commands:
             - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
           key: *cache_key
       - run:
-          name: Run Unit Tests
+          name: Run CPU Unit Tests
+          command: |
+            source activate metaseq
+            export TOKENIZERS_PARALLELISM=false
+            python -m pytest --junitxml=test-results/junit.xml cpu_tests
+      - run:
+          name: Run GPU Unit Tests
           command: |
             source activate metaseq
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
