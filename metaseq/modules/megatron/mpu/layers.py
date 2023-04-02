@@ -6,30 +6,23 @@
 # Taken from:
 # https://github.com/ngoyal2707/Megatron-LM/blob/fa6c0860b62e4ed2ac13a513e7d950d72f576a44/megatron/mpu/layers.py
 
-
-import math
-
 import torch
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
+from metaseq.modules.megatron import get_global_memory_buffer
+from .initialize import get_tensor_model_parallel_group
 from .initialize import get_tensor_model_parallel_rank
 from .initialize import get_tensor_model_parallel_world_size
-from .initialize import get_tensor_model_parallel_group
 from .mappings import copy_to_tensor_model_parallel_region
 from .mappings import gather_from_tensor_model_parallel_region
-from .mappings import gather_from_sequence_parallel_region
 from .mappings import reduce_from_tensor_model_parallel_region
-from .mappings import scatter_to_tensor_model_parallel_region
 from .mappings import reduce_scatter_to_sequence_parallel_region
-
+from .mappings import scatter_to_tensor_model_parallel_region
 from .random import get_cuda_rng_tracker
-from .utils import divide
-from .utils import split_tensor_along_last_dim
 from .utils import VocabUtility
-from megatron import get_args, get_global_memory_buffer
-
+from .utils import divide
 
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     "tensor_model_parallel": False,

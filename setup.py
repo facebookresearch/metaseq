@@ -218,7 +218,7 @@ def do_setup():
                 "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
-        cmdclass={'build_ext': BuildExtension},
+        cmdclass={"build_ext": BuildExtension},
     )
 
 
