@@ -65,6 +65,13 @@ class NumpyExtension(Extension):
         self.__include_dirs = dirs
 
 
+def _fused_extension(name, sources, extra_cuda_flags):
+    return CppExtension(name,
+                        sources=[str(source) for source in sources],
+                        extra_cflags=['-O3', ],
+                        extra_cuda_cflags=['-O3', '--use_fast_math'] + extra_cuda_flags)
+
+
 extensions = [
     NumpyExtension(
         "metaseq.data.data_utils_fast",
@@ -77,6 +84,30 @@ extensions = [
         sources=["metaseq/data/token_block_utils_fast.pyx"],
         language="c++",
         extra_compile_args=extra_compile_args,
+    ),
+    _fused_extension('metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda',
+                     sources=[
+                         "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
+                         "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
+                     ],
+                     extra_cuda_flags=[
+                         '-U__CUDA_NO_HALF_OPERATORS__',
+                         '-U__CUDA_NO_HALF_CONVERSIONS__',
+                         '--expt-relaxed-constexpr',
+                         '--expt-extended-lambda'
+                     ]
+    ),
+    _fused_extension('metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda',
+                     sources=[
+                         "metaseq/modules/fused_kernels/scaled_masked_softmax.cpp",
+                         "metaseq/modules/fused_kernels/scaled_masked_softmax_cuda.cu",
+                     ],
+                     extra_cuda_flags=[
+                         '-U__CUDA_NO_HALF_OPERATORS__',
+                         '-U__CUDA_NO_HALF_CONVERSIONS__',
+                         '--expt-relaxed-constexpr',
+                         '--expt-extended-lambda'
+                     ]
     ),
 ]
 

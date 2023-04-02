@@ -3,12 +3,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, Optional
 import math
+from typing import Dict, Optional
+
 import torch
 import torch.nn as nn
-from torch import Tensor
-
 from metaseq import utils
 from metaseq.modules import (
     ActivationFn,
@@ -21,16 +20,11 @@ from metaseq.modules.fused_bias_gelu import (
     has_fused_bias_gelu,
     load_megatron_fused_kernel,
 )
-
-try:
-    from megatron.mpu import (
-        ColumnParallelLinear,
-        RowParallelLinear,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
+from metaseq.modules.megatron import (
+    ColumnParallelLinear,
+    RowParallelLinear,
+)
+from torch import Tensor
 
 
 def _weight_init(weight):
@@ -122,11 +116,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         disable_bias=False,
         truncate_init=False,
     ):
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-
         def _init_method_bias(bias):
             fan_in = input_dim
             bound = 1 / math.sqrt(fan_in)
@@ -167,11 +156,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         disable_bias=False,
         truncate_init=False,
     ):
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-
         skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = utils.scaled_init_method_normal(
@@ -185,11 +169,11 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         fc2 = RowParallelLinear(
             input_dim,
             output_dim,
+            bias=not disable_bias,
             input_is_parallel=True,
             init_method=init_method_weights,
             skip_bias_add=skip_bias_add,
             use_cpu_initialization=not initialize_params_on_gpu,
-            bias=not disable_bias,
             dtype=dtype,
         )
         if not full_megatron_init:
