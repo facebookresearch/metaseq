@@ -19,7 +19,7 @@ from fairscale.utils.containers import (
     unpack_kwargs,
     unpack_non_tensors,
 )
-from megatron import mpu
+from metaseq.modules import megatron
 from torch import Tensor
 
 from metaseq.distributed.utils import get_model_parallel_group
@@ -290,7 +290,7 @@ class CheckpointFunction(torch.autograd.Function):
         # Megatron's dropout random state
         if ctx.is_model_parallel:
             ctx.fwd_cuda_rng_state_tracker = (
-                mpu.random.get_cuda_rng_tracker().get_states()
+                megatron.get_cuda_rng_tracker().get_states()
             )
         ctx.had_autocast_in_fwd = is_autocast_enabled()
 
@@ -316,7 +316,7 @@ class CheckpointFunction(torch.autograd.Function):
             # and not big enough to distribute over.
             ctx.tensor_input_0_shape = tensor_inputs[0].data.shape
             tensor_inputs[0].data = tensor_inputs[0].data.contiguous()
-            tensor_inputs[0].data = mpu.random.split_tensor_into_1d_equal_chunks(
+            tensor_inputs[0].data = megatron.split_tensor_into_1d_equal_chunks(
                 tensor_inputs[0].data, new_buffer=True
             )
         ctx.save_for_backward(*tensor_inputs)
@@ -356,7 +356,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         tensor_inputs: Tuple = ctx.saved_tensors
         if ctx.distribute_checkpointed_activations:
-            tensor_inputs[0].data = mpu.random.gather_split_1d_tensor(
+            tensor_inputs[0].data = megatron.gather_split_1d_tensor(
                 tensor_inputs[0].data
             )
             tensor_inputs[0].data = tensor_inputs[0].data.view(ctx.tensor_input_0_shape)
@@ -374,8 +374,8 @@ class CheckpointFunction(torch.autograd.Function):
         # Store the current states.
         bwd_rng_state = get_rng_state()
         if ctx.is_model_parallel:
-            bwd_cuda_rng_state_tracker = mpu.random.get_cuda_rng_tracker().get_states()
-            mpu.random.get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
+            bwd_cuda_rng_state_tracker = megatron.get_cuda_rng_tracker().get_states()
+            megatron.get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
         # Set the states to what it used to be before the forward pass.
         set_rng_state(ctx.fwd_rng_state)
@@ -390,7 +390,7 @@ class CheckpointFunction(torch.autograd.Function):
         # Set the states back to what it was at the start of this function.
         set_rng_state(bwd_rng_state)
         if ctx.is_model_parallel:
-            mpu.random.get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
+            megatron.get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
 
         # Run backward() with only Tensors that require grad
         outputs_with_grad = []

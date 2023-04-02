@@ -6,14 +6,18 @@
 # Taken from:
 # https://github.com/ngoyal2707/Megatron-LM/blob/fa6c0860b62e4ed2ac13a513e7d950d72f576a44/megatron/mpu/mappings.py
 
+import os
+
 import torch
-
-from .initialize import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size, get_tensor_model_parallel_rank
-from .utils import split_tensor_along_last_dim
-
 from megatron import get_global_memory_buffer
 
-import os
+from .initialize import (
+    get_tensor_model_parallel_group,
+    get_tensor_model_parallel_world_size,
+    get_tensor_model_parallel_rank
+)
+from .utils import split_tensor_along_last_dim
+
 if os.getenv("SET_ALL_REDUCE_DUMMY_VALUE", "0") == "1":
     set_all_reduce_dummy_value = True
 else:

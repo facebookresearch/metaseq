@@ -22,6 +22,8 @@ from .mpu.mappings import _gather_along_first_dim
 
 from .mpu.random import get_cuda_rng_tracker
 from .mpu.random import model_parallel_cuda_manual_seed
+from .mpu.random import split_tensor_into_1d_equal_chunks
+from .mpu.random import gather_split_1d_tensor
 
 from .mpu.utils import split_tensor_along_last_dim
 
