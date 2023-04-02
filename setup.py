@@ -8,6 +8,8 @@ import os
 import sys
 
 from setuptools import Extension, find_packages, setup
+from torch.utils.cpp_extension import CppExtension, BuildExtension
+
 
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
@@ -63,20 +65,7 @@ class NumpyExtension(Extension):
         self.__include_dirs = dirs
 
 
-def _fused_extension(name, sources, extra_cuda_flags):
-    from torch.utils.cpp_extension import CppExtension
-
-    return CppExtension(
-        name,
-        sources=[str(source) for source in sources],
-        extra_cflags=[
-            "-O3",
-        ],
-        extra_cuda_cflags=["-O3", "--use_fast_math"] + extra_cuda_flags,
-    )
-
-
-extensions = [
+extension_modules = [
     NumpyExtension(
         "metaseq.data.data_utils_fast",
         sources=["metaseq/data/data_utils_fast.pyx"],
@@ -89,57 +78,38 @@ extensions = [
         language="c++",
         extra_compile_args=extra_compile_args,
     ),
-    _fused_extension(
+    # Reference:
+    # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
+    CppExtension(
         "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
         sources=[
-            "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
-            "metaseq/modules/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
+            "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
+            "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
         ],
-        extra_cuda_flags=[
-            "-U__CUDA_NO_HALF_OPERATORS__",
-            "-U__CUDA_NO_HALF_CONVERSIONS__",
-            "--expt-relaxed-constexpr",
-            "--expt-extended-lambda",
-        ],
+        # extra_cflags=['-O3',],
+        # extra_cuda_flags=['-O3', '--use_fast_math',
+        #     "-U__CUDA_NO_HALF_OPERATORS__",
+        #     "-U__CUDA_NO_HALF_CONVERSIONS__",
+        #     "--expt-relaxed-constexpr",
+        #     "--expt-extended-lambda",
+        # ],
     ),
-    _fused_extension(
+    CppExtension(
         "metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda",
         sources=[
-            "metaseq/modules/fused_kernels/scaled_masked_softmax.cpp",
-            "metaseq/modules/fused_kernels/scaled_masked_softmax_cuda.cu",
+            "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax.cpp",
+            "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax_cuda.cu",
         ],
-        extra_cuda_flags=[
-            "-U__CUDA_NO_HALF_OPERATORS__",
-            "-U__CUDA_NO_HALF_CONVERSIONS__",
-            "--expt-relaxed-constexpr",
-            "--expt-extended-lambda",
-        ],
+        # extra_cflags=['-O3',],
+        # extra_cuda_flags=['-O3', '--use_fast_math',
+        #     "-U__CUDA_NO_HALF_OPERATORS__",
+        #     "-U__CUDA_NO_HALF_CONVERSIONS__",
+        #     "--expt-relaxed-constexpr",
+        #     "--expt-extended-lambda",
+        # ],
     ),
 ]
 
-cmdclass = {}
-
-try:
-    # torch is not available when generating docs
-    from torch.utils import cpp_extension
-
-    cmdclass["build_ext"] = cpp_extension.BuildExtension
-
-except ImportError:
-    pass
-
-if "READTHEDOCS" in os.environ:
-    # don't build extensions when generating docs
-    extensions = []
-    if "build_ext" in cmdclass:
-        del cmdclass["build_ext"]
-
-    # use CPU build of PyTorch
-    dependency_links = [
-        "https://download.pytorch.org/whl/cpu/torch-1.7.0%2Bcpu-cp36-cp36m-linux_x86_64.whl"
-    ]
-else:
-    dependency_links = []
 
 if "clean" in sys.argv[1:]:
     # Source: https://bit.ly/2NLVsgE
@@ -152,7 +122,7 @@ if "clean" in sys.argv[1:]:
     )
 
 
-def do_setup(package_data):
+def do_setup():
     setup(
         name="metaseq",
         version=version,
@@ -203,7 +173,7 @@ def do_setup(package_data):
             "tqdm",
             "typing_extensions",
         ],
-        dependency_links=dependency_links,
+        # dependency_links=dependency_links,
         packages=find_packages(
             exclude=[
                 "scripts",
@@ -212,6 +182,8 @@ def do_setup(package_data):
                 "tests.*",
             ]
         ),
+        include_package_data=True,
+        zip_safe=False,
         extras_require={
             # install via: pip install -e ".[dev]"
             "dev": [
@@ -235,8 +207,8 @@ def do_setup(package_data):
                 "webdataset==0.1.103",
             ],
         },
-        package_data=package_data,
-        ext_modules=extensions,
+        # package_data=package_data,
+        ext_modules=extension_modules,
         test_suite="tests",
         entry_points={
             "console_scripts": [
@@ -246,22 +218,9 @@ def do_setup(package_data):
                 "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
-        cmdclass=cmdclass,
-        zip_safe=False,
+        cmdclass={'build_ext': BuildExtension},
     )
 
 
-def get_files(path, relative_to="metaseq"):
-    all_files = []
-    for root, _dirs, files in os.walk(path, followlinks=True):
-        root = os.path.relpath(root, relative_to)
-        for file in files:
-            if file.endswith(".pyc"):
-                continue
-            all_files.append(os.path.join(root, file))
-    return all_files
-
-
 if __name__ == "__main__":
-    package_data = {"metaseq": (get_files(os.path.join("metaseq", "config")))}
-    do_setup(package_data)
+    do_setup()
