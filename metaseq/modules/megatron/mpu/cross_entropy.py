@@ -9,11 +9,11 @@
 
 import torch
 
-from metaseq.modules.megatron.mpu import (
+from .initialize import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
-    VocabUtility,
 )
+from .utils import VocabUtility
 
 
 class _VocabParallelCrossEntropy(torch.autograd.Function):

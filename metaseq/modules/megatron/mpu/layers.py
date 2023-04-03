@@ -11,17 +11,21 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
-from metaseq.modules.megatron import get_global_memory_buffer
-from metaseq.modules.megatron.mpu import (
+from metaseq.modules.megatron.global_vars import get_global_memory_buffer
+from .initialize import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
+)
+from .mappings import (
     copy_to_tensor_model_parallel_region,
     gather_from_tensor_model_parallel_region,
     reduce_from_tensor_model_parallel_region,
     reduce_scatter_to_sequence_parallel_region,
     scatter_to_tensor_model_parallel_region,
-    get_cuda_rng_tracker,
+)
+from .random import get_cuda_rng_tracker
+from .utils import (
     VocabUtility,
     divide,
 )

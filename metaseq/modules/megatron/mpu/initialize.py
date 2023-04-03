@@ -10,7 +10,7 @@
 
 import torch
 
-from metaseq.modules.megatron.mpu import ensure_divisibility
+from .utils import ensure_divisibility
 
 
 # Intra-layer model parallel group that the current rank belongs to.

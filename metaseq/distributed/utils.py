@@ -336,9 +336,9 @@ def get_global_world_size():
 
 def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
-    from metaseq.modules import megatron
+    from metaseq.modules.megatron import mpu
 
-    return megatron.get_data_parallel_group()
+    return mpu.get_data_parallel_group()
 
 
 def get_data_parallel_rank():
@@ -360,9 +360,9 @@ def get_data_parallel_world_size():
 
 
 def get_model_parallel_group():
-    from metaseq.modules import megatron
+    from metaseq.modules.megatron import mpu
 
-    return megatron.get_tensor_model_parallel_group()
+    return mpu.get_tensor_model_parallel_group()
 
 
 def get_model_parallel_rank():

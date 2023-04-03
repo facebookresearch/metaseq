@@ -10,13 +10,13 @@ import os
 
 import torch
 
-from metaseq.modules.megatron import get_global_memory_buffer
-from metaseq.modules.megatron.mpu import (
+from metaseq.modules.megatron.global_vars import get_global_memory_buffer
+from .initialize import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size,
     get_tensor_model_parallel_rank,
-    split_tensor_along_last_dim,
 )
+from .utils import split_tensor_along_last_dim
 
 if os.getenv("SET_ALL_REDUCE_DUMMY_VALUE", "0") == "1":
     set_all_reduce_dummy_value = True
