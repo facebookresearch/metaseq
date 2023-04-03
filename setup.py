@@ -7,9 +7,14 @@
 import os
 import sys
 
+import torch
 from setuptools import Extension, find_packages, setup
-from torch.utils.cpp_extension import CppExtension, BuildExtension
-
+from torch.utils.cpp_extension import (
+    CppExtension,
+    CUDAExtension,
+    BuildExtension,
+    CUDA_HOME,
+)
 
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
@@ -81,10 +86,10 @@ extension_modules = [
 ]
 
 # TODO: Figure out how to actually gate this properly and still get CircleCI to work.
+# By default, include megatron kernels unless --global-option="--no_megatron" is passed in to pip install.
 if "--no_megatron" not in sys.argv:
     # Reference:
     # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
-    # TODO[susanz]: Figure out where cflags and cuda_flags should go.
     extension_modules.append(
         CppExtension(
             "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
@@ -92,13 +97,17 @@ if "--no_megatron" not in sys.argv:
                 "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
                 "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
             ],
-            # extra_cflags=['-O3',],
-            # extra_cuda_flags=['-O3', '--use_fast_math',
-            #     "-U__CUDA_NO_HALF_OPERATORS__",
-            #     "-U__CUDA_NO_HALF_CONVERSIONS__",
-            #     "--expt-relaxed-constexpr",
-            #     "--expt-extended-lambda",
-            # ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-O3",
+                    "--use_fast_math",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_HALF_CONVERSIONS__",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                ],
+            },
         )
     )
     extension_modules.append(
@@ -108,18 +117,114 @@ if "--no_megatron" not in sys.argv:
                 "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax.cpp",
                 "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax_cuda.cu",
             ],
-            # extra_cflags=['-O3',],
-            # extra_cuda_flags=['-O3', '--use_fast_math',
-            #     "-U__CUDA_NO_HALF_OPERATORS__",
-            #     "-U__CUDA_NO_HALF_CONVERSIONS__",
-            #     "--expt-relaxed-constexpr",
-            #     "--expt-extended-lambda",
-            # ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-O3",
+                    "--use_fast_math",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_HALF_CONVERSIONS__",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                ],
+            },
         )
     )
 else:
     print("*** Skipping megatron kernel installation... ***")
     sys.argv.remove("--no_megatron")
+
+# By default, include apex kernels unless --global-option="--no_apex" is passed in to pip install.
+if "--no_apex" not in sys.argv:
+    # TODO[susanz]: not including --no-cache-dir anymore?
+    if CUDA_HOME is None:
+        raise RuntimeError(
+            f"Building apex kernels was requested, but nvcc was not found. "
+            "Are you sure your environment has nvcc available?  "
+            "If you're installing within a container from https://hub.docker.com/r/pytorch/pytorch, "
+            "only images whose names contain 'devel' will provide nvcc."
+        )
+
+    print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
+    TORCH_MAJOR = int(torch.__version__.split(".")[0])
+    TORCH_MINOR = int(torch.__version__.split(".")[1])
+    if TORCH_MAJOR == 0:
+        # TODO[susanz]: Gate this to Pytorch 1.6 or later?
+        raise RuntimeError(
+            "Apex kernels requires Pytorch 1.0 or later, "
+            "found torch.__version__ = {}".format(torch.__version__)
+        )
+
+    # --global-option="--cpp_ext"
+    extension_modules.append(CppExtension("apex_C", ["csrc/flatten_unflatten.cpp"]))
+
+    # --global-option="--cuda_ext"
+    extension_modules.append(
+        CUDAExtension(
+            name="amp_C",
+            sources=[
+                "csrc/amp_C_frontend.cpp",
+                "csrc/multi_tensor_sgd_kernel.cu",
+                "csrc/multi_tensor_scale_kernel.cu",
+                "csrc/multi_tensor_axpby_kernel.cu",
+                "csrc/multi_tensor_l2norm_kernel.cu",
+                "csrc/multi_tensor_l2norm_kernel_mp.cu",
+                "csrc/multi_tensor_l2norm_scale_kernel.cu",
+                "csrc/multi_tensor_lamb_stage_1.cu",
+                "csrc/multi_tensor_lamb_stage_2.cu",
+                "csrc/multi_tensor_adam.cu",
+                "csrc/multi_tensor_adagrad.cu",
+                "csrc/multi_tensor_novograd.cu",
+                "csrc/multi_tensor_lamb.cu",
+                "csrc/multi_tensor_lamb_mp.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-lineinfo",
+                    "-O3",
+                    "--use_fast_math",
+                ],
+            },
+        )
+    )
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_layer_norm_cuda",
+            sources=["csrc/layer_norm_cuda.cpp", "csrc/layer_norm_cuda_kernel.cu"],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-maxrregcount=50", "-O3", "--use_fast_math"],
+            },
+        )
+    )
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_dense_cuda",
+            sources=["csrc/fused_dense.cpp", "csrc/fused_dense_cuda.cu"],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-O3"],
+            },
+        )
+    )
+    # --global-option="--deprecated_fused_adam"
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_adam_cuda",
+            sources=[
+                "apex/contrib/csrc/optimizers/fused_adam_cuda.cpp",
+                "apex/contrib/csrc/optimizers/fused_adam_cuda_kernel.cu",
+            ],
+            # include_dirs=[os.path.join(this_dir, "csrc")],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-O3", "--use_fast_math"],
+            },
+        )
+    )
+else:
+    sys.argv.remove("--no_apex")
 
 
 if "clean" in sys.argv[1:]:
