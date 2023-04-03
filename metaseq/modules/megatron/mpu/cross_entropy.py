@@ -12,7 +12,6 @@ import torch
 from metaseq.modules.megatron.mpu import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
-    get_tensor_model_parallel_world_size,
     VocabUtility,
 )
 
@@ -34,7 +33,6 @@ class _VocabParallelCrossEntropy(torch.autograd.Function):
         get_vocab_range = VocabUtility.vocab_range_from_per_partition_vocab_size
         partition_vocab_size = vocab_parallel_logits.size()[-1]
         rank = get_tensor_model_parallel_rank()
-        world_size = get_tensor_model_parallel_world_size()
         vocab_start_index, vocab_end_index = get_vocab_range(partition_vocab_size, rank)
 
         # Create a mask of valid vocab ids (1 means it needs to be masked).
