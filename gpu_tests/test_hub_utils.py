@@ -7,12 +7,13 @@ import os
 
 import numpy as np
 import torch.distributed as dist
+from numpy.random import RandomState
+
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.distributed import utils as distributed_utils
 from metaseq.hub_utils import GeneratorInterface
-from metaseq.modules.megatron import destroy_model_parallel
+from metaseq.modules.megatron.mpu import destroy_model_parallel
 from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from numpy.random import RandomState
 
 PROMPT = [133, 313, 1224, 15, 5, 856, 17527, 594, 98, 5, 11471, 3820, 19, 514, 4]
 

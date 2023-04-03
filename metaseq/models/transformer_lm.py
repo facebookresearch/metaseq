@@ -9,6 +9,8 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+from omegaconf import II
+
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
 from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 from metaseq.models import (
@@ -21,8 +23,7 @@ from metaseq.models.transformer_decoder import (
     ModelParallelTransformerDecoder,
 )
 from metaseq.modules.activation_functions import get_available_activation_fns
-from metaseq.modules.megatron import VocabParallelEmbedding
-from omegaconf import II
+from metaseq.modules.megatron.mpu import VocabParallelEmbedding
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 logger = logging.getLogger(__name__)

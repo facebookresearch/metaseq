@@ -160,7 +160,7 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
-    from metaseq.modules.megatron import (
+    from metaseq.modules.megatron.mpu import (
         initialize_model_parallel,
         model_parallel_cuda_manual_seed,
     )

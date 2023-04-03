@@ -7,14 +7,15 @@ import importlib
 import math
 
 import torch
+
 from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
 from metaseq.modules.megatron import (
+    scaled_upper_triang_masked_softmax_cuda,
+)
+from metaseq.modules.megatron.mpu import (
     split_tensor_along_last_dim,
     _reduce_scatter_along_first_dim,
     _gather_along_first_dim,
-)
-from metaseq.modules.megatron.fused_kernels import (
-    scaled_upper_triang_masked_softmax_cuda,
 )
 
 # Not importing here cause cpu tests don't like it

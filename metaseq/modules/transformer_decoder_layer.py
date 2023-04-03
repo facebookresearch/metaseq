@@ -8,6 +8,8 @@ from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
+from torch import Tensor
+
 from metaseq import utils
 from metaseq.modules import (
     ActivationFn,
@@ -16,11 +18,10 @@ from metaseq.modules import (
     FeedForward,
     LayerNorm,
 )
-from metaseq.modules.megatron import (
+from metaseq.modules.megatron.mpu import (
     ColumnParallelLinear,
     RowParallelLinear,
 )
-from torch import Tensor
 
 
 def _weight_init(weight):

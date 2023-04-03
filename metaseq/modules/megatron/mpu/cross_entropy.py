@@ -9,7 +9,7 @@
 
 import torch
 
-from metaseq.modules.megatron import (
+from metaseq.modules.megatron.mpu import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,

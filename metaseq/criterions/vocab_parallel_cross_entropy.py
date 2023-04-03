@@ -4,11 +4,12 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+
 import torch
 
 from metaseq import metrics, utils
 from metaseq.criterions import BaseCriterion, register_criterion
-from metaseq.modules.megatron import vocab_parallel_cross_entropy
+from metaseq.modules.megatron.mpu import vocab_parallel_cross_entropy
 
 
 @register_criterion("vocab_parallel_cross_entropy")

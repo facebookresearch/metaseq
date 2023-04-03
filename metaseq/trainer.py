@@ -21,16 +21,17 @@ from typing import Any, Dict, List
 
 import torch
 import torch.distributed as dist
+from omegaconf import OmegaConf
+
 from metaseq import checkpoint_utils, models, optim, utils
 from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.models.ema import build_ema
-from metaseq.modules.megatron import get_cuda_rng_tracker
+from metaseq.modules.megatron.mpu import get_cuda_rng_tracker
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 from metaseq.utils import set_rank_seed
-from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
 
