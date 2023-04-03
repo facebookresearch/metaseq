@@ -11,18 +11,20 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
-from metaseq.modules.megatron import get_global_memory_buffer
-from .initialize import get_tensor_model_parallel_group
-from .initialize import get_tensor_model_parallel_rank
-from .initialize import get_tensor_model_parallel_world_size
-from .mappings import copy_to_tensor_model_parallel_region
-from .mappings import gather_from_tensor_model_parallel_region
-from .mappings import reduce_from_tensor_model_parallel_region
-from .mappings import reduce_scatter_to_sequence_parallel_region
-from .mappings import scatter_to_tensor_model_parallel_region
-from .random import get_cuda_rng_tracker
-from .utils import VocabUtility
-from .utils import divide
+from metaseq.modules.megatron import (
+    get_global_memory_buffer,
+    get_tensor_model_parallel_group,
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+    copy_to_tensor_model_parallel_region,
+    gather_from_tensor_model_parallel_region,
+    reduce_from_tensor_model_parallel_region,
+    reduce_scatter_to_sequence_parallel_region,
+    scatter_to_tensor_model_parallel_region,
+    get_cuda_rng_tracker,
+    VocabUtility,
+    divide,
+)
 
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     "tensor_model_parallel": False,

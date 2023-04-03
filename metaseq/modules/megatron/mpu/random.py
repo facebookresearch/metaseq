@@ -12,10 +12,12 @@ import torch
 from torch import _C
 from torch.cuda import _lazy_call, device as device_ctx_manager
 
-from .initialize import get_data_parallel_rank
-from .initialize import get_tensor_model_parallel_group
-from .initialize import get_tensor_model_parallel_rank
-from .initialize import get_tensor_model_parallel_world_size
+from metaseq.modules.megatron import (
+    get_data_parallel_rank,
+    get_tensor_model_parallel_group,
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+)
 
 # Default name for the model parallel rng tracker.
 _MODEL_PARALLEL_RNG_TRACKER_NAME = "model-parallel-rng"
