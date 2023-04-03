@@ -78,38 +78,46 @@ extension_modules = [
         language="c++",
         extra_compile_args=extra_compile_args,
     ),
+]
+
+if "--no_megatron" not in sys.argv:
     # Reference:
     # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
     # TODO[susanz]: Figure out where cflags and cuda_flags should go.
-    CppExtension(
-        "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
-        sources=[
-            "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
-            "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
-        ],
-        # extra_cflags=['-O3',],
-        # extra_cuda_flags=['-O3', '--use_fast_math',
-        #     "-U__CUDA_NO_HALF_OPERATORS__",
-        #     "-U__CUDA_NO_HALF_CONVERSIONS__",
-        #     "--expt-relaxed-constexpr",
-        #     "--expt-extended-lambda",
-        # ],
-    ),
-    CppExtension(
-        "metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda",
-        sources=[
-            "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax.cpp",
-            "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax_cuda.cu",
-        ],
-        # extra_cflags=['-O3',],
-        # extra_cuda_flags=['-O3', '--use_fast_math',
-        #     "-U__CUDA_NO_HALF_OPERATORS__",
-        #     "-U__CUDA_NO_HALF_CONVERSIONS__",
-        #     "--expt-relaxed-constexpr",
-        #     "--expt-extended-lambda",
-        # ],
-    ),
-]
+    extension_modules.append(
+        CppExtension(
+            "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
+            sources=[
+                "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
+                "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
+            ],
+            # extra_cflags=['-O3',],
+            # extra_cuda_flags=['-O3', '--use_fast_math',
+            #     "-U__CUDA_NO_HALF_OPERATORS__",
+            #     "-U__CUDA_NO_HALF_CONVERSIONS__",
+            #     "--expt-relaxed-constexpr",
+            #     "--expt-extended-lambda",
+            # ],
+        )
+    )
+    extension_modules.append(
+        CppExtension(
+            "metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda",
+            sources=[
+                "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax.cpp",
+                "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax_cuda.cu",
+            ],
+            # extra_cflags=['-O3',],
+            # extra_cuda_flags=['-O3', '--use_fast_math',
+            #     "-U__CUDA_NO_HALF_OPERATORS__",
+            #     "-U__CUDA_NO_HALF_CONVERSIONS__",
+            #     "--expt-relaxed-constexpr",
+            #     "--expt-extended-lambda",
+            # ],
+        )
+    )
+else:
+    sys.argv.remove("--no_megatron")
 
 
 if "clean" in sys.argv[1:]:
@@ -140,14 +148,10 @@ def do_setup():
             # protobuf version pinned due to tensorboard not pinning a version.
             #  https://github.com/protocolbuffers/protobuf/issues/10076
             "protobuf==3.20.2",
-            "aim>=3.9.4",
-            "azure-storage-blob",
-            "boto3",
-            "black==22.3.0",
-            "click==8.0.4",
+            # "click==8.0.4",
             "cython",
             'dataclasses; python_version<"3.7"',
-            "editdistance",
+            # "editdistance",
             "fire",
             "flask==2.1.1",  # for api
             "hydra-core>=1.1.0,<1.2",
@@ -156,7 +160,6 @@ def do_setup():
             "Jinja2==3.1.1",  # for evals
             "markupsafe",  # for evals
             "more_itertools",
-            "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf<=2.1.1",
@@ -189,7 +192,12 @@ def do_setup():
             "dev": [
                 "flake8",
                 "black==22.3.0",
-                # test deps
+                "aim>=3.9.4",
+                "azure-storage-blob",
+                "mypy",
+            ],
+            # install via: pip install -e ".[test]"
+            "test": [
                 "iopath",
                 "transformers",
                 "pyarrow",
