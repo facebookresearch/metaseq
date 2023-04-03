@@ -19,13 +19,9 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import torch
 import torch.distributed as dist
-from metaseq.dataclass.configs import DistributedTrainingConfig, MetaseqConfig
 from omegaconf import open_dict
 
-# Flag to indicate if we're using Megatron
-# NOTE: this is a temporary hack until we move away from Megatron's model parallel init
-_USE_MEGATRON = False
-
+from metaseq.dataclass.configs import DistributedTrainingConfig, MetaseqConfig
 
 logger = logging.getLogger(__name__)
 
@@ -169,17 +165,13 @@ def distributed_init(cfg: MetaseqConfig):
         model_parallel_cuda_manual_seed,
     )
 
-    try:
-        # Following initializes memory buffer in Megatron code which uses
-        # buffered memory for tensor parallel GPU comms protocols
-        from megatron.global_vars import (
-            _GLOBAL_MEMORY_BUFFER,
-            _set_global_memory_buffer,
-        )
-    except ImportError:
-        raise ImportError("\n\nPlease install megatron using the setup instructions!")
-    global _USE_MEGATRON
-    _USE_MEGATRON = True
+    # Following initializes memory buffer in Megatron code which uses
+    # buffered memory for tensor parallel GPU comms protocols
+    from metaseq.modules.megatron.global_vars import (
+        _GLOBAL_MEMORY_BUFFER,
+        _set_global_memory_buffer,
+    )
+
     initialize_model_parallel(cfg.common.model_parallel_size)
     if torch.cuda.is_available():
         dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
@@ -344,13 +336,9 @@ def get_global_world_size():
 
 def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
-    global _USE_MEGATRON
-    if _USE_MEGATRON:
-        from metaseq.modules import megatron
+    from metaseq.modules import megatron
 
-        return megatron.get_data_parallel_group()
-    else:
-        return get_global_group()
+    return megatron.get_data_parallel_group()
 
 
 def get_data_parallel_rank():
@@ -372,13 +360,9 @@ def get_data_parallel_world_size():
 
 
 def get_model_parallel_group():
-    global _USE_MEGATRON
-    if _USE_MEGATRON:
-        from metaseq.modules import megatron
+    from metaseq.modules import megatron
 
-        return megatron.get_tensor_model_parallel_group()
-    else:
-        return None
+    return megatron.get_tensor_model_parallel_group()
 
 
 def get_model_parallel_rank():

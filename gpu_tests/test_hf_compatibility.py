@@ -156,7 +156,6 @@ class TestHFCompatibility(unittest.TestCase):
     def tearDown(self):
         # Tear down model parallel
         destroy_model_parallel()
-        distributed_utils._USE_MEGATRON = False
 
 
 if __name__ == "__main__":

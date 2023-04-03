@@ -12,6 +12,7 @@ from .mpu.initialize import get_tensor_model_parallel_world_size
 from .mpu.initialize import initialize_model_parallel
 from .mpu.initialize import get_tensor_model_parallel_group
 from .mpu.initialize import get_data_parallel_group
+from .mpu.initialize import get_tensor_model_parallel_rank
 from .mpu.initialize import destroy_model_parallel
 
 from .mpu.layers import LinearWithGradAccumulationAndAsyncCommunication
