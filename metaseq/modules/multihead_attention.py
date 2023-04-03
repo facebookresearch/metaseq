@@ -14,7 +14,7 @@ from metaseq import utils
 from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
-from metaseq.modules.megatron import (
+from metaseq.modules.megatron.model import (
     ScaledUpperTriangMaskedSoftmax,
     ScaledMaskedSoftmax,
 )

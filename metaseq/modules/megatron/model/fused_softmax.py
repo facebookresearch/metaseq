@@ -9,7 +9,7 @@
 
 import torch
 
-from metaseq.modules.megatron import (
+from metaseq.modules.megatron.fused_kernels import (
     scaled_masked_softmax_cuda,
     scaled_upper_triang_masked_softmax_cuda,
 )

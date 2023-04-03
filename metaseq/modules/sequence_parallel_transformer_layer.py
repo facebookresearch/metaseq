@@ -9,7 +9,7 @@ import math
 import torch
 
 from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
-from metaseq.modules.megatron import (
+from metaseq.modules.megatron.fused_kernels import (
     scaled_upper_triang_masked_softmax_cuda,
 )
 from metaseq.modules.megatron.mpu import (
