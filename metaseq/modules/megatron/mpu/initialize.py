@@ -10,7 +10,7 @@
 
 import torch
 
-from .utils import ensure_divisibility
+from metaseq.modules.megatron import ensure_divisibility
 
 
 # Intra-layer model parallel group that the current rank belongs to.
@@ -221,17 +221,6 @@ def initialize_model_parallel(
             _POSITION_EMBEDDING_GLOBAL_RANKS = position_embedding_ranks
 
 
-def model_parallel_is_initialized():
-    """Check if model and data parallel groups are initialized."""
-    if (
-        _TENSOR_MODEL_PARALLEL_GROUP is None
-        or _PIPELINE_MODEL_PARALLEL_GROUP is None
-        or _DATA_PARALLEL_GROUP is None
-    ):
-        return False
-    return True
-
-
 def get_model_parallel_group():
     """Get the model parallel group the caller rank belongs to."""
     assert _MODEL_PARALLEL_GROUP is not None, "model parallel group is not initialized"
@@ -252,12 +241,6 @@ def get_data_parallel_group():
     return _DATA_PARALLEL_GROUP
 
 
-def set_tensor_model_parallel_world_size(world_size):
-    """Set the tensor model parallel size"""
-    global _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
-    _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = world_size
-
-
 def get_tensor_model_parallel_world_size():
     """Return world size for the tensor model parallel group."""
     global _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
@@ -266,23 +249,12 @@ def get_tensor_model_parallel_world_size():
     return torch.distributed.get_world_size(group=get_tensor_model_parallel_group())
 
 
-def set_tensor_model_parallel_rank(rank):
-    """Set tensor model parallel rank."""
-    global _MPU_TENSOR_MODEL_PARALLEL_RANK
-    _MPU_TENSOR_MODEL_PARALLEL_RANK = rank
-
-
 def get_tensor_model_parallel_rank():
     """Return my rank for the tensor model parallel group."""
     global _MPU_TENSOR_MODEL_PARALLEL_RANK
     if _MPU_TENSOR_MODEL_PARALLEL_RANK is not None:
         return _MPU_TENSOR_MODEL_PARALLEL_RANK
     return torch.distributed.get_rank(group=get_tensor_model_parallel_group())
-
-
-def get_data_parallel_world_size():
-    """Return world size for the data parallel group."""
-    return torch.distributed.get_world_size(group=get_data_parallel_group())
 
 
 def get_data_parallel_rank():

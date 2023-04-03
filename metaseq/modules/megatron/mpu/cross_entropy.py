@@ -9,10 +9,12 @@
 
 import torch
 
-from .initialize import get_tensor_model_parallel_group
-from .initialize import get_tensor_model_parallel_rank
-from .initialize import get_tensor_model_parallel_world_size
-from .utils import VocabUtility
+from metaseq.modules.megatron import (
+    get_tensor_model_parallel_group,
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+    VocabUtility
+)
 
 
 class _VocabParallelCrossEntropy(torch.autograd.Function):

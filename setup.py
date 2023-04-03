@@ -80,6 +80,7 @@ extension_modules = [
     ),
     # Reference:
     # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
+    # TODO[susanz]: Figure out where cflags and cuda_flags should go.
     CppExtension(
         "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
         sources=[
@@ -173,7 +174,6 @@ def do_setup():
             "tqdm",
             "typing_extensions",
         ],
-        # dependency_links=dependency_links,
         packages=find_packages(
             exclude=[
                 "scripts",
@@ -207,7 +207,6 @@ def do_setup():
                 "webdataset==0.1.103",
             ],
         },
-        # package_data=package_data,
         ext_modules=extension_modules,
         test_suite="tests",
         entry_points={

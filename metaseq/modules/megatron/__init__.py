@@ -32,6 +32,8 @@ from .mpu.random import split_tensor_into_1d_equal_chunks
 from .mpu.random import gather_split_1d_tensor
 
 from .mpu.utils import split_tensor_along_last_dim
+from .mpu.utils import ensure_divisibility
+from .mpu.utils import VocabUtility
 
 from .model.fused_softmax import ScaledUpperTriangMaskedSoftmax
 from .model.fused_softmax import ScaledMaskedSoftmax
