@@ -31,12 +31,6 @@ _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
 }
 
 
-def param_is_not_tensor_parallel_duplicate(param):
-    return (
-        hasattr(param, "tensor_model_parallel") and param.tensor_model_parallel
-    ) or (get_tensor_model_parallel_rank() == 0)
-
-
 def set_tensor_model_parallel_attributes(tensor, is_parallel, dim, stride):
     # Make sure the attributes are not set.
     for attribute in _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS:
@@ -45,24 +39,6 @@ def set_tensor_model_parallel_attributes(tensor, is_parallel, dim, stride):
     setattr(tensor, "tensor_model_parallel", is_parallel)
     setattr(tensor, "partition_dim", dim)
     setattr(tensor, "partition_stride", stride)
-
-
-def set_defaults_if_not_set_tensor_model_parallel_attributes(tensor):
-    def maybe_set(attribute, value):
-        if not hasattr(tensor, attribute):
-            setattr(tensor, attribute, value)
-
-    for attribute in _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS:
-        maybe_set(attribute, _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS[attribute])
-
-
-def copy_tensor_model_parallel_attributes(destination_tensor, source_tensor):
-    def maybe_copy(attribute):
-        if hasattr(source_tensor, attribute):
-            setattr(destination_tensor, attribute, getattr(source_tensor, attribute))
-
-    for attribute in _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS:
-        maybe_copy(attribute)
 
 
 def _initialize_affine_weight_gpu(weight, init_method, partition_dim, stride=1):
@@ -268,21 +244,6 @@ class VocabParallelEmbedding(torch.nn.Module):
         return output
 
 
-@torch.jit.script
-def gelu(x):
-    return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
-
-
-@torch.jit.script
-def gelu_back(g, x):
-    tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
-    # sqrt(2/pi) * 3 * 0.044715 -> 0.1070322243
-    ff = 0.5 * x * (
-        (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)
-    ) + 0.5 * (1 + tanh_out)
-    return ff * g
-
-
 class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
     """
     Linear layer execution with asynchronous communication and gradient accumulation
@@ -298,19 +259,14 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         gradient_accumulation_fusion,
         async_grad_allreduce,
         sequence_parallel,
-        apply_pre_gelu=False,
-        apply_pre_ln=False,
     ):
         ctx.save_for_backward(input, weight)
         ctx.use_bias = bias is not None
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.async_grad_allreduce = async_grad_allreduce
         ctx.sequence_parallel = sequence_parallel
-        ctx.apply_pre_gelu = apply_pre_gelu
-        ctx.apply_pre_ln = apply_pre_ln
 
         if sequence_parallel:
-            assert not ctx.apply_pre_gelu
             world_size = get_tensor_model_parallel_world_size()
             dim_size = list(input.size())
             dim_size[0] = dim_size[0] * world_size
@@ -323,11 +279,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             )
             total_input = all_gather_buffer
         else:
-            assert not ctx.apply_pre_ln
             total_input = input
-
-        if ctx.apply_pre_gelu:
-            total_input = gelu(total_input)
 
         output = torch.matmul(total_input, weight.t())
         if bias is not None:
@@ -366,10 +318,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
 
         if ctx.sequence_parallel:
             handle.wait()
-
-        if ctx.apply_pre_gelu:
-            grad_input = gelu_back(grad_input, total_input)
-            total_input = gelu(total_input)
 
         # Convert the tensor shapes to 2D for execution compatibility
         grad_output = grad_output.view(
@@ -571,7 +519,6 @@ class ColumnParallelLinear(torch.nn.Module):
             self.gradient_accumulation_fusion,
             self.async_tensor_model_parallel_allreduce,
             self.sequence_parallel,
-            False,
         )
         if self.gather_output:
             # All-gather across the partitions.
@@ -627,7 +574,6 @@ class RowParallelLinear(torch.nn.Module):
         dtype=torch.half,
         sequence_parallel=False,
         gradient_accumulation_fusion=False,
-        apply_pre_gelu=False,
     ):
         super(RowParallelLinear, self).__init__()
         # Keep input parameters
@@ -693,7 +639,6 @@ class RowParallelLinear(torch.nn.Module):
             self.register_parameter("bias", None)
         self.sequence_parallel = sequence_parallel
         self.gradient_accumulation_fusion = gradient_accumulation_fusion
-        self.apply_pre_gelu = apply_pre_gelu
 
     def forward(self, input_):
         # Set up backprop all-reduce.
@@ -710,7 +655,6 @@ class RowParallelLinear(torch.nn.Module):
             self.gradient_accumulation_fusion,
             None,
             None,
-            self.apply_pre_gelu,
         )
         # All-reduce across all the partitions.
         if self.sequence_parallel:
