@@ -163,7 +163,6 @@ def reshard_fsdp_model_weights(
                 for n, t, s in zip(names, unsharded_weights.split(numels), shapes):
                     param_name = ".".join([fsdp_path, n]) if fsdp_path else n
                     resharded_weights[0][param_name] = t.view(s)
-                resharded_metadata = [{}] * num_output_shards
                 continue
 
             # Otherwise, reshard weights by chunking the unsharded tensor
@@ -252,10 +251,10 @@ def _shard_and_pad_tensor(
     return chunks, paddings
 
 
-def _unpad_tensor(shard: torch.Tensor, pad: int) -> torch.Tensor:
+def _unpad_tensor(tensor: torch.Tensor, pad: int) -> torch.Tensor:
     if pad > 0:
-        shard = shard[:-pad]
-    return shard
+        tensor = tensor[:-pad]
+    return tensor
 
 
 def _maybe_type(input: torch.Tensor, dtype: Optional[torch.dtype] = None):
