@@ -80,6 +80,7 @@ extension_modules = [
     ),
 ]
 
+# TODO: Figure out how to actually gate this properly and still get CircleCI to work.
 if "--no_megatron" not in sys.argv:
     # Reference:
     # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
@@ -117,6 +118,7 @@ if "--no_megatron" not in sys.argv:
         )
     )
 else:
+    print("*** Skipping megatron kernel installation... ***")
     sys.argv.remove("--no_megatron")
 
 
