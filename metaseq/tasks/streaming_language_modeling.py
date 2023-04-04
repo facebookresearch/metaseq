@@ -169,16 +169,8 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def __init__(self, args):
         super().__init__(args)
-
-        if not has_hf_tokenizers:
-            raise ImportError("Please install tokenizers with: pip install tokenizers")
-
-        if args.hf_tokenizer:
-            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
-        else:
-            self.tokenizer = ByteLevelBPETokenizer.from_file(
-                args.vocab_filename, args.merges_filename
-            )
+        
+        self.tokenizer = self._init_tokenizer(args)
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
@@ -229,6 +221,19 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.dictionary.pad_to_multiple_(final_vocab_size)
         else:
             self.dictionary.pad_to_multiple_(8)
+
+
+    def _init_tokenizer(self, args):
+        if not has_hf_tokenizers:
+            raise ImportError("Please install tokenizers with: pip install tokenizers")
+
+        if args.hf_tokenizer:
+            tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
+        return tokenizer
 
     def _check_cm3_parameterization(self):
         assert (
