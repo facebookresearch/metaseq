@@ -44,9 +44,8 @@ def reshard_consolidated_checkpoint(
             "model": resharded_weights[shard_idx],
             "shard_metadata": resharded_metadata[shard_idx],
         }
-        for key in state_dict.keys():
-            if key not in set(shard_state_dict.keys()) + {"optimizer_state"}:
-                shard_state_dict[key] = state_dict[key]
+        for key in state_dict.keys() - shard_state_dict.keys() - {"optimizer_state"}:
+            shard_state_dict[key] = state_dict[key]
         logger.info(f"Writing a resharded state dict to {output_file}")
         torch.save(shard_state_dict, output_file)
 
