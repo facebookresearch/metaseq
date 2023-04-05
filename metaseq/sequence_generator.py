@@ -174,7 +174,7 @@ class SequenceGenerator(nn.Module):
         # set all the forced tokens
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
         # compute the model predictions
-        model_out = self.model.decoder(
+        model_out = self.model(
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
