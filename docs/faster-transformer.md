@@ -17,7 +17,7 @@ CKPT_DIR="${HOME}/checkpoints"
 mkdir -p "${CKPT_DIR}/opt-125m"
 wget https://github.com/facebookresearch/metaseq/raw/main/projects/OPT/assets/gpt2-merges.txt -P "${CKPT_DIR}"
 wget https://github.com/facebookresearch/metaseq/raw/main/projects/OPT/assets/gpt2-vocab.json -P "${CKPT_DIR}"
-for i in {0..1}; do wget "https://dl.fbaipublicfiles.com/opt/v1_20220502/125m/reshard-model_part-${i}.pt" -P "${CKPT_DIR}/opt-125m"; done
+wget "https://dl.fbaipublicfiles.com/opt/v1_20230405/125m/reshard-model_part-0.pt" -P "${CKPT_DIR}/opt-125m"
 
 # Install FasterTransformer
 nvidia-docker run -tid --rm --shm-size 5g --name ft \
@@ -39,7 +39,7 @@ python "${SRC_DIR}/metaseq/scripts/convert_metaseq_ft.py" \
 
 # Run interactive script
 FT_PATH="lib/libth_transformer.so"
-mpirun -n 2 --allow-run-as-root python "${SRC_DIR}/metaseq/cli/interactive_ft.py" \
+mpirun -n 1 --allow-run-as-root python "${SRC_DIR}/metaseq/cli/interactive_ft.py" \
 	--num-layers 12 --num-heads 12 --embed-size 768 --vocab-size 50272 \
 	--vocab-file "${CKPT_DIR}/gpt2-vocab.json" --merges-file "${CKPT_DIR}/gpt2-merges.txt" \
 	--weight-path "${CKPT_DIR}/opt-125m-ft-mp2" --dtype fp16 \
