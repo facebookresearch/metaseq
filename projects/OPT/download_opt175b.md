@@ -58,14 +58,14 @@ Once you have consolidated the FSDP shards, you should have the following checks
 934def0c596e01dfb849fa65b73e01aa  dict.txt
 75a37753dd7a28a2c5df80c28bf06e4e  gpt2-merges.txt
 cf410ee085c5c69c957bb1f6d8456596  gpt2-vocab.json
-343a4ac67acf952e3287a270d4bc430c  reshard-model_part-0.pt
-becb3f4d6bbc9a7e48539f0007a8ffa1  reshard-model_part-1.pt
-1dac146a02256b0ca1dd482e3bf3e8e4  reshard-model_part-2.pt
-d4806579a1cd8980ed6d626add9bd68c  reshard-model_part-3.pt
-c5054a509eac01d78f1486feb00589f8  reshard-model_part-4.pt
-bf24e54c033dc4712602f1222c9ef453  reshard-model_part-5.pt
-9a705f5ca36996adfe08e9ef82f4a340  reshard-model_part-6.pt
-91e7f6b87c802a6c8ed9a34a4be9d7e7  reshard-model_part-7.pt
+14284cd62d00166bf4a16b7ac43b4946  reshard-model_part-0.pt
+bd9daba744d65f628e24a561ebc692ae  reshard-model_part-1.pt
+8e3b35dfd55ad6dc6340458ad7c7c3a1  reshard-model_part-2.pt
+48f1f189b33976392e7e64677382c6b7  reshard-model_part-3.pt
+9e5906c44cef3f4996aec6f02fe01bef  reshard-model_part-4.pt
+32b69d07dce2dd6b38f987a09a3286dd  reshard-model_part-5.pt
+e9b9de69f5373d1435a8b2e9a3093d7e  reshard-model_part-6.pt
+99349ce86ed401f715759dca68c35358  reshard-model_part-7.pt
 ```
 
 
