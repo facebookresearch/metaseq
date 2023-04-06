@@ -26,7 +26,10 @@ from metaseq.dataclass import MetaseqDataclass
 from metaseq.tasks.sentencepiece_bpe_language_modeling import (
     SentencepieceBpeTask,
 )
-from metaseq.tasks.streaming_language_modeling import DocumentToSequenceDataset, StreamingLanguageModelingConfig
+from metaseq.tasks.streaming_language_modeling import (
+    DocumentToSequenceDataset,
+    StreamingLanguageModelingConfig,
+)
 
 from metaseq.tasks import register_task
 
@@ -35,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GensisSrcTgtLmConfig(StreamingLanguageModelingConfig):
+    sentencepiece_model_path: str = field(
+        default="", metadata={"help": "path to tokenizer"}
+    )
     valid_sample_break_mode: Optional[str] = field(
         default="none",
         metadata={"help": "control break model specific to valid splits"},
@@ -80,10 +86,16 @@ class GenesisSrcTgtLmTask(SentencepieceBpeTask):
         for cand in cands:
             cand = cand.rstrip()
             full_tokens = torch.LongTensor(
-                [self.bod] + self.tokenizer.encode(" ".join([src, cand])).ids + [self.eod]
+                [self.bod]
+                + self.tokenizer.encode(" ".join([src, cand])).ids
+                + [self.eod]
             )
             cand_tokens = torch.clone(full_tokens)
-            cand_tokens[:src_tokens_len+1] = self.dictionary.pad_index #TODO: check the +1 offset including bod is correct
+            cand_tokens[
+                : src_tokens_len + 1
+            ] = (
+                self.dictionary.pad_index
+            )  # TODO: check the +1 offset including bod is correct
             if cand == tgt:
                 pos = (full_tokens, cand_tokens)
             else:
@@ -99,7 +111,11 @@ class GenesisSrcTgtLmTask(SentencepieceBpeTask):
         )
         src_tokens_len = len(self.tokenizer.encode(src).ids)
         tgt_tokens = torch.clone(full_tokens)
-        tgt_tokens[:src_tokens_len+1] = self.dictionary.pad_index #TODO: check the +1 offset including bod is correct
+        tgt_tokens[
+            : src_tokens_len + 1
+        ] = (
+            self.dictionary.pad_index
+        )  # TODO: check the +1 offset including bod is correct
         return (full_tokens, tgt_tokens)
 
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
