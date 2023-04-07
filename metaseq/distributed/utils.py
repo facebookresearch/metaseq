@@ -25,6 +25,10 @@ from metaseq.dataclass.configs import DistributedTrainingConfig, MetaseqConfig
 
 logger = logging.getLogger(__name__)
 
+# Flag to indicate if we're using Megatron
+# NOTE: this is a temporary hack until we move away from Megatron's model parallel init
+_USE_MEGATRON = False
+
 
 def is_master(cfg: DistributedTrainingConfig):
     return cfg.distributed_rank == 0
@@ -172,6 +176,8 @@ def distributed_init(cfg: MetaseqConfig):
         _set_global_memory_buffer,
     )
 
+    global _USE_MEGATRON
+    _USE_MEGATRON = True
     initialize_model_parallel(cfg.common.model_parallel_size)
     if torch.cuda.is_available():
         dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
@@ -336,9 +342,13 @@ def get_global_world_size():
 
 def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
-    from metaseq.modules.megatron import mpu
+    global _USE_MEGATRON
+    if _USE_MEGATRON:
+        from metaseq.modules.megatron import mpu
 
-    return mpu.get_data_parallel_group()
+        return mpu.get_data_parallel_group()
+    else:
+        return get_global_group()
 
 
 def get_data_parallel_rank():
@@ -360,9 +370,13 @@ def get_data_parallel_world_size():
 
 
 def get_model_parallel_group():
-    from metaseq.modules.megatron import mpu
+    global _USE_MEGATRON
+    if _USE_MEGATRON:
+        from metaseq.modules.megatron import mpu
 
-    return mpu.get_tensor_model_parallel_group()
+        return mpu.get_tensor_model_parallel_group()
+    else:
+        return None
 
 
 def get_model_parallel_rank():

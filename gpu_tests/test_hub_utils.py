@@ -102,3 +102,4 @@ def test_filter_special(data_regression):
 def teardown_function():
     # Tear down model parallel
     destroy_model_parallel()
+    distributed_utils._USE_MEGATRON = False
