@@ -183,8 +183,8 @@ if "--no_apex" not in sys.argv:
         CUDAExtension(
             name="fused_layer_norm_cuda",
             sources=[
-                "csrc/layer_norm_cuda.cpp",
-                "csrc/layer_norm_cuda_kernel.cu"
+                "metaseq/modules/apex/layer_norm_cuda.cpp",
+                "metaseq/modules/apex/layer_norm_cuda_kernel.cu"
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
