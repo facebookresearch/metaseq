@@ -184,7 +184,7 @@ if "--no_apex" not in sys.argv:
             name="fused_layer_norm_cuda",
             sources=[
                 "metaseq/modules/apex/layer_norm_cuda.cpp",
-                "metaseq/modules/apex/layer_norm_cuda_kernel.cu"
+                "metaseq/modules/apex/layer_norm_cuda_kernel.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
@@ -196,8 +196,8 @@ if "--no_apex" not in sys.argv:
         CUDAExtension(
             name="fused_dense_cuda",
             sources=[
-                "csrc/fused_dense.cpp",
-                "csrc/fused_dense_cuda.cu"
+                "metaseq/modules/apex/fused_dense.cpp",
+                "metaseq/modules/apex/fused_dense_cuda.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
@@ -210,8 +210,8 @@ if "--no_apex" not in sys.argv:
         CUDAExtension(
             name="fused_adam_cuda",
             sources=[
-                "apex/contrib/csrc/optimizers/fused_adam_cuda.cpp",
-                "apex/contrib/csrc/optimizers/fused_adam_cuda_kernel.cu",
+                "metaseq/modules/apex/fused_adam_cuda.cpp",
+                "metaseq/modules/apex/fused_adam_cuda_kernel.cu",
             ],
             # include_dirs=[os.path.join(this_dir, "csrc")],
             extra_compile_args={
