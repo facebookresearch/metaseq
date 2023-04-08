@@ -163,20 +163,11 @@ if "--no_apex" not in sys.argv:
         CUDAExtension(
             name="amp_C",
             sources=[
-                "csrc/amp_C_frontend.cpp",
-                "csrc/multi_tensor_sgd_kernel.cu",
-                "csrc/multi_tensor_scale_kernel.cu",
-                "csrc/multi_tensor_axpby_kernel.cu",
-                "csrc/multi_tensor_l2norm_kernel.cu",
-                "csrc/multi_tensor_l2norm_kernel_mp.cu",
-                "csrc/multi_tensor_l2norm_scale_kernel.cu",
-                "csrc/multi_tensor_lamb_stage_1.cu",
-                "csrc/multi_tensor_lamb_stage_2.cu",
-                "csrc/multi_tensor_adam.cu",
-                "csrc/multi_tensor_adagrad.cu",
-                "csrc/multi_tensor_novograd.cu",
-                "csrc/multi_tensor_lamb.cu",
-                "csrc/multi_tensor_lamb_mp.cu",
+                "metaseq/modules/apex/amp_C_frontend.cpp",
+                "metaseq/modules/apex/multi_tensor_l2norm_kernel.cu",
+                "metaseq/modules/apex/multi_tensor_l2norm_kernel_mp.cu",
+                "metaseq/modules/apex/multi_tensor_l2norm_scale_kernel.cu",
+                "metaseq/modules/apex/multi_tensor_adam.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
@@ -191,7 +182,10 @@ if "--no_apex" not in sys.argv:
     extension_modules.append(
         CUDAExtension(
             name="fused_layer_norm_cuda",
-            sources=["csrc/layer_norm_cuda.cpp", "csrc/layer_norm_cuda_kernel.cu"],
+            sources=[
+                "csrc/layer_norm_cuda.cpp",
+                "csrc/layer_norm_cuda_kernel.cu"
+            ],
             extra_compile_args={
                 "cxx": ["-O3"],
                 "nvcc": ["-maxrregcount=50", "-O3", "--use_fast_math"],
@@ -201,7 +195,10 @@ if "--no_apex" not in sys.argv:
     extension_modules.append(
         CUDAExtension(
             name="fused_dense_cuda",
-            sources=["csrc/fused_dense.cpp", "csrc/fused_dense_cuda.cu"],
+            sources=[
+                "csrc/fused_dense.cpp",
+                "csrc/fused_dense_cuda.cu"
+            ],
             extra_compile_args={
                 "cxx": ["-O3"],
                 "nvcc": ["-O3"],
