@@ -156,7 +156,11 @@ if "--no_apex" not in sys.argv:
         )
 
     # --global-option="--cpp_ext"
-    extension_modules.append(CppExtension("apex_C", ["csrc/flatten_unflatten.cpp"]))
+    extension_modules.append(
+        CppExtension(
+            name="apex_C", sources=["metaseq/modules/apex/flatten_unflatten.cpp"]
+        )
+    )
 
     # --global-option="--cuda_ext"
     extension_modules.append(
