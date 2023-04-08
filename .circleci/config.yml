@@ -31,21 +31,6 @@ install_dep_common: &install_dep_common
         sudo apt-get update
         sudo apt-get install ninja-build
 
-install_dep_fused_ops: &install_dep_fused_ops
-  - run:
-      name: Install Apex Dependencies
-      working_directory: ~/
-      # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
-      command: |
-        source activate metaseq
-        if ! python -c 'import apex'; then
-          git clone https://github.com/NVIDIA/apex
-          cd apex
-          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
-          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
-          cd ~/
-        fi
-
 # Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
@@ -132,7 +117,6 @@ commands:
     steps:
       - <<: *install_dep_common
       - <<: *install_fairscale
-      # - <<: *install_dep_fused_ops
       - <<: *install_repo
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
