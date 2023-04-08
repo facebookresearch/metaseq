@@ -225,6 +225,7 @@ if "--no_apex" not in sys.argv:
         )
     )
 else:
+    print("*** Skipping apex kernel installation... ***")
     sys.argv.remove("--no_apex")
 
 
