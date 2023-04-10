@@ -4,20 +4,21 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-from metaseq import checkpoint_utils, tasks, utils
-from transformers import OPTForCausalLM
-from packaging import version
+import unittest
+
 import torch
 import torch.distributed as dist
-import unittest
 import torch.nn.functional as F
-from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
-from metaseq.distributed import utils as distributed_utils
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
-from metaseq.dataclass.configs import MetaseqConfig
-from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
-from megatron.mpu import destroy_model_parallel
+from packaging import version
+from transformers import OPTForCausalLM
 
+from metaseq import checkpoint_utils, tasks, utils
+from metaseq.dataclass.configs import MetaseqConfig
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
+from metaseq.distributed import utils as distributed_utils
+from metaseq.hub_utils import tensorize_input, get_next_token, setup_vocab_and_merges
+from metaseq.modules.megatron.mpu import destroy_model_parallel
+from metaseq.scripts.convert_to_singleton import create_generation_config_with_defaults
 
 prompts = [
     "Today is a beautiful day and I want to ",

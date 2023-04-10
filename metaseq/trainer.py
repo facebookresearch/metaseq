@@ -11,13 +11,14 @@ import contextlib
 import functools
 import logging
 import math
+import os
 import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
-import os
+
 import torch
 import torch.distributed as dist
 from omegaconf import OmegaConf
@@ -27,18 +28,10 @@ from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fs
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.models.ema import build_ema
+from metaseq.modules.megatron.mpu import get_cuda_rng_tracker
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 from metaseq.utils import set_rank_seed
-
-try:
-    from megatron.mpu import (
-        get_cuda_rng_tracker,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +50,6 @@ class Trainer(object):
         self.cfg = cfg
         self.task = task
         self.model_parallel_size = cfg.common.model_parallel_size
-
-        if self.model_parallel_size > 1:
-            if not has_megatron_submodule:
-                raise ImportError(
-                    "\n\nPlease install megatron using the setup instructions!"
-                )
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)

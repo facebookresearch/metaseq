@@ -7,7 +7,14 @@
 import os
 import sys
 
+import torch
 from setuptools import Extension, find_packages, setup
+from torch.utils.cpp_extension import (
+    CppExtension,
+    CUDAExtension,
+    BuildExtension,
+    CUDA_HOME,
+)
 
 if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
@@ -36,10 +43,8 @@ def write_version_py():
 
 version = write_version_py()
 
-
 with open("README.md") as f:
     readme = f.read()
-
 
 if sys.platform == "darwin":
     extra_compile_args = ["-stdlib=libc++", "-O3"]
@@ -65,7 +70,7 @@ class NumpyExtension(Extension):
         self.__include_dirs = dirs
 
 
-extensions = [
+extension_modules = [
     NumpyExtension(
         "metaseq.data.data_utils_fast",
         sources=["metaseq/data/data_utils_fast.pyx"],
@@ -80,32 +85,148 @@ extensions = [
     ),
 ]
 
-
-cmdclass = {}
-
-
-try:
-    # torch is not available when generating docs
-    from torch.utils import cpp_extension
-
-    cmdclass["build_ext"] = cpp_extension.BuildExtension
-
-except ImportError:
-    pass
-
-
-if "READTHEDOCS" in os.environ:
-    # don't build extensions when generating docs
-    extensions = []
-    if "build_ext" in cmdclass:
-        del cmdclass["build_ext"]
-
-    # use CPU build of PyTorch
-    dependency_links = [
-        "https://download.pytorch.org/whl/cpu/torch-1.7.0%2Bcpu-cp36-cp36m-linux_x86_64.whl"
-    ]
+# TODO: Figure out how to actually gate this properly and still get CircleCI to work.
+# By default, include megatron kernels unless --global-option="--no_megatron" is passed in to pip install.
+if "--no_megatron" not in sys.argv:
+    # Reference:
+    # https://github.com/ngoyal2707/Megatron-LM/commit/9a16189ab1b5537205c708f8c8f952f2ae2ae72b
+    extension_modules.append(
+        CppExtension(
+            "metaseq.modules.megatron.fused_kernels.scaled_upper_triang_masked_softmax_cuda",
+            sources=[
+                "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax.cpp",
+                "metaseq/modules/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-O3",
+                    "--use_fast_math",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_HALF_CONVERSIONS__",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                ],
+            },
+        )
+    )
+    extension_modules.append(
+        CppExtension(
+            "metaseq.modules.megatron.fused_kernels.scaled_masked_softmax_cuda",
+            sources=[
+                "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax.cpp",
+                "metaseq/modules/megatron/fused_kernels/scaled_masked_softmax_cuda.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-O3",
+                    "--use_fast_math",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_HALF_CONVERSIONS__",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                ],
+            },
+        )
+    )
 else:
-    dependency_links = []
+    print("*** Skipping megatron kernel installation... ***")
+    sys.argv.remove("--no_megatron")
+
+# By default, include apex kernels unless --global-option="--no_apex" is passed in to pip install.
+if "--no_apex" not in sys.argv:
+    # TODO[susanz]: not including --no-cache-dir anymore?
+    if CUDA_HOME is None:
+        raise RuntimeError(
+            f"Building apex kernels was requested, but nvcc was not found. "
+            "Are you sure your environment has nvcc available?  "
+            "If you're installing within a container from https://hub.docker.com/r/pytorch/pytorch, "
+            "only images whose names contain 'devel' will provide nvcc."
+        )
+
+    print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
+    TORCH_MAJOR = int(torch.__version__.split(".")[0])
+    TORCH_MINOR = int(torch.__version__.split(".")[1])
+    if TORCH_MAJOR == 0:
+        # TODO[susanz]: Gate this to Pytorch 1.6 or later?
+        raise RuntimeError(
+            "Apex kernels requires Pytorch 1.0 or later, "
+            "found torch.__version__ = {}".format(torch.__version__)
+        )
+
+    # --global-option="--cpp_ext"
+    extension_modules.append(
+        CppExtension(
+            name="apex_C", sources=["metaseq/modules/apex/flatten_unflatten.cpp"]
+        )
+    )
+
+    # --global-option="--cuda_ext"
+    extension_modules.append(
+        CUDAExtension(
+            name="amp_C",
+            sources=[
+                "metaseq/modules/apex/amp_C_frontend.cpp",
+                "metaseq/modules/apex/multi_tensor_l2norm_kernel.cu",
+                "metaseq/modules/apex/multi_tensor_l2norm_kernel_mp.cu",
+                "metaseq/modules/apex/multi_tensor_l2norm_scale_kernel.cu",
+                "metaseq/modules/apex/multi_tensor_adam.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-lineinfo",
+                    "-O3",
+                    "--use_fast_math",
+                ],
+            },
+        )
+    )
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_layer_norm_cuda",
+            sources=[
+                "metaseq/modules/apex/layer_norm_cuda.cpp",
+                "metaseq/modules/apex/layer_norm_cuda_kernel.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-maxrregcount=50", "-O3", "--use_fast_math"],
+            },
+        )
+    )
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_dense_cuda",
+            sources=[
+                "metaseq/modules/apex/fused_dense.cpp",
+                "metaseq/modules/apex/fused_dense_cuda.cu",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-O3"],
+            },
+        )
+    )
+    # --global-option="--deprecated_fused_adam"
+    extension_modules.append(
+        CUDAExtension(
+            name="fused_adam_cuda",
+            sources=[
+                "metaseq/modules/apex/fused_adam_cuda.cpp",
+                "metaseq/modules/apex/fused_adam_cuda_kernel.cu",
+            ],
+            # include_dirs=[os.path.join(this_dir, "csrc")],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": ["-O3", "--use_fast_math"],
+            },
+        )
+    )
+else:
+    print("*** Skipping apex kernel installation... ***")
+    sys.argv.remove("--no_apex")
 
 
 if "clean" in sys.argv[1:]:
@@ -119,7 +240,7 @@ if "clean" in sys.argv[1:]:
     )
 
 
-def do_setup(package_data):
+def do_setup():
     setup(
         name="metaseq",
         version=version,
@@ -136,14 +257,10 @@ def do_setup(package_data):
             # protobuf version pinned due to tensorboard not pinning a version.
             #  https://github.com/protocolbuffers/protobuf/issues/10076
             "protobuf==3.20.2",
-            "aim>=3.9.4",
-            "azure-storage-blob",
-            "boto3",
-            "black==22.3.0",
-            "click==8.0.4",
+            # "click==8.0.4",
             "cython",
             'dataclasses; python_version<"3.7"',
-            "editdistance",
+            # "editdistance",
             "fire",
             "flask==2.1.1",  # for api
             "hydra-core>=1.1.0,<1.2",
@@ -152,7 +269,6 @@ def do_setup(package_data):
             "Jinja2==3.1.1",  # for evals
             "markupsafe",  # for evals
             "more_itertools",
-            "mypy",
             "ninja",
             'numpy; python_version>="3.7"',
             "omegaconf<=2.1.1",
@@ -170,7 +286,6 @@ def do_setup(package_data):
             "tqdm",
             "typing_extensions",
         ],
-        dependency_links=dependency_links,
         packages=find_packages(
             exclude=[
                 "scripts",
@@ -179,12 +294,19 @@ def do_setup(package_data):
                 "tests.*",
             ]
         ),
+        include_package_data=True,
+        zip_safe=False,
         extras_require={
             # install via: pip install -e ".[dev]"
             "dev": [
                 "flake8",
                 "black==22.3.0",
-                # test deps
+                "aim>=3.9.4",
+                "azure-storage-blob",
+                "mypy",
+            ],
+            # install via: pip install -e ".[test]"
+            "test": [
                 "iopath",
                 "transformers",
                 "pyarrow",
@@ -202,8 +324,7 @@ def do_setup(package_data):
                 "webdataset==0.1.103",
             ],
         },
-        package_data=package_data,
-        ext_modules=extensions,
+        ext_modules=extension_modules,
         test_suite="tests",
         entry_points={
             "console_scripts": [
@@ -213,22 +334,9 @@ def do_setup(package_data):
                 "metaseq-api-local = metaseq.cli.interactive_hosted:cli_main",
             ],
         },
-        cmdclass=cmdclass,
-        zip_safe=False,
+        cmdclass={"build_ext": BuildExtension},
     )
 
 
-def get_files(path, relative_to="metaseq"):
-    all_files = []
-    for root, _dirs, files in os.walk(path, followlinks=True):
-        root = os.path.relpath(root, relative_to)
-        for file in files:
-            if file.endswith(".pyc"):
-                continue
-            all_files.append(os.path.join(root, file))
-    return all_files
-
-
 if __name__ == "__main__":
-    package_data = {"metaseq": (get_files(os.path.join("metaseq", "config")))}
-    do_setup(package_data)
+    do_setup()

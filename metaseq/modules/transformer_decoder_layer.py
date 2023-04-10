@@ -3,8 +3,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, Optional
 import math
+from typing import Dict, Optional
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -17,20 +18,10 @@ from metaseq.modules import (
     FeedForward,
     LayerNorm,
 )
-from metaseq.modules.fused_bias_gelu import (
-    has_fused_bias_gelu,
-    load_megatron_fused_kernel,
+from metaseq.modules.megatron.mpu import (
+    ColumnParallelLinear,
+    RowParallelLinear,
 )
-
-try:
-    from megatron.mpu import (
-        ColumnParallelLinear,
-        RowParallelLinear,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
 
 
 def _weight_init(weight):
@@ -50,7 +41,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         args,
     ):
         super().__init__()
-        load_megatron_fused_kernel()
         initialize_params_on_gpu = getattr(
             args, "tensor_parallel_init_model_on_gpu", False
         )
@@ -69,7 +59,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         self.self_attn_layer_norm.to(device).to(dtype)
 
         self.activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
-        self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
 
         # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
@@ -122,11 +111,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         disable_bias=False,
         truncate_init=False,
     ):
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-
         def _init_method_bias(bias):
             fan_in = input_dim
             bound = 1 / math.sqrt(fan_in)
@@ -147,7 +131,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             output_dim,
             gather_output=False,
             init_method=init_method_weights,
-            skip_bias_add=self.skip_bias_add,
             init_method_bias=init_method_bias,
             use_cpu_initialization=not initialize_params_on_gpu,
             dtype=dtype,
@@ -167,12 +150,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         disable_bias=False,
         truncate_init=False,
     ):
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-
-        skip_bias_add = self.skip_bias_add
         if full_megatron_init:
             init_method_weights = utils.scaled_init_method_normal(
                 megatron_init_sigma * full_megatron_init_scalar,
@@ -185,11 +162,10 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         fc2 = RowParallelLinear(
             input_dim,
             output_dim,
+            bias=not disable_bias,
             input_is_parallel=True,
             init_method=init_method_weights,
-            skip_bias_add=skip_bias_add,
             use_cpu_initialization=not initialize_params_on_gpu,
-            bias=not disable_bias,
             dtype=dtype,
         )
         if not full_megatron_init:

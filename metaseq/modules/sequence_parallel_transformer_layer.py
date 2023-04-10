@@ -3,27 +3,25 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
-
 import importlib
 import math
+
 import torch
 
+from metaseq.modules.activation_functions import gelu, gelu_back, relu, relu_back
+from metaseq.modules.megatron.fused_kernels import (
+    scaled_upper_triang_masked_softmax_cuda,
+)
+from metaseq.modules.megatron.mpu import (
+    split_tensor_along_last_dim,
+    _reduce_scatter_along_first_dim,
+    _gather_along_first_dim,
+)
+
 # Not importing here cause cpu tests don't like it
+# imported from apex
 global fused_layer_norm_cuda
 fused_layer_norm_cuda = None
-
-try:
-    from megatron.mpu.mappings import (
-        _reduce_scatter_along_first_dim,
-        _gather_along_first_dim,
-    )
-    from megatron.mpu.utils import split_tensor_along_last_dim
-    from megatron.model.fused_softmax import scaled_upper_triang_masked_softmax_cuda
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
 
 
 class SequeuceParallelTransformerBlock(torch.autograd.Function):

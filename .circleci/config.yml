@@ -31,28 +31,6 @@ install_dep_common: &install_dep_common
         sudo apt-get update
         sudo apt-get install ninja-build
 
-install_dep_fused_ops: &install_dep_fused_ops
-  - run:
-      name: Install Megatron/Apex Dependencies
-      working_directory: ~/
-      # because of https://github.com/NVIDIA/apex/issues/1252 we need to pin to a specific apex commit
-      command: |
-        source activate metaseq
-        if ! python -c 'import apex'; then
-          git clone https://github.com/NVIDIA/apex
-          cd apex
-          git checkout e2083df5eb96643c61613b9df48dd4eea6b07690
-          pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--deprecated_fused_adam" --global-option="--xentropy" --global-option="--fast_multihead_attn" ./
-          cd ~/
-        fi
-        if ! python -c 'import megatron_lm'; then
-          git clone --depth=1 --branch fairseq_v3 https://github.com/ngoyal2707/Megatron-LM.git
-          cd Megatron-LM
-          pip install -r requirements.txt
-          pip install -e .
-          cd ~/
-        fi
-
 # Remove this when we get a new fairscale release
 install_fairscale: &install_fairscale
   - run:
@@ -77,29 +55,13 @@ install_dep_pt19: &install_dep_pt19
         pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
         python -c 'import torch; print("Torch version:", torch.__version__)'
 
-
-install_pytorch_dep: &install_pytorch_dep
-  - parameters:
-        version_str:
-          type: string
-          default: "/dev/non_exist"  # Default to error out
-  - run:
-      name: Install Pytorch Dependencies
-      command: |
-        source activate metaseq
-        pip install --upgrade setuptools
-        echo "<<parameters.version_str>>"
-        pip install  <<parameters.version_str>> -f https://download.pytorch.org/whl/torch_stable.html
-        python -c 'import torch; print("Torch version:", torch.__version__)'
-
+# --no-build-isolation works here with pyproject.toml
 install_repo: &install_repo
   - run:
       name: Install Repository
       command: |
         source activate metaseq
-        pip install -e .[dev,few_shot,gpu]
-        python setup.py build_ext --inplace
-
+        pip install -v -e .[dev,test]
 
 check_nvidia_driver: &check_nvidia_driver
   - run:
@@ -155,7 +117,6 @@ commands:
     steps:
       - <<: *install_dep_common
       - <<: *install_fairscale
-      - <<: *install_dep_fused_ops
       - <<: *install_repo
       - <<: *download_and_configure_125m_with_hf_dependencies
       - save_cache:
@@ -163,7 +124,13 @@ commands:
             - ~/miniconda/envs/metaseq/lib/python3.8/site-packages
           key: *cache_key
       - run:
-          name: Run Unit Tests
+          name: Run CPU Unit Tests
+          command: |
+            source activate metaseq
+            export TOKENIZERS_PARALLELISM=false
+            python -m pytest --junitxml=test-results/junit.xml cpu_tests
+      - run:
+          name: Run GPU Unit Tests
           command: |
             source activate metaseq
             python -m pytest --junitxml=test-results/junit.xml gpu_tests

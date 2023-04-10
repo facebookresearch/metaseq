@@ -23,12 +23,11 @@ from omegaconf import open_dict
 
 from metaseq.dataclass.configs import DistributedTrainingConfig, MetaseqConfig
 
+logger = logging.getLogger(__name__)
+
 # Flag to indicate if we're using Megatron
 # NOTE: this is a temporary hack until we move away from Megatron's model parallel init
 _USE_MEGATRON = False
-
-
-logger = logging.getLogger(__name__)
 
 
 def is_master(cfg: DistributedTrainingConfig):
@@ -165,20 +164,18 @@ def distributed_init(cfg: MetaseqConfig):
     if nodelist:
         logger.info(f"SLURM nodelist: {nodelist}")
 
-    try:
-        from megatron.mpu import (
-            initialize_model_parallel,
-            model_parallel_cuda_manual_seed,
-        )
+    from metaseq.modules.megatron.mpu import (
+        initialize_model_parallel,
+        model_parallel_cuda_manual_seed,
+    )
 
-        # Following initializes memory buffer in Megatron code which uses
-        # buffered memory for tensor parallel GPU comms protocols
-        from megatron.global_vars import (
-            _GLOBAL_MEMORY_BUFFER,
-            _set_global_memory_buffer,
-        )
-    except ImportError:
-        raise ImportError("\n\nPlease install megatron using the setup instructions!")
+    # Following initializes memory buffer in Megatron code which uses
+    # buffered memory for tensor parallel GPU comms protocols
+    from metaseq.modules.megatron.global_vars import (
+        _GLOBAL_MEMORY_BUFFER,
+        _set_global_memory_buffer,
+    )
+
     global _USE_MEGATRON
     _USE_MEGATRON = True
     initialize_model_parallel(cfg.common.model_parallel_size)
@@ -347,7 +344,7 @@ def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     global _USE_MEGATRON
     if _USE_MEGATRON:
-        from megatron import mpu
+        from metaseq.modules.megatron import mpu
 
         return mpu.get_data_parallel_group()
     else:
@@ -375,7 +372,7 @@ def get_data_parallel_world_size():
 def get_model_parallel_group():
     global _USE_MEGATRON
     if _USE_MEGATRON:
-        from megatron import mpu
+        from metaseq.modules.megatron import mpu
 
         return mpu.get_tensor_model_parallel_group()
     else:
