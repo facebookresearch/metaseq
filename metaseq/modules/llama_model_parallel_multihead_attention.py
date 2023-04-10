@@ -188,7 +188,8 @@ class LlamaModelParallelMultiheadAttention(nn.Module):
             use_cpu_initialization=use_cpu_initialization,
             dtype=dtype,
         )
-        self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        # self.xf_eff_attn = attn_variant == AttentionVariants.XFORMERS
+        self.xf_eff_attn = False #TODO: remove this later once we have proper way of installing xformers
         self.xf_op = None
         if self.xf_eff_attn and not has_xformers:
             raise ImportError(
