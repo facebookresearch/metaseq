@@ -17,6 +17,7 @@ from omegaconf import II, open_dict
 
 from metaseq.data import (
     JsonlDataset,
+    PartitionedStreamingDataset,
     data_utils,
     StreamingSrcTgtDataset,
     StreamingShuffleDataset,
@@ -251,3 +252,91 @@ class GenesisSrcTgtLmTask(SentencepieceBpeTask):
             )
 
         return collate_data
+
+    def get_batch_iterator(
+            self,
+            dataset,
+            max_tokens=None,
+            max_sentences=None,
+            max_positions=None,
+            ignore_invalid_inputs=False,
+            required_batch_size_multiple=1,
+            seed=1,
+            num_shards=1,
+            shard_id=0,
+            num_workers=0,
+            epoch=1,
+            data_buffer_size=0,
+            disable_iterator_cache=False,
+            batch_by_size=True,
+            skip_remainder_batch=True,
+        ):
+            """
+            Get an iterator that yields batches of data from the given dataset.
+
+            Args:
+                dataset (torch.utils.data.Dataset): dataset to batch
+                max_sentences (int, optional): max number of sentences in each
+                    batch (default: None).
+                num_shards (int, optional): shard the data iterator into N
+                    shards (default: 1).
+                shard_id (int, optional): which shard of the data iterator to
+                    return (default: 0).
+                num_workers (int, optional): how many subprocesses to use for data
+                    loading. 0 means the data will be loaded in the main process
+                    (default: 0).
+                epoch (int, optional): the epoch to start the iterator from
+                    (default: 1).
+                data_buffer_size (int, optional): number of batches to
+                    preload (default: 0).
+                disable_iterator_cache (bool, optional): don't cache the
+                    EpochBatchIterator
+                    (default: False).
+                batch_by_size (bool, optional):
+                    batch sequences of similar length together to reduce padding.
+                    If false, each batch will be of size max_sentences.
+                skip_remainder_batch (bool, optional): if set, discard the last
+                    batch in each training epoch, as the last batch is often smaller
+                    than local_batch_size * distributed_word_size (default: ``True``).
+            Returns:
+                ~metaseq.iterators.EpochBatchIterator: a batched iterator over the
+                    given dataset split
+            """
+            assert max_tokens is None
+
+            # Up to this point, we have shuffled documents, flattened them into a 1D
+            # tensor, then chunked into token blocks. But if documents are long, then
+            # adjacent blocks may be from a single document, and naively distributed
+            # sequential blocks to GPUs may cause entire updates to be dominated by a
+            # handful of unique documents. Instead we have a readahead buffer that
+            # reads in 10 full batches of data and shuffles sequences across them,
+            # thus increasing randomness. This assumes that no single document spans
+            # 10 full batches, which is reasonable when batch sizes are in the
+            # millions and documents are on average much smaller.
+            assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
+                dataset, StreamingSrcTgtDataset
+            )
+            shuffle_buffer_size = 10 * max_sentences * num_shards
+            logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
+            dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+            # dataset.set_num_workers(num_workers)
+
+            # partition dataset across data parallel workers
+            dataset = PartitionedStreamingDataset(
+                dataset,
+                num_shards=num_shards,
+                shard_id=shard_id,
+                drop_last=skip_remainder_batch,
+            )
+
+            # create a stateful/checkpointable iterator for the current data
+            # parallel worker
+            return iterators.StreamingEpochBatchIterator(
+                dataset=dataset,
+                batch_size=max_sentences,
+                collate_fn=self._collate_fn,
+                drop_last=skip_remainder_batch,
+                num_workers=num_workers,
+                epoch=epoch,
+                num_shards=num_shards,
+            )
