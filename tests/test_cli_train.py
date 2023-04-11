@@ -83,15 +83,24 @@ class TestPostCheckpointCallback(unittest.TestCase):
                 num_updates=10,
                 training_finished=False,
                 filename=checkpoint_path,
-                files_to_symlink_to=[os.path.join(local_dir, "checkpoint_last-model_part-0-shard0.pt")],
+                files_to_symlink_to=[
+                    os.path.join(local_dir, "checkpoint_last-model_part-0-shard0.pt")
+                ],
             )
 
             self.assertTrue(
-                os.path.exists(os.path.join(nfs_dir, "checkpoint_100/checkpoint-model_part-0-shard0.pt"))
+                os.path.exists(
+                    os.path.join(
+                        nfs_dir, "checkpoint_100/checkpoint-model_part-0-shard0.pt"
+                    )
+                )
             )
             self.assertTrue(
                 os.path.islink(
-                    os.path.join(nfs_dir, "checkpoint_last/checkpoint_last-model_part-0-shard0.pt")
+                    os.path.join(
+                        nfs_dir,
+                        "checkpoint_last/checkpoint_last-model_part-0-shard0.pt",
+                    )
                 )
             )
 
@@ -103,7 +112,7 @@ class TestPostCheckpointCallback(unittest.TestCase):
 
         self.assertTrue(
             any([_match(c) for c in mock.mock_calls]),
-            f"Expected azcopy {src} -> {dst}\n\n{mock.mock_calls}"
+            f"Expected azcopy {src} -> {dst}\n\n{mock.mock_calls}",
         )
 
     def test_azure_blob_with_symlinks(self):
