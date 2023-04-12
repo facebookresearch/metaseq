@@ -68,7 +68,9 @@ class TestPostCheckpointCallback(unittest.TestCase):
 
     def test_nfs_copy_with_symlinks(self):
         with tempfile.TemporaryDirectory() as local_dir, tempfile.TemporaryDirectory() as nfs_dir:
-            checkpoint_path = os.path.join(local_dir, "checkpoint_10.pt")
+            checkpoint_path = os.path.join(
+                local_dir, "checkpoint_100-model_part-0-shard0.pt"
+            )
             create_local_test_file(checkpoint_path)
 
             cfg = MetaseqConfig()
@@ -81,15 +83,24 @@ class TestPostCheckpointCallback(unittest.TestCase):
                 num_updates=10,
                 training_finished=False,
                 filename=checkpoint_path,
-                files_to_symlink_to=[os.path.join(local_dir, "checkpoint_last.pt")],
+                files_to_symlink_to=[
+                    os.path.join(local_dir, "checkpoint_last-model_part-0-shard0.pt")
+                ],
             )
 
             self.assertTrue(
-                os.path.exists(os.path.join(nfs_dir, "checkpoint_10/checkpoint.pt"))
+                os.path.exists(
+                    os.path.join(
+                        nfs_dir, "checkpoint_100/checkpoint-model_part-0-shard0.pt"
+                    )
+                )
             )
             self.assertTrue(
                 os.path.islink(
-                    os.path.join(nfs_dir, "checkpoint_10/checkpoint_last.pt")
+                    os.path.join(
+                        nfs_dir,
+                        "checkpoint_last/checkpoint_last-model_part-0-shard0.pt",
+                    )
                 )
             )
 
@@ -99,7 +110,10 @@ class TestPostCheckpointCallback(unittest.TestCase):
             cmd = args[0]
             return cmd[-2] == src and cmd[-1] == dst
 
-        self.assertTrue(any([_match(c) for c in mock.mock_calls]))
+        self.assertTrue(
+            any([_match(c) for c in mock.mock_calls]),
+            f"Expected azcopy {src} -> {dst}\n\n{mock.mock_calls}",
+        )
 
     def test_azure_blob_with_symlinks(self):
         mock_azcopy = MagicMock(return_value=MagicMock(returncode=0))
@@ -122,7 +136,7 @@ class TestPostCheckpointCallback(unittest.TestCase):
 
                 upload_src = "https://testaccount.blob.core.windows.net/dest/checkpoint_10.pt?q=1"
                 upload_dst = "https://testaccount.blob.core.windows.net/dest/checkpoint_last.pt?q=1"
-                self.assert_azcopy(mock_azcopy, checkpoint_path, upload_path)
+                self.assert_azcopy(mock_azcopy, checkpoint_path, upload_src)
                 self.assert_azcopy(mock_azcopy, upload_src, upload_dst)
 
 

@@ -598,9 +598,12 @@ def post_checkpoint_callback(
             os.remove(filename)
 
             if files_to_symlink_to:
-                dest_dir = os.path.dirname(final_path)
                 for other_checkpoint in files_to_symlink_to:
-                    dest = _get_destination_path(other_checkpoint, dest_dir)
+                    basename = os.path.basename(other_checkpoint)
+                    subdir, _ = _checkpoint_add_directory(basename)
+                    other_dir = os.path.join(destination_checkpoints_dir, subdir)
+                    os.makedirs(other_dir, exist_ok=True)
+                    dest = os.path.join(other_dir, basename)
                     if PathManager.islink(dest):
                         PathManager.rm(dest)
                     assert PathManager.symlink(
