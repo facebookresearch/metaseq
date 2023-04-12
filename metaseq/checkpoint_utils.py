@@ -244,12 +244,15 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                 expected_file_count = distributed_utils.get_global_world_size()
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
-                        raise RuntimeError(
-                            "trying to restart a job that already wrote checkpoint_last"
+                        logger.warning(
+                            "trying to restart a job that already wrote checkpoint_last!"
                         )
-                    m = re.match(r"checkpoint_(\d+)", candidate)
-                    if m:
-                        checkpoints.append((int(m[1]), candidate))
+                        # For NFS restarts, we are relying on logic of finding largest num_step to restart from
+                        # below instead of referencing checkpoint_last
+                        continue
+                    num_step = re.match(r"checkpoint_(\d+)", candidate)
+                    if num_step:
+                        checkpoints.append((int(num_step[1]), candidate))
                 for _, candidate in sorted(checkpoints, reverse=True):
                     present_files = len(
                         [
