@@ -100,8 +100,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         metadata={"help": "Maximum size for example proportional sampling"},
     )
     data_sampling_prob: Optional[str] = field(
-        default='{}',
-        metadata={"help": "Proportion of each finetuning benchmark to use. Use only during finetuning"}
+        default="{}",
+        metadata={
+            "help": "Proportion of each finetuning benchmark to use. Use only during finetuning"
+        },
     )
     data_subshard_count: int = field(
         default=1,
@@ -169,7 +171,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def __init__(self, args):
         super().__init__(args)
-        
+
         self.tokenizer = self._init_tokenizer(args)
 
         if max(args.update_freq) > 1:
@@ -221,7 +223,6 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.dictionary.pad_to_multiple_(final_vocab_size)
         else:
             self.dictionary.pad_to_multiple_(8)
-
 
     def _init_tokenizer(self, args):
         if not has_hf_tokenizers:
@@ -283,7 +284,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         """
         Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
         """
-        prob = dataset_caps / sum(dataset_caps)
+        dataset_caps = np.array(dataset_caps)
+        prob = dataset_caps / dataset_caps.sum()
 
         smoothed_prob = prob**self.args.multicorpus_sampling_alpha
         smoothed_prob = smoothed_prob / smoothed_prob.sum()
@@ -297,6 +299,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             [len(d) for d in datasets],
             dtype=float,
         )
+
         def get_cap(b, l):
             eps = [l]
             if self.args.multicorpus_sampling_maximum != DEFAULT_MULTICORPUS_MAX:
@@ -306,21 +309,22 @@ class StreamingLanguageModelingTask(LegacyTask):
         # If the cap for the benchmark exists in caps, then use that. Otherwise, if multicorpus_sampling_maximum is specified, then use that.
         # Otherwise, just use the dataset length
         dataset_caps = [
-            get_cap(c.split('__')[0], dataset_lengths[i]) for i, c in enumerate(corpora)] 
+            get_cap(c.split("__")[0], dataset_lengths[i]) for i, c in enumerate(corpora)
+        ]
         sample_probs = self._get_sample_prob(dataset_caps)
         logger.info(f"loaded total {sum(dataset_caps)} blocks for all corpora")
 
         def compute_benchmark_prob(sample_probs):
             per_benchmark_prob = {}
             for i, s in enumerate(corpora):
-                benchmark = s.split('__')[0]
+                benchmark = s.split("__")[0]
                 if benchmark not in per_benchmark_prob:
                     per_benchmark_prob[benchmark] = 0.0
                 per_benchmark_prob[benchmark] += sample_probs[i]
             return per_benchmark_prob
 
         per_benchmark_prob = compute_benchmark_prob(sample_probs)
-        logger.info(f'Initial data proportions: {json.dumps(per_benchmark_prob)}')
+        logger.info(f"Initial data proportions: {json.dumps(per_benchmark_prob)}")
 
         data_sampling_prob = json.loads(self.args.data_sampling_prob)
 
@@ -334,18 +338,25 @@ class StreamingLanguageModelingTask(LegacyTask):
         for benchmark in per_benchmark_prob:
             if benchmark not in data_sampling_prob:
                 benchmark_prob = per_benchmark_prob[benchmark]
-                data_sampling_prob[benchmark] = benchmark_prob * (1.0 - total_assigned_prob)
+                data_sampling_prob[benchmark] = benchmark_prob * (
+                    1.0 - total_assigned_prob
+                )
 
         # Scale prob for tasks in each benchmark
         for i, s in enumerate(corpora):
-            benchmark = s.split('__')[0]
+            benchmark = s.split("__")[0]
             current_benchmark_prob = per_benchmark_prob[benchmark]
-            sample_probs[i] = sample_probs[i] * data_sampling_prob[benchmark] / current_benchmark_prob
+            sample_probs[i] = (
+                sample_probs[i] * data_sampling_prob[benchmark] / current_benchmark_prob
+            )
 
         new_per_benchmark_prob = compute_benchmark_prob(sample_probs)
-        logger.info(f'Final data proportions: {json.dumps(new_per_benchmark_prob)}')
+        logger.info(f"Final data proportions: {json.dumps(new_per_benchmark_prob)}")
 
-        assert(sum(new_per_benchmark_prob.values()) == 1.0, "Data Proportion probabilities do not sum to 1")
+        assert (
+            sum(new_per_benchmark_prob.values()) == 1.0,
+            "Data Proportion probabilities do not sum to 1",
+        )
 
         logger.info(
             "Sample probability by corpus: %s",
