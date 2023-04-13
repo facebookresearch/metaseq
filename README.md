@@ -1,7 +1,7 @@
 
 
 # Metaseq
-A codebase for working with [Open Pre-trained Transformers](projects/OPT).
+A codebase for working with [Open Pre-trained Transformers](projects/OPT), originally forked from [fairseq](https://github.com/facebookresearch/fairseq).
 
 
 ## Community Integrations
@@ -26,6 +26,10 @@ The OPT 125M--66B models can be executed with [CTranslate2](https://github.com/O
 ### Using OPT with FasterTransformer
 
 The OPT models can be served with [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), a highly optimized inference framework written and maintained by NVIDIA. We provide instructions to convert OPT checkpoints into FasterTransformer format and [a usage example](docs/faster-transformer.md) with some benchmark results.
+
+### Using OPT with DeepSpeed
+
+The OPT models can be finetuned using [DeepSpeed](https://github.com/microsoft/DeepSpeed). See the [DeepSpeed-Chat example](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat) to get started.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
