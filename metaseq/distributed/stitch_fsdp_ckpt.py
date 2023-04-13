@@ -114,7 +114,10 @@ def consolidate_fsdp_shards(
     else:
         consolidated_weights = weights[0]
     if new_arch_name is not None:
-        ckpt["cfg"]["model"]._name = new_arch_name
+        if "llama" in new_arch_name:
+            ckpt["cfg"]["model"]["_name"] = new_arch_name
+        else: 
+            ckpt["cfg"]["model"]._name = new_arch_name
     if dense:
         logger.info("dense")
 

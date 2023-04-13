@@ -82,8 +82,11 @@ class SentencepieceBpeTask(StreamingLanguageModelingTask):
 
     def build_model(self, cfg: MetaseqDataclass):
         with open_dict(cfg):
-            cfg._name = "llama_transformer_lm_megatron"
-            cfg.arch = "llama_transformer_lm_megatron"
+            if cfg.arch is None:
+                cfg._name = "llama_transformer_lm_megatron"
+                cfg.arch = "llama_transformer_lm_megatron"
+            else:
+                assert cfg.arch == cfg._name
         if not getattr(cfg, "in_training", False):
             cfg.memory_efficient_fp16 = True
         return super().build_model(cfg)

@@ -173,7 +173,7 @@ class SequenceGenerator(nn.Module):
         # decoding
         start_step = src_tokens.shape[1]
         print(
-            f"sample_id={sample['id'][0].item()} gpu_rank={torch.distributed.get_rank()} start_step={start_step}"
+            f"sample_id={sample['id'][0].item()} gpu_rank={torch.distributed.get_rank() if torch.distributed.is_initialized() else -1} start_step={start_step}"
         )
         # set all the forced tokens
         tokens[:, :start_step] = src_tokens.repeat_interleave(beam_size, 0)
