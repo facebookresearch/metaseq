@@ -532,7 +532,7 @@ class SequenceGenerator(nn.Module):
             for i, t in enumerate(tokens):
                 count_tokens[i, t] += 1
         return count_tokens
-    
+
 
 class EnsembleModel(nn.Module):
     """A wrapper around an ensemble of models."""
