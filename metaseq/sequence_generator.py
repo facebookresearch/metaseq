@@ -8,8 +8,9 @@
 
 import logging
 import math
+from typing import Dict, List, Optional, Tuple
+from metaseq.data.dictionary import Dictionary
 import sys
-from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -26,7 +27,7 @@ class SequenceGenerator(nn.Module):
     def __init__(
         self,
         models,
-        tgt_dict,
+        tgt_dict: Dictionary,
         beam_size: int = 1,
         max_len_a: int = 0,
         max_len_b: int = 200,
@@ -36,8 +37,19 @@ class SequenceGenerator(nn.Module):
         stop: Optional[List[int]] = None,
         topp: float = -1,
         profile=False,
+        omega_bound: float = 0.3,
+        lambda_decay: float = -1,
+        alpha_presence: float = 0.0,
+        alpha_frequency: float = 0.0,
+        alpha_presence_src: float = 0.0,
+        alpha_frequency_src: float = 0.0,
+        alpha_src_penalty_end_idx: int = -1,
     ):
         """Generates translations of a given source sentence.
+
+        For discussion of repetition penalties, see
+        https://github.com/facebookresearch/metaseq/pull/306
+
         Args:
             models: ensemble of models
             beam_size (int, optional): beam width (default: 1)
@@ -51,6 +63,19 @@ class SequenceGenerator(nn.Module):
             stop: An optional list of other tokens that can cause early termination.
             need_logprobs (bool): Return additional log-prob distributions for
                 every timestep of the search.
+            omega_bound (float, optional): lower p-bound when decaying nucleus
+            lamda_decay (float, optional): decay factor for decaying p in nucleus sampling
+                default -1 disables.
+            alpha_presence (float, optional): repetition penalty for token presence in
+                current generation
+            alpha_frequency (float, optional): repetition penalty for token frequency in
+                current generation
+            alpha_presence_src (float, optional): repetition penalty for token presence in
+                incoming context
+            alpha_frequency_src (float, optional): repetition penalty for token frequency in
+                incoming context
+            alpha_src_penalty_end_idx (int, optional): index of the last token in incoming
+                context to consider for repetition penalty
         """
         super().__init__()
         self.model = models[0]
@@ -75,6 +100,25 @@ class SequenceGenerator(nn.Module):
 
         self.model.eval()
         self.profile = profile
+
+        # factual nucleus
+        buffer = torch.zeros(beam_size)
+        self.sampling_topp = max(0, topp)
+        self.sampling_topp_tensor = (
+            buffer.clone().fill_(self.sampling_topp).unsqueeze(1)
+        )
+        self.init_p = self.sampling_topp_tensor.clone()
+        self.lambda_decay = lambda_decay
+        self.omega_bound = torch.tensor([omega_bound])
+        self.toks_since_reset = buffer.clone()
+        self.full_stop_list = torch.tensor([tgt_dict.index(w) for w in [".", "?", "!"]])
+
+        # repetition reduction
+        self.alpha_presence = alpha_presence
+        self.alpha_frequency = alpha_frequency
+        self.alpha_presence_src = alpha_presence_src
+        self.alpha_frequency_src = alpha_frequency_src
+        self.alpha_src_penalty_end_idx = alpha_src_penalty_end_idx
 
     def cuda(self):
         self.model.cuda()
@@ -147,14 +191,20 @@ class SequenceGenerator(nn.Module):
         new_order = new_order.to(src_tokens.device).long()
 
         # initialize buffers
-        scores = torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
-        tokens = (
-            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
+        (
+            scores,
+            tokens,
+            count_tokens,
+            count_tokens_src,
+        ) = self._initialize_generation_buffers(
+            bsz, beam_size, int(max_len), src_tokens
         )
 
         # notes:
         # - scores \in FloatTensor(bsz * beam_size, max_len)
         # - tokens \in LongTensor(bsz * beam_size, max_len)
+        # - count_tokens \in LongTensor(bsz * beam_size, vocab_size)
+        # - count_tokens_src \in LongTensor(bsz * beam_size, vocab_size)
         # - src_tokens \in LongTensor(bsz, prompt_len)
         # - all_lprobs \in FloatTensor(bsz * beam_size, max_len, vocab_size)
         #   is the next word distribution at every timestep
@@ -233,6 +283,11 @@ class SequenceGenerator(nn.Module):
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
+            # apply repetition penalties
+            lprobs = self._apply_repetition_penalties(
+                lprobs, count_tokens, count_tokens_src
+            )
+
             # already ended beams should only do eos
             lprobs[eos_mask, : self.eos] = -math.inf
             lprobs[eos_mask, self.eos + 1 :] = -math.inf
@@ -240,6 +295,7 @@ class SequenceGenerator(nn.Module):
             # find our next tokens and record them
             # protect this step for the last token so we don't overflow
             next_scores, next_toks = self._sample_topp(lprobs)
+            count_tokens = self._update_repetition_counts(next_toks, count_tokens)
             if step < max_len:
                 tokens[:, step] = next_toks
                 scores[:, step] = next_scores
@@ -287,6 +343,59 @@ class SequenceGenerator(nn.Module):
             )
         return retval
 
+    def _initialize_generation_buffers(
+        self, bsz: int, beam_size: int, max_len: int, src_tokens: torch.Tensor
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
+    ]:
+        """
+        Initialize buffers for use during generation.
+
+        Args:
+            bsz (int): batch size
+            beam_size (int): beam size
+            max_len (int): max gen length
+            src_tokens (tensor): incoming context
+
+        Returns:
+            scores: token score buffer [bsz*beam_size, max_len]
+            tokens: generation tokens [bsz*beam_size, max_len]
+            count_tokens: token count buffer for in-generation repetition penalty
+                [bsz*beam_size, vocab_size]
+            count_tokens_src: token count buffer for in-context repetition penalty
+                [bsz*beam_size, vocab_size]
+        """
+        scores = torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
+        tokens = (
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
+        )
+        count_tokens = None
+        count_tokens_src = None
+        if self.alpha_presence > 0 or self.alpha_frequency > 0:
+            count_tokens = torch.zeros(bsz * beam_size, self.vocab_size).to(src_tokens)
+        if self.alpha_presence_src > 0 or self.alpha_frequency_src > 0:
+            # histc requires floats
+            float_src_tokens = src_tokens.float()
+            if self.alpha_src_penalty_end_idx > 0 and not (bsz > 1):
+                # ignore this parameter if we're in a batch. sorry!
+                float_src_tokens = float_src_tokens[:, : self.alpha_src_penalty_end_idx]
+            count_tokens_src = torch.zeros(bsz * beam_size, self.vocab_size).to(
+                src_tokens
+            )
+            for i in range(bsz * beam_size):
+                # histc constructs a histogram counting frequencies of occuring values
+                # and buckets into vocab_size bins
+                count_tokens_src[i] = torch.histc(
+                    float_src_tokens[i], self.vocab_size, min=0, max=self.vocab_size
+                )
+        if self.lambda_decay > 0:
+            # need to reset the buffers
+            self.toks_since_reset = self.toks_since_reset.unsqueeze(0).repeat(bsz, 1)
+            self.sampling_topp_tensor = self.sampling_topp_tensor.repeat(bsz, 1)
+            self.init_p = self.init_p.repeat(bsz, 1)
+
+        return scores, tokens, count_tokens, count_tokens_src
+
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
         See `"The Curious Case of Neural Text Degeneration"
@@ -307,7 +416,15 @@ class SequenceGenerator(nn.Module):
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        if self.lambda_decay <= 0:
+            # normal nucleus sampling
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        else:
+            # factual/decayed nucleus sampling. each batch item may have
+            # a different topp value, so the mask is different for each
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp_tensor.expand(
+                sprobs.size()
+            ).to(sprobs.device)
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
@@ -315,7 +432,106 @@ class SequenceGenerator(nn.Module):
         hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
         tok_ids = sinds[hyp_ids, choices]
         scores = sprobs[hyp_ids, choices].log()
+        if self.lambda_decay > 0:
+            self._update_sampling_topp(tok_ids)
         return scores, tok_ids
+
+    def _update_sampling_topp(self, tokens: torch.Tensor):
+        """
+        Update the p for sampling according to Factual Nucleus generation
+        (see https://arxiv.org/abs/2206.04624 for more details)
+
+        Args:
+            tokens (torch.Tensor): chosen generation tokens
+        """
+        for batch_i, toks in enumerate(tokens):
+            if toks.dim() == 1:
+                for beam_i, t in enumerate(toks):
+                    if self.full_stop_list.to(tokens.device).eq(t).sum() > 0:
+                        self.toks_since_reset[batch_i, beam_i] = 0
+                    else:
+                        self.toks_since_reset[batch_i, beam_i] += 1
+                    decay_factor = max(0, self.toks_since_reset[batch_i, beam_i] - 1)
+                    self.sampling_topp_tensor[batch_i, beam_i] = torch.max(
+                        self.omega_bound,
+                        self.init_p[batch_i, beam_i]
+                        * (self.lambda_decay ** (decay_factor)),
+                    )
+            else:
+                t = toks
+                if self.full_stop_list.to(tokens.device).eq(t).sum() > 0:
+                    self.toks_since_reset[batch_i] = 0
+                else:
+                    self.toks_since_reset[batch_i] += 1
+                decay_factor = max(0, self.toks_since_reset[batch_i] - 1)
+                self.sampling_topp_tensor[batch_i] = torch.max(
+                    self.omega_bound,
+                    self.init_p[batch_i] * (self.lambda_decay ** (decay_factor)),
+                )
+
+    def _apply_repetition_penalties(
+        self,
+        lprobs: torch.Tensor,
+        count_tokens: Optional[torch.Tensor],
+        count_tokens_src: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Apply repetition penalties.
+
+        From https://beta.openai.com/docs/api-reference/engines/retrieve:
+
+        mu[j] -> mu[j] - c[j] * alpha_frequency - float(c[j] > 0) * alpha_presence
+        Where:
+
+        mu[j] is the logit of the j-th token
+        c[j] is how often that token was sampled prior to the current position
+        float(c[j] > 0) is 1 if c[j] > 0 and 0 otherwise
+        alpha_frequency is the frequency penalty coefficient
+        alpha_presence is the presence penalty coefficient
+
+        :param lprobs:
+            (bsz*beam_size, vocab_size) tensor
+        :param count_tokens:
+            (bsz*beam_size, vocab_size) tensor
+        :param count_tokens_src:
+            (bsz*beam_size, vocab_size) tensor
+
+        :return lprobs:
+            return new lprobs!
+        """
+        if self.alpha_frequency > 0 or self.alpha_presence > 0:
+            assert count_tokens is not None
+            lprobs = (
+                lprobs
+                - (count_tokens * self.alpha_frequency)
+                - (count_tokens.gt(0) * self.alpha_presence)
+            )
+        if self.alpha_frequency_src > 0 or self.alpha_presence_src > 0:
+            assert count_tokens_src is not None
+            lprobs = (
+                lprobs
+                - (count_tokens_src * self.alpha_frequency_src)
+                - (count_tokens_src.gt(0) * self.alpha_presence_src)
+            )
+
+        return lprobs
+
+    def _update_repetition_counts(
+        self, tokens: torch.Tensor, count_tokens: Optional[torch.Tensor]
+    ) -> Optional[torch.Tensor]:
+        """
+        Update the repetition counts
+
+        :param tokens:
+            [batchsize * beam, 1]
+        :param count_tokens:
+            [batchsize * beam, vocab_size]
+        """
+        if self.alpha_frequency > 0 or self.alpha_presence > 0:
+            assert count_tokens is not None
+            for i, t in enumerate(tokens):
+                count_tokens[i, t] += 1
+        return count_tokens
 
 
 class EnsembleModel(nn.Module):
