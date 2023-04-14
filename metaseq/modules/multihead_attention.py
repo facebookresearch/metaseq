@@ -14,6 +14,17 @@ from metaseq import utils
 from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
+from metaseq.modules.megatron.model import (
+    ScaledUpperTriangMaskedSoftmax,
+    ScaledMaskedSoftmax,
+)
+from metaseq.modules.megatron.mpu import (
+    ColumnParallelLinear,
+    RowParallelLinear,
+    get_cuda_rng_tracker,
+    get_tensor_model_parallel_world_size,
+    split_tensor_along_last_dim,
+)
 
 try:
     import xformers.ops as xops
@@ -22,22 +33,6 @@ try:
 except (ImportError, ModuleNotFoundError):
     has_xformers = False
 
-try:
-    from megatron.mpu import (
-        get_cuda_rng_tracker,
-        get_tensor_model_parallel_world_size,
-        ColumnParallelLinear,
-        RowParallelLinear,
-        split_tensor_along_last_dim,
-    )
-    from megatron.model.fused_softmax import (
-        ScaledUpperTriangMaskedSoftmax,
-        ScaledMaskedSoftmax,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
 
 import logging
 
@@ -72,10 +67,6 @@ class ModelParallelMultiheadAttention(nn.Module):
         truncate_init=False,
     ):
         super().__init__()
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim

@@ -1,6 +1,7 @@
 
+
 # Metaseq
-A codebase for working with [Open Pre-trained Transformers](projects/OPT).
+A codebase for working with [Open Pre-trained Transformers](projects/OPT), originally forked from [fairseq](https://github.com/facebookresearch/fairseq).
 
 
 ## Community Integrations
@@ -21,6 +22,14 @@ The OPT models are now supported in the [Colossal-AI](https://github.com/hpcaite
 ### Using OPT with CTranslate2
 
 The OPT 125M--66B models can be executed with [CTranslate2](https://github.com/OpenNMT/CTranslate2/), which is a fast inference engine for Transformer models. The project integrates the [SmoothQuant](https://github.com/mit-han-lab/smoothquant) technique to allow 8-bit quantization of OPT models. See the [usage example](https://opennmt.net/CTranslate2/guides/transformers.html#opt) to get started.
+
+### Using OPT with FasterTransformer
+
+The OPT models can be served with [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), a highly optimized inference framework written and maintained by NVIDIA. We provide instructions to convert OPT checkpoints into FasterTransformer format and [a usage example](docs/faster-transformer.md) with some benchmark results.
+
+### Using OPT with DeepSpeed
+
+The OPT models can be finetuned using [DeepSpeed](https://github.com/microsoft/DeepSpeed). See the [DeepSpeed-Chat example](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat) to get started.
 
 ## Getting Started in Metaseq
 Follow [setup instructions here](docs/setup.md) to get started.
@@ -44,11 +53,7 @@ We welcome PRs from the community!
 You can find information about contributing to metaseq in our [Contributing](docs/CONTRIBUTING.md) document.
 
 ## The Team
-Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [Ruan Silva](https://github.com/ruanslv), [David Esiobu](https://github.com/davides), [Igor Molybog](https://github.com/igormolybogFB), [Peter Albert](https://github.com/Xirider), [Sharan Narang](https://github.com/sharannarang), [Andrew Poulton](https://github.com/andrewPoulton), [Nikolay Bashlykov](https://github.com/bashnick), and [Binh Tang](https://github.com/tangbinh).
-
-Previous maintainers include:
-[Stephen Roller](https://github.com/stephenroller), [Anjali Sridhar](https://github.com/anj-s), [Christopher Dewan](https://github.com/m3rlin45).
-
+Metaseq is currently maintained by the CODEOWNERS: [Susan Zhang](https://github.com/suchenzang), [Naman Goyal](https://github.com/ngoyal2707), [Punit Singh Koura](https://github.com/punitkoura), [Moya Chen](https://github.com/moyapchen), [Kurt Shuster](https://github.com/klshuster), [David Esiobu](https://github.com/davides), [Igor Molybog](https://github.com/igormolybogFB), [Peter Albert](https://github.com/Xirider), [Andrew Poulton](https://github.com/andrewPoulton), [Nikolay Bashlykov](https://github.com/bashnick), [Binh Tang](https://github.com/tangbinh), [Uriel Singer](https://github.com/urielsinger), [Yuchen Zhang](https://github.com/zycalice), [Armen Aghajanya](https://github.com/ArmenAg), [Lili Yu](https://github.com/lilisierrayu), and [Adam Polyak](https://github.com/adampolyak).
 
 ## License
 

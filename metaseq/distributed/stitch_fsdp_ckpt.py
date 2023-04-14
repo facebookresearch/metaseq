@@ -36,6 +36,7 @@ def consolidate_fsdp_shards(
     new_arch_name=None,
     no_stitch_megatron=False,
     megatron_part=None,
+    is_ema=False,
 ) -> str:
     if pth_prefix.endswith(".pt"):
         pth_prefix = pth_prefix[:-3]
@@ -68,7 +69,16 @@ def consolidate_fsdp_shards(
             expert_dest_paths.append(f"{save_prefix}-rank-{r}.pt")
         else:
             ckpt = load_and_pop_last_optimizer_state(p)
-            weights.append(ckpt["model"])
+            if "ema_fp32_params" in ckpt["extra_state"]:
+                ema_key = "ema_fp32_params"
+            elif "ema" in ckpt["extra_state"]:
+                ema_key = "ema"
+            else:
+                ema_key = None
+            if is_ema and ema_key is not None:
+                weights.append(ckpt["extra_state"][ema_key])
+            else:
+                weights.append(ckpt["model"])
             metadata.append(ckpt["shard_metadata"])
     assert weights, f"all files were considered experts: {all_ckpt_files}"
     do_consolidate = True
@@ -185,7 +195,7 @@ def consolidate_model_parallel(
         all_parts_consolidated[k] = part_weights
     if no_stitch_megatron:
         return all_parts_consolidated
-    # glue to be a single megatron mdoel part
+    # glue to be a single megatron model part
     model = reshard_megatron_parts(all_parts_consolidated, new_model_part_count=1)[0]
     return model
 

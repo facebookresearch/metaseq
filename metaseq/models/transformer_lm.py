@@ -3,24 +3,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
-import torch.nn as nn
-
-try:
-    from megatron.mpu import VocabParallelEmbedding
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
-
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
+import torch
+import torch.nn as nn
 from omegaconf import II
 
-from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
-
 from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
+from metaseq.dataclass.constants import ATTN_CHOICES, UNSPECIFIED_DOC_SEP
 from metaseq.models import (
     BaseModel,
     register_model,
@@ -31,8 +23,7 @@ from metaseq.models.transformer_decoder import (
     ModelParallelTransformerDecoder,
 )
 from metaseq.modules.activation_functions import get_available_activation_fns
-
-import logging
+from metaseq.modules.megatron.mpu import VocabParallelEmbedding
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 logger = logging.getLogger(__name__)
@@ -205,11 +196,6 @@ class ModelParallelTransformerLanguageModel(BaseModel):
     @classmethod
     def build_model(cls, args, task):
         """Build a new model instance."""
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
-
         # make sure all arguments are present in older models
         base_lm_architecture(args)
 

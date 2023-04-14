@@ -95,6 +95,7 @@ def save_checkpoint(
             extra_state,
             training_finished=training_finished,
             async_callback_fn=async_callback_fn if save_to_NFS else None,
+            files_to_symlink_to=checkpoints[1:] if len(checkpoints) > 1 else None,
         )
 
         write_timer.stop()
@@ -102,6 +103,50 @@ def save_checkpoint(
             f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
+
+        # See if there's any older checkpoints to delete after saving a new one.
+        # Only deletes if keep_last_updates > 0 or keep_last_epochs > 0 (default -1 for both).
+        delete_old_checkpoint_files(cfg, end_of_epoch, suffix)
+
+
+def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffix: str):
+    if not end_of_epoch and cfg.keep_last_updates > 0:
+        # remove old checkpoints; checkpoints are sorted in descending order
+        checkpoints = checkpoint_paths(
+            cfg.save_dir, pattern=r"checkpoint_\d+_(\d+){}\.pt".format(suffix)
+        )
+        for old_chk in checkpoints[cfg.keep_last_updates :]:
+            if os.path.lexists(old_chk):
+                os.remove(old_chk)
+
+    if cfg.keep_last_epochs > 0:
+        # remove old epoch checkpoints; checkpoints are sorted in descending order
+        checkpoints = checkpoint_paths(
+            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
+        )
+        for old_chk in checkpoints[cfg.keep_last_epochs :]:
+            if os.path.lexists(old_chk):
+                os.remove(old_chk)
+
+
+# Reference:
+# https://github.com/facebookresearch/fairseq/blob/0338cdc3094ca7d29ff4d36d64791f7b4e4b5e6e/fairseq/checkpoint_utils.py#L538
+def checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
+    """Retrieves all checkpoints found in `path` directory.
+    Checkpoints are identified by matching filename to the specified pattern. If
+    the pattern contains groups, the result will be sorted by the first group in
+    descending order.
+    """
+    pt_regexp = re.compile(pattern)
+    files = os.listdir(path)
+
+    entries = []
+    for i, f in enumerate(files):
+        m = pt_regexp.fullmatch(f)
+        if m is not None:
+            idx = float(m.group(1)) if len(m.groups()) > 0 else i
+            entries.append((idx, m.group(0)))
+    return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
@@ -199,12 +244,15 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
                 expected_file_count = distributed_utils.get_global_world_size()
                 for candidate in os.listdir(nfs_path):
                     if candidate == "checkpoint_last":
-                        raise RuntimeError(
-                            "trying to restart a job that already wrote checkpoint_last"
+                        logger.warning(
+                            "trying to restart a job that already wrote checkpoint_last!"
                         )
-                    m = re.match(r"checkpoint_(\d+)", candidate)
-                    if m:
-                        checkpoints.append((int(m[1]), candidate))
+                        # For NFS restarts, we are relying on logic of finding largest num_step to restart from
+                        # below instead of referencing checkpoint_last
+                        continue
+                    num_step = re.match(r"checkpoint_(\d+)", candidate)
+                    if num_step:
+                        checkpoints.append((int(num_step[1]), candidate))
                 for _, candidate in sorted(checkpoints, reverse=True):
                     present_files = len(
                         [
@@ -546,17 +594,6 @@ def load_model_ensemble_and_task(
                 raise RuntimeError(
                     f"!!! cfg does not exist in state keys = {state.keys()} !!!"
                 )
-
-            # Load 175B model trained on megatron (model parallel) branch
-            # "cfg.common.model_parallel_size == 1" checks if model parallel is
-            # enabled at load time. If it's not, fall back to non-MP
-            # transformer code path.
-            if (
-                getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
-                and cfg.common.model_parallel_size == 1
-            ):
-                cfg.model.arch = "transformer_lm_gpt"
-                cfg.model._name = "transformer_lm_gpt"
 
             # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
             oproj_key = "decoder.output_projection.weight"

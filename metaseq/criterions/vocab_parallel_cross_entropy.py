@@ -4,30 +4,18 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+
 import torch
 
 from metaseq import metrics, utils
 from metaseq.criterions import BaseCriterion, register_criterion
-
-
-try:
-    from megatron.mpu.cross_entropy import (
-        vocab_parallel_cross_entropy,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
+from metaseq.modules.megatron.mpu import vocab_parallel_cross_entropy
 
 
 @register_criterion("vocab_parallel_cross_entropy")
 class VocabParallelCrossEntropyCriterion(BaseCriterion):
     def __init__(self, task):
         super().__init__(task)
-        if not has_megatron_submodule:
-            raise ImportError(
-                "\n\nPlease install megatron using the setup instructions!"
-            )
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.

@@ -8,6 +8,7 @@ Train a new model on one or across multiple GPUs.
 """
 
 import argparse
+from datetime import datetime
 import functools
 import logging
 import math
@@ -18,6 +19,7 @@ import time
 import socket
 import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
+from urllib.parse import urlparse
 import warnings
 
 import numpy as np
@@ -113,23 +115,42 @@ def main(cfg: DictConfig) -> None:
     logger.info(cfg)
 
     # Setup task, e.g., translation, language modeling, etc.
-    task = tasks.setup_task(cfg.task)
+    if cfg.distributed_training.task_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
+        orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # Clobber memory_efficient_fp16 and fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
 
-    assert cfg.criterion, "Please specify criterion to train a model"
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
+            task = tasks.setup_task(cfg.task)
+
+        # Reset memory_efficient_fp16 and fp32_reduce_scatter values.
+        cfg.distributed_training.memory_efficient_fp16 = orig_memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = orig_fp32_reduce_scatter
+    else:
+        task = tasks.setup_task(cfg.task)
 
     # Build model and criterion
-    if cfg.distributed_training.ddp_backend == "fully_sharded":
-        extra = {
-            "use_sharded_state": cfg.distributed_training.use_sharded_state,
-        }
+    assert cfg.criterion, "Please specify criterion to train a model"
 
-        with fsdp_enable_wrap(cfg.distributed_training, **extra):
+    if cfg.distributed_training.ddp_backend == "fully_sharded":
+        with fsdp_enable_wrap(
+            cfg.distributed_training,
+            use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
             model = fsdp_wrap(
                 task.build_model(cfg.model),
                 process_group=distributed_utils.get_data_parallel_group(),
             )
     else:
         model = task.build_model(cfg.model)
+
     # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
 
@@ -296,23 +317,24 @@ def train(
         end_of_epoch = not itr.has_next()
         if end_of_epoch:
             grank = distributed_utils.get_global_rank()
+
+            log_seq = [f"End of Epoch on rank {grank}:"]
+            if hasattr(itr, "sequences_consumed"):
+                log_seq += [f"sequences_consumed={itr.sequences_consumed}"]
+            log_seq += [f"n={itr.n}"]
+
             dataset = epoch_itr.dataset
-            while not hasattr(dataset, "len_cache"):
+            while not hasattr(dataset, "len_cache") and hasattr(dataset, "dataset"):
                 dataset = dataset.dataset
-            len_cache = tuple(dataset.len_cache.data)
-            cache_hash = hash(len_cache)
-            contains_zero = any([x == 0 for x in len_cache])
-            logger.warning(
-                " ".join(
-                    [
-                        f"End of Epoch on rank {grank}:",
-                        f"sequences_consumed={itr.sequences_consumed}",
-                        f"n={itr.n}",
-                        f"len_cache_hash={cache_hash}",
-                        f"len_cache_has_zeros={contains_zero}",
-                    ]
-                )
-            )
+            if hasattr(dataset, "len_cache"):
+                len_cache = tuple(dataset.len_cache.data)
+                cache_hash = hash(len_cache)
+                contains_zero = any([x == 0 for x in len_cache])
+                log_seq += [
+                    f"len_cache_hash={cache_hash}",
+                    f"len_cache_has_zeros={contains_zero}",
+                ]
+            logger.warning(" ".join(log_seq))
 
         valid_losses, should_stop = validate_and_save(
             cfg,
@@ -492,37 +514,51 @@ def _checkpoint_add_directory(basename):
     return m[1], f"checkpoint{m[3]}"
 
 
-def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
+def _get_basename(path):
+    res = urlparse(path)
+    if res.scheme:
+        return os.path.basename(res.path)
+    else:
+        return os.path.basename(path)
+
+
+def _get_destination_path(path, destination):
+    """Calculates the destination path with handling for remote paths."""
+    basename = _get_basename(path)
+    res = urlparse(destination)
+    if res.scheme:
+        new_path = os.path.join(res.path, basename)
+        res = res._replace(path=new_path)
+        return res.geturl()
+    else:
+        return os.path.join(destination, basename)
+
+
+def post_checkpoint_callback(
+    cfg, num_updates, training_finished, filename, files_to_symlink_to
+):
     if cfg.checkpoint.cloud_upload_path is not None:
         if "blob.core.windows.net" in cfg.checkpoint.cloud_upload_path:
-            azcopy_logs = filename + "_azcopy_logs"
-            os.environ["AZCOPY_CONCURRENCY_VALUE"] = "10"
-            os.environ["AZCOPY_LOG_LOCATION"] = azcopy_logs
-            os.makedirs(azcopy_logs, exist_ok=True)
-            logger.info(
-                f"preparing to azcopy {filename} to {cfg.checkpoint.cloud_upload_path}; logs in {azcopy_logs}"
+            azcopy_log_dir = os.path.dirname(filename)
+            final_path = _get_destination_path(
+                filename, cfg.checkpoint.cloud_upload_path
             )
-            cmd = [
-                "azcopy",  # TODO(susanz): require azcopy to be installed.
-                "copy",
-                "--cap-mbps",
-                "96.0",
-                filename,
-                cfg.checkpoint.cloud_upload_path,
-            ]
-            res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if res.returncode != 0:
-                print("Error: {}, azcopy failed".format(res.returncode))
-                print("Azcopy stdout = {}".format(res.stdout))
-                sys.exit(1)
+            _copy_to_azure(filename, final_path, azcopy_log_dir)
+
             # Delete original checkpoint on local storage
             # TODO make this configurable
-            logger.info(
-                f"Successfully copied {filename} to {cfg.checkpoint.cloud_upload_path}"
-            )
             os.remove(filename)
+
+            # Azure Blob doesn't support symlinks so make full copies
+            if files_to_symlink_to:
+                for other_checkpoint in files_to_symlink_to:
+                    dest = _get_destination_path(
+                        other_checkpoint, cfg.checkpoint.cloud_upload_path
+                    )
+                    _copy_to_azure(final_path, dest, azcopy_log_dir)
+
         elif cfg.checkpoint.cloud_upload_path.startswith("nfs:"):
-            path, basename = os.path.split(filename)
+            basename = os.path.basename(filename)
             checkpoint_dir, checkpoint_file = _checkpoint_add_directory(basename)
             destination_checkpoints_dir = cfg.checkpoint.cloud_upload_path[4:]
             temporary_checkpoint_file = f"_{checkpoint_file}"
@@ -546,6 +582,9 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
             )
 
             logger.info(f"Renaming {temporary_checkpoint_file} -> {checkpoint_file}")
+            final_path = os.path.join(
+                destination_checkpoints_dir, checkpoint_dir, checkpoint_file
+            )
             # atomic rename _checkpointfile -> checkpointfile
             # this way we know that if present the checkpoint file is complete
             os.rename(
@@ -554,11 +593,22 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
                     checkpoint_dir,
                     temporary_checkpoint_file,
                 ),
-                os.path.join(
-                    destination_checkpoints_dir, checkpoint_dir, checkpoint_file
-                ),
+                final_path,
             )
             os.remove(filename)
+
+            if files_to_symlink_to:
+                for other_checkpoint in files_to_symlink_to:
+                    basename = os.path.basename(other_checkpoint)
+                    subdir, _ = _checkpoint_add_directory(basename)
+                    other_dir = os.path.join(destination_checkpoints_dir, subdir)
+                    os.makedirs(other_dir, exist_ok=True)
+                    dest = os.path.join(other_dir, basename)
+                    if PathManager.islink(dest):
+                        PathManager.rm(dest)
+                    assert PathManager.symlink(
+                        final_path, dest
+                    ), f"Failed to symlink {final_path} to {dest}"
 
             # Start running evals on uploaded checkpoint
             nfs_evaluation(
@@ -573,13 +623,18 @@ def post_checkpoint_callback(cfg, num_updates, training_finished, filename):
             try:
                 # PathManager only supports writing to S3, but this function call
                 # can be replaced with other APIs for copying checkpoints.
-                PathManager.copy_from_local(
-                    filename,
-                    os.path.join(
-                        cfg.checkpoint.cloud_upload_path, os.path.basename(filename)
-                    ),
-                    overwrite=True,
+                final_path = _get_destination_path(
+                    filename, cfg.checkpoint.cloud_upload_path
                 )
+                PathManager.copy_from_local(filename, final_path, overwrite=True)
+
+                # Some non-native PathHandlers don't support symlinks so default to full copies
+                if files_to_symlink_to:
+                    for other_checkpoint in files_to_symlink_to:
+                        dest = _get_destination_path(
+                            other_checkpoint, cfg.checkpoint.cloud_upload_path
+                        )
+                        PathManager.copy(final_path, dest, overwrite=True)
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
 
@@ -643,6 +698,31 @@ def nfs_evaluation(
                 "checkpoint parts were copied to NFS within waiting time"
             )
         )
+
+
+def _copy_to_azure(source, destination, log_dir):
+    # /dir/checkpoint_last.pt -> /dir/checkpoint_last.pt_azcopy_logs_2000-01-01T00_00_00
+    basename = _get_basename(destination)
+    timestamp = datetime.utcnow().isoformat().replace(":", "_")[:-7]
+    azcopy_logs = os.path.join(log_dir, f"{basename}_azcopy_logs_{timestamp}")
+    os.environ["AZCOPY_CONCURRENCY_VALUE"] = "10"
+    os.environ["AZCOPY_LOG_LOCATION"] = azcopy_logs
+    os.makedirs(azcopy_logs, exist_ok=True)
+    logger.info(f"preparing to azcopy {source} to {destination}; logs in {azcopy_logs}")
+    cmd = [
+        "azcopy",  # TODO(susanz): require azcopy to be installed.
+        "copy",
+        "--cap-mbps",
+        "96.0",
+        source,
+        destination,
+    ]
+    res = _run_azcopy(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode != 0:
+        print("Error: {}, azcopy failed".format(res.returncode))
+        print("Azcopy stdout = {}".format(res.stdout))
+        sys.exit(1)
+    logger.info(f"Successfully copied {source} to {destination}")
 
 
 def _run_azcopy(cmd, stdout, stderr):

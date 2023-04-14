@@ -3,16 +3,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import math
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
 from torch import Tensor
-from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
 from metaseq import utils
+from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 from metaseq.distributed import utils as distributed_utils, fsdp_wrap
 from metaseq.models import BaseDecoder
 from metaseq.modules import (
@@ -23,16 +23,12 @@ from metaseq.modules import (
     Linear,
 )
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
-
-try:
-    from megatron import mpu
-    from megatron.mpu import (
-        gather_from_tensor_model_parallel_region,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
+from metaseq.modules.megatron.mpu import (
+    LinearWithGradAccumulationAndAsyncCommunication,
+    gather_from_tensor_model_parallel_region,
+    scatter_to_sequence_parallel_region,
+    copy_to_tensor_model_parallel_region,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -346,7 +342,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
 
         is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
         if is_sequence_parallel:
-            x = mpu.scatter_to_sequence_parallel_region(x)
+            x = scatter_to_sequence_parallel_region(x)
         return x, embed, positions
 
     def extract_features(
@@ -411,10 +407,10 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         if is_sequence_parallel:
             input_parallel = features
         else:
-            input_parallel = mpu.copy_to_tensor_model_parallel_region(features)
+            input_parallel = copy_to_tensor_model_parallel_region(features)
 
         # project back to size of vocabulary
-        x = mpu.LinearWithGradAccumulationAndAsyncCommunication.apply(
+        x = LinearWithGradAccumulationAndAsyncCommunication.apply(
             input_parallel,
             self.output_projection.weight,
             None,

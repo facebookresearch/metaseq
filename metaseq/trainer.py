@@ -11,13 +11,14 @@ import contextlib
 import functools
 import logging
 import math
+import os
 import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from typing import Any, Dict, List
-import os
+
 import torch
 import torch.distributed as dist
 from omegaconf import OmegaConf
@@ -27,18 +28,10 @@ from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fs
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.models.ema import build_ema
+from metaseq.modules.megatron.mpu import get_cuda_rng_tracker
 from metaseq.nan_detector import NanDetector
 from metaseq.optim import lr_scheduler
 from metaseq.utils import set_rank_seed
-
-try:
-    from megatron.mpu import (
-        get_cuda_rng_tracker,
-    )
-
-    has_megatron_submodule = True
-except (ImportError, ModuleNotFoundError):
-    has_megatron_submodule = False
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +50,6 @@ class Trainer(object):
         self.cfg = cfg
         self.task = task
         self.model_parallel_size = cfg.common.model_parallel_size
-
-        if self.model_parallel_size > 1:
-            if not has_megatron_submodule:
-                raise ImportError(
-                    "\n\nPlease install megatron using the setup instructions!"
-                )
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
@@ -254,7 +241,6 @@ class Trainer(object):
             if self.is_fsdp:
                 # Build FSDP model
                 extra = {
-                    "is_moe": getattr(self.cfg.model, "moe_freq", 0) > 0,
                     "use_sharded_state": self.use_sharded_state,
                 }
                 with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
@@ -422,7 +408,12 @@ class Trainer(object):
         return state_dicts
 
     def save_checkpoint(
-        self, filename, extra_state, training_finished=False, async_callback_fn=None
+        self,
+        filename,
+        extra_state,
+        training_finished=False,
+        async_callback_fn=None,
+        files_to_symlink_to=None,
     ):
         """Save all training state in a checkpoint file."""
 
@@ -446,7 +437,7 @@ class Trainer(object):
                 def perform_save():
                     try:
                         logger.info(f"Beginning asynchronous torch.save to {filename}")
-                        async_callback_fn(filename)
+                        async_callback_fn(filename, files_to_symlink_to)
                         logger.info(f"Asynchronous torch.save to {filename} complete.")
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
@@ -1212,11 +1203,12 @@ class Trainer(object):
         def lower_precision(t):
             """Converts a tensor to the desired dtype based on our cfg."""
             if t.dtype is torch.float32:
-                if self.cfg.common.bf16 or self.cfg.bf16:
+                if self.cfg.common.bf16:
                     return t.bfloat16()
                 return t.half()
             return t
 
+        # TODO[Susan]: sample dict is full of int64 tensors - check this.
         if self.cfg.common.fp16:
             sample = utils.apply_to_sample(lower_precision, sample)
 

@@ -53,5 +53,5 @@ def shard_(optimizer, group):
         torch_optimizer.param_groups,
         optim_cls,
         group=group,
-        **optimizer.optimizer_config
+        **optimizer.optimizer_config,
     )

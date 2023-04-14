@@ -108,7 +108,9 @@ class BaseOptimizer(object):
                     c = c.to(p.grad.device)
                 p.grad.data.mul_(c)
 
-    def clip_grad_norm(self, max_norm, norm_type="l2", aggregate_norm_fn=None):
+    def clip_grad_norm(
+        self, max_norm, norm_type="l2", aggregate_norm_fn=None, **kwargs
+    ):
         """Clips gradient norm."""
         return utils.clip_grad_norm_(
             self.params, max_norm, norm_type, aggregate_norm_fn

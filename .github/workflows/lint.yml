@@ -26,26 +26,19 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install locally
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install --editable '.[dev]'
-
-        python setup.py build_ext --inplace
-
     - name: Lint with flake8
       run: |
         pip install flake8
-        flake8 . --count --exit-zero --statistics
+        flake8 --per-file-ignores="__init__.py:F401" . --count --exit-zero --statistics
         # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 --per-file-ignores="__init__.py:F401" . --count --select=E9,F63,F7,F82 --show-source --statistics
         # complain about lints
-        flake8 .
+        flake8 --per-file-ignores="__init__.py:F401" .
 
     - name: Lint with black
       run: |
         pip install black
-        black --check --diff .
+        python -m black --check --diff .
 
     - name: Type Checking with MyPy
       run:  |
