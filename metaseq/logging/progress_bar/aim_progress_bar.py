@@ -15,10 +15,12 @@ try:
     from aim import Repo as AimRepo
 
     @functools.lru_cache()
-    def get_aim_run(repo, run_hash):
+    def get_aim_run(repo, experiment, run_hash):
         from aim import Run
 
-        return Run(run_hash=run_hash, repo=repo, force_resume=True)
+        return Run(
+            run_hash=run_hash, experiment=experiment, repo=repo, force_resume=True
+        )
 
 except ImportError:
     get_aim_run = None
@@ -28,7 +30,14 @@ except ImportError:
 class AimProgressBarWrapper(BaseProgressBar):
     """Log to Aim."""
 
-    def __init__(self, wrapped_bar, aim_repo, aim_run_hash, aim_param_checkpoint_dir):
+    def __init__(
+        self,
+        wrapped_bar,
+        aim_repo,
+        aim_experiment,
+        aim_run_hash,
+        aim_param_checkpoint_dir,
+    ):
         self.wrapped_bar = wrapped_bar
 
         if get_aim_run is None:
@@ -51,7 +60,7 @@ class AimProgressBarWrapper(BaseProgressBar):
             if aim_run_hash:
                 logger.info(f"Appending to run: {aim_run_hash}")
 
-            self.run = get_aim_run(aim_repo, aim_run_hash)
+            self.run = get_aim_run(aim_repo, aim_experiment, aim_run_hash)
 
     def __len__(self):
         return len(self.wrapped_bar)

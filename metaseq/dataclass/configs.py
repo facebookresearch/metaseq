@@ -107,6 +107,10 @@ class CommonConfig(MetaseqDataclass):
         default=None,
         metadata={"help": "path to Aim repository"},
     )
+    aim_experiment: Optional[str] = field(
+        default=None,
+        metadata={"help": "aim experiment for readability"},
+    )
     aim_run_hash: Optional[str] = field(
         default=None,
         metadata={

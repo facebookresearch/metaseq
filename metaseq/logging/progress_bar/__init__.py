@@ -26,6 +26,7 @@ def get_progress_bar(
     wandb_project: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
     aim_repo: Optional[str] = None,
+    aim_experiment: Optional[str] = None,
     aim_run_hash: Optional[str] = None,
     aim_param_checkpoint_dir: Optional[str] = None,
 ):
@@ -45,7 +46,7 @@ def get_progress_bar(
 
     if aim_repo:
         bar = AimProgressBarWrapper(
-            bar, aim_repo, aim_run_hash, aim_param_checkpoint_dir
+            bar, aim_repo, aim_experiment, aim_run_hash, aim_param_checkpoint_dir
         )
 
     return bar

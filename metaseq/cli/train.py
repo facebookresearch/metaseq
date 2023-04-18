@@ -243,6 +243,11 @@ def train(
             if distributed_utils.is_master(cfg.distributed_training)
             else None
         ),
+        aim_experiment=(
+            cfg.common.aim_experiment
+            if distributed_utils.is_master(cfg.distributed_training)
+            else None
+        ),
         aim_run_hash=(
             cfg.common.aim_run_hash
             if distributed_utils.is_master(cfg.distributed_training)
@@ -680,6 +685,11 @@ def validate(
                 ),
                 aim_repo=(
                     cfg.common.aim_repo
+                    if distributed_utils.is_master(cfg.distributed_training)
+                    else None
+                ),
+                aim_experiment=(
+                    cfg.common.aim_experiment
                     if distributed_utils.is_master(cfg.distributed_training)
                     else None
                 ),
