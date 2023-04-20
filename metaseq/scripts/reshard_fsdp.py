@@ -32,6 +32,7 @@ def reshard_fsdp_checkpoints(
     unflatten_weights: bool = True,
     skip_optimizer_state: bool = False,
     output_dtype: Optional[str] = None,
+    drop_metaseq_req: bool = False,
 ) -> None:
     """
     Reshard FSDP checkpoints and write outputs to files. The model weights and optimizer states
@@ -68,6 +69,7 @@ def reshard_fsdp_checkpoints(
         unflatten_weights=unflatten_weights,
         skip_optimizer_state=skip_optimizer_state,
         dtype=_STRING_TO_DTYPE.get(output_dtype, None),
+        drop_metaseq_req=drop_metaseq_req,
     )
     for shard_idx, state_dict in enumerate(resharded_state_dicts):
         output_file = output.format(i=shard_idx)
@@ -82,6 +84,7 @@ def reshard_fsdp_state_dicts(
     unflatten_weights: bool = True,
     skip_optimizer_state: bool = False,
     dtype: Optional[torch.dtype] = None,
+    drop_metaseq_req: bool = False,
 ) -> List[Dict[str, Any]]:
     logger.info(f"Resharding state dicts into {num_output_shards} shard(s)")
     # Unshard model weights
@@ -118,6 +121,14 @@ def reshard_fsdp_state_dicts(
             resharded_state_dicts[shard_idx]["last_optimizer_state"] = optim_state
 
     # Copy other state values from the first shard
+    if drop_metaseq_req:
+        # mseq checkpoints are sometimes saved with their `train_iterator` state_dicts,
+        # which can only be unpickled in metaseq-aware envs. We strip these out here.
+        if ('extra_state' in shard_state_dicts[0] and
+            'train_iterator' in shard_state_dicts[0]['extra_state'] and
+            "tokenization_cache" in shard_state_dicts[0]['extra_state']['train_iterator']):
+            shard_state_dicts[0]['extra_state']['train_iterator'].pop("tokenization_cache")
+
     for key in shard_state_dicts[0]:
         if key not in {"model", "last_optimizer_state", "shard_metadata"}:
             for shard_idx in range(num_output_shards):
@@ -219,7 +230,7 @@ def reshard_fsdp_optim_state(
                 [_maybe_type(s["state"][idx][key], dtype) for s in shard_optim_states]
             )
             unpadded_value = _unpad_tensor(
-                shard=unsharded_value,
+                tensor=unsharded_value,
                 pad=shard_optim_padding.get(key, 0) if shard_optim_padding else 0,
             )
             chunks, _ = _shard_and_pad_tensor(unpadded_value, num_output_shards)
