@@ -127,7 +127,7 @@ def reshard_fsdp_state_dicts(
         if ('extra_state' in shard_state_dicts[0] and
             'train_iterator' in shard_state_dicts[0]['extra_state'] and
             "tokenization_cache" in shard_state_dicts[0]['extra_state']['train_iterator']):
-            shard_state_dicts[0]['extra_state']['train_iterator'].pop("tokenization_cache")
+            shard_state_dicts[0]['extra_state']['train_iterator'] = None
 
     for key in shard_state_dicts[0]:
         if key not in {"model", "last_optimizer_state", "shard_metadata"}:
