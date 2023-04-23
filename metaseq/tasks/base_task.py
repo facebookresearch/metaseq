@@ -420,9 +420,16 @@ class BaseTask(object):
     ) -> torch.utils.data.Dataset:
         raise NotImplementedError
 
-    def inference_step(self, generator, models, sample, prefix_tokens=None):
+    def inference_step(
+        self, generator, models, sample, prefix_tokens=None, recurring_punctuation=None
+    ):
         with torch.no_grad():
-            return generator.generate(models, sample, prefix_tokens=prefix_tokens)
+            return generator.generate(
+                models,
+                sample,
+                prefix_tokens=prefix_tokens,
+                recurring_punctuation=recurring_punctuation,
+            )
 
     def begin_epoch(self, epoch, model):
         """Hook function called before the start of each epoch."""

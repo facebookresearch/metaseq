@@ -19,6 +19,7 @@ from torch import Tensor
 from metaseq import utils
 from metaseq.data import data_utils
 from metaseq.models import BaseDecoder
+from metaseq.metaseq.hub_utils import RecurringPunctuation
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ class SequenceGenerator(nn.Module):
         sample: Dict[str, Dict[str, Tensor]],
         prefix_tokens: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
+        recurring_punctuation: Optional[RecurringPunctuation] = None,
     ):
         """Generate a batch of translations."""
         return self._generate(sample, prefix_tokens, bos_token=bos_token)
@@ -144,6 +146,7 @@ class SequenceGenerator(nn.Module):
         sample: Dict[str, Dict[str, Tensor]],
         prefix_tokens: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
+        recurring_punctuation: Optional[RecurringPunctuation] = None,
     ):
         """
         Args:
@@ -268,6 +271,7 @@ class SequenceGenerator(nn.Module):
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
+        prev_token = None
         for step in range(start_step, max_len):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -303,13 +307,20 @@ class SequenceGenerator(nn.Module):
                     all_lprobs[:, step] = lprobs
 
             eos_mask |= next_toks == self.eos
+
             for stop_token in self.stop:
                 # if there are other early stopping tokens, allow those to trigger stop
                 eos_mask |= next_toks == stop_token
+                eos_mask |= (
+                    recurring_punctuation
+                    and recurring_punctuation.multiple_token == stop_token
+                    and recurring_punctuation.single_token == next_toks == prev_token
+                )
 
             if torch.all(eos_mask):
                 break
 
+            prev_token = next_toks
             # forward through the next pass
             model_out = self.model.decoder(
                 tokens[:, : step + 1],

@@ -82,6 +82,15 @@ class TokenizerHubInterface(object):
         return self.tokenizer.decode(sentence)
 
 
+class RecurringPunctuation(object):
+    """Class for groping tokens of similar type. For example \n and \n\n"""
+
+    def __init__(self, single_token, multiple_token):
+        super().__init__()
+        self.single_token = single_token
+        self.multiple_token = multiple_token
+
+
 class GeneratorInterface:
     """
     PyTorch Hub interface for generating sequences from a pre-trained
@@ -323,14 +332,21 @@ class GeneratorInterface:
                 self.cfg.generation,
                 extra_gen_cls_kwargs=extra_gen_cls_kwargs,
             )
-
             # okay actually generate
             logger.info(f"Executing generation on input tensor size {src_tokens.shape}")
             if use_cuda:
                 batch = utils.move_to_cuda(batch)
 
             translate_start_time = time.time()
-            translations = self.task.inference_step(generator, self.models, batch)
+            recurring_punctuation = RecurringPunctuation(
+                self.bpe.bpe.encode("\n").ids[0], self.bpe.bpe.encode("\n\n").ids[0]
+            )
+            translations = self.task.inference_step(
+                generator,
+                self.models,
+                batch,
+                recurring_punctuation=recurring_punctuation,
+            )
             translate_time = time.time() - translate_start_time
             total_generation_time += translate_time
 
