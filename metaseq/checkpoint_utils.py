@@ -149,6 +149,20 @@ def checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
     return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
+def get_last_good_checkpoint(cfg):
+     # gets the last good checkpoint in save_dir only
+     checkpoints = [files for files in os.listdir(cfg.save_dir)]
+     unique_checkpoints = []
+     for file in checkpoints:
+         if file.startswith("checkpoint"):
+             unique_checkpoints.append(file.split("-")[0])
+     unique_checkpoints = set(unique_checkpoints)
+     unique_checkpoints = sorted(unique_checkpoints, reverse=True)
+     for checkpoint in unique_checkpoints:
+         return checkpoint
+     # no good checkpoints available, first launch
+     return None
+
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     """
     Load a checkpoint and restore the training iterator.
@@ -173,6 +187,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
 
     suffix = trainer.checkpoint_suffix
     default_restore_file = "checkpoint_last.pt"
+    best_checkpoint = get_last_good_checkpoint(cfg)
+    if best_checkpoint is not None:
+        cfg.restore_file = os.path.join(cfg.save_dir, best_checkpoint + ".pt")
     # default to loading from restore file.
     if cfg.restore_file == default_restore_file:
         checkpoint_path_to_load = os.path.join(
@@ -332,7 +349,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             reset_meters=reset_meters,
         )
 
-    if reset_dataloader and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
+    if reset_dataloader and best_checkpoint is not None and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
         logger.info(
             f"Disregarding --reset-dataloader since we are continuing past a requeue"
         )
