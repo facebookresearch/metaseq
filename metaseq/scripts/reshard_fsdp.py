@@ -219,7 +219,7 @@ def reshard_fsdp_optim_state(
                 [_maybe_type(s["state"][idx][key], dtype) for s in shard_optim_states]
             )
             unpadded_value = _unpad_tensor(
-                shard=unsharded_value,
+                unsharded_value,
                 pad=shard_optim_padding.get(key, 0) if shard_optim_padding else 0,
             )
             chunks, _ = _shard_and_pad_tensor(unpadded_value, num_output_shards)
