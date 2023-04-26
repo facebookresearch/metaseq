@@ -59,6 +59,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
 
         self.args = args
         self.embed_dim = args.decoder_embed_dim
+        self.adapter_dim = getattr(args, "adapter_dim", 200)
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
         self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.head_dim = int(self.embed_dim / args.decoder_attention_heads)
@@ -108,8 +109,43 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             truncate_init=getattr(args, "truncate_init", False),
         )
 
+
+        self.fc3 = self.build_fc2(
+            self.embed_dim,
+            self.adapter_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
+            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+            num_layers=args.decoder_layers,
+            dtype=utils.get_model_init_dtype(args),
+            disable_bias=getattr(args, "disable_bias", False),
+            truncate_init=getattr(args, "truncate_init", False),
+        )
+
+        self.fc4 = self.build_fc2(
+            self.adapter_dim,
+            self.embed_dim,
+            initialize_params_on_gpu=initialize_params_on_gpu,
+            full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
+            megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+            num_layers=args.decoder_layers,
+            dtype=utils.get_model_init_dtype(args),
+            disable_bias=getattr(args, "disable_bias", False),
+            truncate_init=getattr(args, "truncate_init", False),
+        )
+
+
+        self.fc3.to(device).to(dtype)
+        self.fc4.to(device).to(dtype)
+
         self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
         self.final_layer_norm.to(device).to(dtype)
+        
+        self.adapter_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
+        self.adapter_layer_norm.to(device).to(dtype)
+
 
     def build_fc1(
         self,
@@ -302,6 +338,16 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             fc1=self.fc1,
             activation_fn=self.activation_fn,
             fc2=self.fc2,
+            dropout_module=self.dropout_module,
+        )
+
+        residual = x
+        x = self.adapter_layer_norm(x)
+        x = FeedForward(
+            x,
+            fc1=self.fc3,
+            activation_fn=self.activation_fn,
+            fc2=self.fc4,
             dropout_module=self.dropout_module,
         )
         x = residual + x

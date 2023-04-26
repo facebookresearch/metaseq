@@ -83,6 +83,9 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
         default=False,
         metadata={"help": "move checkpointed activations to CPU after they are used."},
     )
+    # adapters
+    adapter_dim: int = field(default=200, metadata={"help": "adapter dimension"})
+
     # config for Fully Sharded Data Parallel (FSDP) training
     min_params_to_wrap: int = field(
         default=DEFAULT_MIN_PARAMS_TO_WRAP,
