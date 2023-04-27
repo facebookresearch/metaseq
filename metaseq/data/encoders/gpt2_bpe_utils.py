@@ -134,7 +134,7 @@ class Encoder:
         return text
 
 
-def get_encoder(encoder_json_path, vocab_bpe_path) -> Encoder:
+def get_encoder(encoder_json_path: str, vocab_bpe_path: str) -> Encoder:
     with open(encoder_json_path, "r") as f:
         encoder = json.load(f)
     with open(vocab_bpe_path, "r", encoding="utf-8") as f:
