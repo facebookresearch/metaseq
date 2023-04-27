@@ -55,7 +55,7 @@ def get_pairs(word: tuple) -> set:
 
 
 class Encoder:
-    def __init__(self, encoder, bpe_merges, errors="replace"):
+    def __init__(self, encoder, bpe_merges, errors="replace"):  # TODO
         self.encoder = encoder
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.errors = errors  # how to handle errors in decoding
@@ -76,7 +76,7 @@ class Encoder:
             r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         )
 
-    def bpe(self, token: list) -> str:
+    def bpe(self, token: list):
         if token in self.cache:
             return self.cache[token]
         word = tuple(token)
