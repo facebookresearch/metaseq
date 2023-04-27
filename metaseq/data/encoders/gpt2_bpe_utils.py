@@ -12,6 +12,7 @@ Original license: MIT
 
 import json
 from functools import lru_cache
+from typing import Set
 
 
 @lru_cache()
@@ -41,7 +42,7 @@ def bytes_to_unicode() -> dict:
     return dict(zip(bs, cs))
 
 
-def get_pairs(word): #TODO
+def get_pairs(word: tuple) -> set:
     """Return set of symbol pairs in a word.
     Word is represented as tuple of symbols (symbols being variable-length strings).
     """
