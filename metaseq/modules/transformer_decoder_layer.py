@@ -96,6 +96,14 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             **fc1_kwargs,
         )
 
+        self.adapter_activation_fn = ActivationFn(
+            self.activation_fn_name,
+            self.build_fc1,
+            self.adapter_dim,
+            args.decoder_ffn_embed_dim,
+            **fc1_kwargs,
+        )
+
         self.fc2 = self.build_fc2(
             args.decoder_ffn_embed_dim,
             self.embed_dim,
@@ -110,30 +118,30 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         )
 
 
-        self.fc3 = self.build_fc2(
+        self.fc3 = self.build_fc1(
             self.embed_dim,
             self.adapter_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
-            full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
+            full_megatron_init=False, #getattr(args, "full_megatron_init", False),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
-            num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
             truncate_init=getattr(args, "truncate_init", False),
+            adapter=True
         )
 
         self.fc4 = self.build_fc2(
             self.adapter_dim,
             self.embed_dim,
             initialize_params_on_gpu=initialize_params_on_gpu,
-            full_megatron_init=getattr(args, "full_megatron_init", False),
+            full_megatron_init=False, #getattr(args, "full_megatron_init", False),
             full_megatron_init_scalar=getattr(args, "full_megatron_init_scalar", 1.0),
             megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
             num_layers=args.decoder_layers,
             dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
             truncate_init=getattr(args, "truncate_init", False),
+            adapter=True,
         )
 
 
@@ -157,6 +165,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         dtype,
         disable_bias=False,
         truncate_init=False,
+        adapter=False,
     ):
         if not has_megatron_submodule:
             raise ImportError(
@@ -168,15 +177,16 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             bound = 1 / math.sqrt(fan_in)
             nn.init.uniform_(bias, -bound, bound)
 
+        init_method_bias = None
         if full_megatron_init:
             # Setting bias init method to None, initializes biases with zero.
             init_method_weights = utils.init_method_normal(
                 megatron_init_sigma, truncate_init=truncate_init
             )
-            init_method_bias = None
+        elif adapter:
+            init_method_weights = nn.init.xavier_normal_
         else:
             init_method_weights = _weight_init
-            init_method_bias = _init_method_bias
 
         return ColumnParallelLinear(
             input_dim,
@@ -202,6 +212,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         dtype,
         disable_bias=False,
         truncate_init=False,
+        adapter=False,
     ):
         if not has_megatron_submodule:
             raise ImportError(
@@ -215,6 +226,8 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
                 num_layers,
                 truncate_init=truncate_init,
             )
+        elif adapter:
+            init_method_weights = nn.init.xavier_normal_
         else:
             init_method_weights = _weight_init
 
@@ -233,7 +246,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             # fan_in, _ = nn.init._calculate_fan_in_and_fan_out(fc2.weight)
             fan_in = input_dim
             bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(fc2.bias, -bound, bound)
+            # nn.init.uniform_(fc2.bias, -bound, bound)
         return fc2
 
     def build_self_attention(self, embed_dim, args):
@@ -346,7 +359,7 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         x = FeedForward(
             x,
             fc1=self.fc3,
-            activation_fn=self.activation_fn,
+            activation_fn=self.adapter_activation_fn,
             fc2=self.fc4,
             dropout_module=self.dropout_module,
         )
