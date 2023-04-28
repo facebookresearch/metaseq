@@ -47,8 +47,19 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MULTICORPUS_MAX = -1
 
-LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3"])
+LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3", "cm3_ft_ar"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
+
+text_tasks = [
+    "coco_caption",
+    "flicker30k",
+    "image_paragraph",
+    "localized_narratives",
+    "okvqa",
+    "scienceqa",
+    "vizwiz",
+    "vqa2",
+]
 
 
 def map_old_image_token_to_new_image_token(text):
@@ -246,7 +257,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         self.has_cm3 = args.language_modeling_type in ["cm3", "racm3"]
         self.has_retrieval = args.language_modeling_type == "racm3"
-        if self.has_cm3:
+        if self.has_cm3 or args.language_modeling_type == "cm3_ft_ar":
             self._check_cm3_parameterization()
             self._create_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
@@ -312,6 +323,18 @@ class StreamingLanguageModelingTask(LegacyTask):
         else:
             raise ValueError(f"doc not know format")
         assert line.numel() > 1023
+        return line
+
+    def _tokenize_sft_text_ar(self, json):
+        line = torch.LongTensor(
+            [self.eod]
+            + self.tokenizer.encode(
+                map_old_image_token_to_new_image_token(json["image"]).rstrip()
+            ).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(json["text"].rstrip()).ids
+            + [self.eod]
+        )
         return line
 
     def _read_img2img(self, json):
@@ -563,17 +586,20 @@ class StreamingLanguageModelingTask(LegacyTask):
         ):
             if not file.endswith(".jsonl"):
                 continue
-            datasets.append(
-                JsonlDataset(
-                    path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    # tokenizer=self._tokenize_one_json,
-                    tokenizer=self._tokenize_ra_json
-                    if self.has_retrieval
-                    else self._tokenize_one_json,
-                    epoch=epoch,
-                    data_subshard_count=data_subshard_count,
+            if file in [""]:
+                pass
+            else:
+                datasets.append(
+                    JsonlDataset(
+                        path=os.path.join(self.args.data, split, cur_shard_str, file),
+                        # tokenizer=self._tokenize_one_json,
+                        tokenizer=self._tokenize_ra_json
+                        if self.has_retrieval
+                        else self._tokenize_one_json,
+                        epoch=epoch,
+                        data_subshard_count=data_subshard_count,
+                    )
                 )
-            )
             corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
@@ -603,7 +629,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 drop_last=(split == "train"),
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
-                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation
+                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
             )
         else:
             self.datasets[split] = DocumentToSequenceDataset(
