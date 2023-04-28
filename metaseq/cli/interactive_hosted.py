@@ -150,6 +150,8 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                         # added self-debiasing args
                         "self_debiasing",
                         "num_debiasing_prefixes",
+                        # inference efficiency metrics
+                        "collect_metrics",
                     ]:
                         if key in ro:
                             request_object[key] = ro[key]
