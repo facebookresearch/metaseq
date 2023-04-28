@@ -127,7 +127,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
             truncate_init=getattr(args, "truncate_init", False),
-            adapter=True
         )
 
         self.fc4 = self.build_fc2(
@@ -141,7 +140,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             dtype=utils.get_model_init_dtype(args),
             disable_bias=getattr(args, "disable_bias", False),
             truncate_init=getattr(args, "truncate_init", False),
-            adapter=True,
         )
 
 
@@ -165,7 +163,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         dtype,
         disable_bias=False,
         truncate_init=False,
-        adapter=False,
     ):
         if not has_megatron_submodule:
             raise ImportError(
@@ -183,8 +180,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
             init_method_weights = utils.init_method_normal(
                 megatron_init_sigma, truncate_init=truncate_init
             )
-        elif adapter:
-            init_method_weights = nn.init.xavier_normal_
         else:
             init_method_weights = _weight_init
 
@@ -212,7 +207,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
         dtype,
         disable_bias=False,
         truncate_init=False,
-        adapter=False,
     ):
         if not has_megatron_submodule:
             raise ImportError(
@@ -226,8 +220,6 @@ class ModelParallelTransformerDecoderLayer(nn.Module):
                 num_layers,
                 truncate_init=truncate_init,
             )
-        elif adapter:
-            init_method_weights = nn.init.xavier_normal_
         else:
             init_method_weights = _weight_init
 
