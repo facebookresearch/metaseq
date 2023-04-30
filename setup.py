@@ -312,6 +312,7 @@ def do_setup():
                 "pyarrow",
                 "boto3",
                 "pandas",
+                "bitsandbytes",
             ],
             # install via: pip install -e ".[multimodal]"
             "multimodal": [
