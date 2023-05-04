@@ -12,7 +12,7 @@ Original license: MIT
 
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Union
 
 
 @lru_cache()
@@ -76,7 +76,7 @@ class Encoder:
             r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         )
 
-    def bpe(self, token: str) -> Any[str, list]:
+    def bpe(self, token: str) -> Union[str, list]:
         if token in self.cache:
             return self.cache[token]
         word = tuple(token)
