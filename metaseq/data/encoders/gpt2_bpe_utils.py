@@ -26,16 +26,16 @@ def bytes_to_unicode() -> dict:
     And avoids mapping to whitespace/control characters the bpe code barfs on.
     """
     bs = (
-        list(range(ord("!"), ord("~") + 1))
-        + list(range(ord("¡"), ord("¬") + 1))
-        + list(range(ord("®"), ord("ÿ") + 1))
+            list(range(ord("!"), ord("~") + 1))
+            + list(range(ord("¡"), ord("¬") + 1))
+            + list(range(ord("®"), ord("ÿ") + 1))
     )
     cs = bs[:]
     n = 0
-    for b in range(2**8):
+    for b in range(2 ** 8):
         if b not in bs:
             bs.append(b)
-            cs.append(2**8 + n)
+            cs.append(2 ** 8 + n)
             n += 1
     cs = [chr(n) for n in cs]
     return dict(zip(bs, cs))
@@ -54,7 +54,7 @@ def get_pairs(word: tuple) -> set:
 
 
 class Encoder:
-    def __init__(self, encoder, bpe_merges, errors="replace"):  # TODO
+    def __init__(self, encoder, bpe_merges: list, errors: str = "replace"):  # TODO
         self.encoder = encoder
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.errors = errors  # how to handle errors in decoding
