@@ -12,6 +12,7 @@ Original license: MIT
 
 import json
 from functools import lru_cache
+from typing import Any
 
 
 @lru_cache()
@@ -26,16 +27,16 @@ def bytes_to_unicode() -> dict:
     And avoids mapping to whitespace/control characters the bpe code barfs on.
     """
     bs = (
-            list(range(ord("!"), ord("~") + 1))
-            + list(range(ord("¡"), ord("¬") + 1))
-            + list(range(ord("®"), ord("ÿ") + 1))
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
     )
     cs = bs[:]
     n = 0
-    for b in range(2 ** 8):
+    for b in range(2**8):
         if b not in bs:
             bs.append(b)
-            cs.append(2 ** 8 + n)
+            cs.append(2**8 + n)
             n += 1
     cs = [chr(n) for n in cs]
     return dict(zip(bs, cs))
@@ -54,7 +55,9 @@ def get_pairs(word: tuple) -> set:
 
 
 class Encoder:
-    def __init__(self, encoder, bpe_merges: list, errors: str = "replace"):  # TODO
+    def __init__(
+        self, encoder: dict, bpe_merges: list, errors: str = "replace"
+    ):
         self.encoder = encoder
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.errors = errors  # how to handle errors in decoding
@@ -75,7 +78,7 @@ class Encoder:
             r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         )
 
-    def bpe(self, token):
+    def bpe(self, token: str) -> Any[str, list]:
         if token in self.cache:
             return self.cache[token]
         word = tuple(token)
