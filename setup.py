@@ -20,7 +20,7 @@ if sys.version_info < (3, 6):
     sys.exit("Sorry, Python >= 3.6 is required for metaseq.")
 
 
-def write_version_py() -> str:
+def write_version_py():
     with open(os.path.join("metaseq", "version.txt")) as f:
         version = f.read().strip()
 
@@ -60,13 +60,13 @@ class NumpyExtension(Extension):
         super().__init__(*args, **kwargs)
 
     @property
-    def include_dirs(self) -> list:
+    def include_dirs(self):
         import numpy
 
         return self.__include_dirs + [numpy.get_include()]
 
     @include_dirs.setter
-    def include_dirs(self, dirs: list):
+    def include_dirs(self, dirs):
         self.__include_dirs = dirs
 
 
