@@ -165,15 +165,7 @@ class StreamingLanguageModelingTask(LegacyTask):
     def __init__(self, args):
         super().__init__(args)
 
-        if not has_hf_tokenizers:
-            raise ImportError("Please install tokenizers with: pip install tokenizers")
-
-        if args.hf_tokenizer:
-            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
-        else:
-            self.tokenizer = ByteLevelBPETokenizer.from_file(
-                args.vocab_filename, args.merges_filename
-            )
+        self.tokenizer = self._init_tokenizer(args)
 
         if max(args.update_freq) > 1:
             raise NotImplementedError(
@@ -260,6 +252,18 @@ class StreamingLanguageModelingTask(LegacyTask):
     @classmethod
     def setup_task(cls, args, **kwargs):
         return cls(args)
+
+    def _init_tokenizer(self, args):
+        if not has_hf_tokenizers:
+            raise ImportError("Please install tokenizers with: pip install tokenizers")
+
+        if args.hf_tokenizer:
+            self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
+        else:
+            self.tokenizer = ByteLevelBPETokenizer.from_file(
+                args.vocab_filename, args.merges_filename
+            )
+        return self.tokenizer
 
     def _tokenize_one_json(self, json):
         text = json["text"]

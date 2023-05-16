@@ -564,7 +564,6 @@ def load_model_ensemble_and_task(
             else:
                 # build model for ensemble
                 model = task.build_model(cfg.model)
-
             model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble

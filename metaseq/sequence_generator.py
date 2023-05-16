@@ -58,6 +58,7 @@ class SequenceGenerator(nn.Module):
         self.pad = tgt_dict.pad()
         self.unk = tgt_dict.unk()
         self.eos = tgt_dict.eos()
+        self.bos = tgt_dict.bos()
         self.vocab_size = len(tgt_dict)
         self.beam_size = beam_size
         # the max beam size is the dictionary size - 1, since we never select pad
@@ -118,7 +119,7 @@ class SequenceGenerator(nn.Module):
             src_tokens = net_input["src_tokens"]
             # length of the source text being the character length except EndOfSentence and pad
             src_lengths = (
-                (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
+                (src_tokens.ne(self.eos) & src_tokens.ne(self.pad) & src_tokens.ne(self.bos)).long().sum(dim=1)
             )
         elif "source" in net_input:
             src_tokens = net_input["source"]

@@ -39,3 +39,6 @@ import metaseq.pdb  # noqa
 import metaseq.tasks  # noqa
 
 import metaseq.benchmark  # noqa
+
+import metaseq_internal.projects.blenderbot3x
+import metaseq_internal.projects.blenderbot3x.models

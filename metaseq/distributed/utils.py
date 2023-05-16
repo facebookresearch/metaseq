@@ -182,6 +182,8 @@ def distributed_init(cfg: MetaseqConfig):
     global _USE_MEGATRON
     _USE_MEGATRON = True
     initialize_model_parallel(cfg.common.model_parallel_size)
+    import fairscale.nn.model_parallel.initialize as fs_init
+    fs_init.initialize_model_parallel(cfg.common.model_parallel_size)
     if torch.cuda.is_available():
         dist.all_reduce(torch.zeros(1).cuda(), group=get_model_parallel_group())
     model_parallel_cuda_manual_seed(cfg.common.seed)
