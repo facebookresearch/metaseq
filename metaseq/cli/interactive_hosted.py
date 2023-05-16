@@ -140,6 +140,18 @@ def batching_loop(timeout=100, max_tokens=MAX_BATCH_TOKENS):
                         "echo",
                         "logprobs",
                         "stop",
+                        "omega_bound",
+                        "lambda_decay",
+                        "alpha_presence",
+                        "alpha_frequency",
+                        "alpha_presence_src",
+                        "alpha_frequency_src",
+                        "alpha_src_penalty_end_idx",
+                        # added self-debiasing args
+                        "self_debiasing",
+                        "num_debiasing_prefixes",
+                        # inference efficiency metrics
+                        "collect_metrics",
                     ]:
                         if key in ro:
                             request_object[key] = ro[key]
@@ -318,6 +330,49 @@ def completions(engine=None):
         )
         generation_args["best_of"] = MAX_BEAM
         generation_args["n"] = min(MAX_BEAM, int(generation_args["n"]))
+
+    if "logprobs" in generation_args:
+        generation_args["logprobs"] = int(generation_args["logprobs"])
+    else:
+        generation_args["logprobs"] = 0
+
+    # factual nucleus omega bound
+    if "omega_bound" in generation_args:
+        generation_args["omega_bound"] = round(float(generation_args["omega_bound"]), 1)
+    else:
+        generation_args["omega_bound"] = 0.3
+
+    # factual nucleus lambda decay
+    if "lambda_decay" in generation_args:
+        generation_args["lambda_decay"] = round(
+            float(generation_args["lambda_decay"]), 1
+        )
+    else:
+        generation_args["lambda_decay"] = -1
+
+    # repetition penalties
+    for key in ["alpha_frequency", "alpha_presence"]:
+        for suffix in ["", "_src"]:
+            _gen_arg = f"{key}{suffix}"
+            if _gen_arg in generation_args:
+                generation_args[_gen_arg] = round(float(generation_args[_gen_arg]), 1)
+            else:
+                generation_args[_gen_arg] = 0
+
+    if "alpha_src_penalty_end_idx" in generation_args:
+        generation_args["alpha_src_penalty_end_idx"] = int(
+            generation_args["alpha_src_penalty_end_idx"]
+        )
+    else:
+        generation_args["alpha_src_penalty_end_idx"] = -1
+
+    # added self-debiasing args
+    if "num_debiasing_prefixes" in generation_args:
+        generation_args["num_debiasing_prefixes"] = int(
+            generation_args["num_debiasing_prefixes"]
+        )
+    else:
+        generation_args["num_debiasing_prefixes"] = 0
 
     ret_queue = queue.Queue()
     for i, prompt in enumerate(prompts):

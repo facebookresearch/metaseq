@@ -10,6 +10,19 @@ import queue
 import math
 
 
+QUEUE_KEYS = [
+    "temperature",
+    "top_p",
+    "n",
+    "lambda_decay",
+    "omega_bound",
+    "alpha_presence",
+    "alpha_frequency",
+    "alpha_presence_src",
+    "alpha_frequency_src",
+]
+
+
 @dataclass
 class WorkItem:
     """
@@ -33,11 +46,7 @@ class WorkItem:
 
     def queue_key(self):
         return PriorityQueueRingShard.key_from_dictionary(
-            {
-                "temperature": self.data["temperature"],
-                "top_p": self.data["top_p"],
-                "n": self.data["n"],
-            }
+            {k: self.data[k] for k in QUEUE_KEYS}
         )
 
     @staticmethod

@@ -42,6 +42,34 @@ def generate_using_generator_interface(cfg: MetaseqConfig, **kwargs):
     return generated_text
 
 
+def generate_using_generator_interface_and_collect_metrics(
+    cfg: MetaseqConfig, **kwargs
+):
+    generator = GeneratorInterface(cfg)
+    models = generator.load_model()  # noqa: F841
+
+    request_object = {
+        "inputs": [PROMPT],
+        "temperature": 1.0,
+        "max_tokens": [0],
+        "min_tokens": [0],
+        "top_p": 1.0,
+        "n": 1,
+        "best_of": 1,
+        "echo": True,
+        "logprobs": 0,
+        "seed": 1,
+        "collect_metrics": True,
+    }
+
+    generated_text = generator.generate(**request_object)
+
+    # Destroy torch distributed process groups. This needs to be executed in each spawned process
+    # https://github.com/pytorch/pytorch/issues/48203
+    dist.destroy_process_group()
+    return generated_text
+
+
 # TEST FUNCTIONS #
 def test_generator_interface(data_regression, num_regression):
     model_path = os.path.join(os.path.dirname(__file__), "125m")
@@ -67,6 +95,42 @@ def test_generator_interface(data_regression, num_regression):
         )
     }
     generated_beam.pop("token_scores")
+
+    num_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
+    data_regression.check(generated_beam)
+
+
+def test_generator_interface_with_metrics(data_regression, num_regression):
+    model_path = os.path.join(os.path.dirname(__file__), "125m")
+    cfg = create_generation_config_with_defaults(
+        model_path, ddp_backend="fully_sharded"
+    )
+
+    overall_generation = distributed_utils.call_main(
+        cfg, generate_using_generator_interface_and_collect_metrics
+    )
+    # We can potentially pass a list of inputs to the generate function.
+    # Here, we look at the first (and only) generation
+    [generation_for_prompt] = overall_generation
+    # We use best_of = 1, so we get only one beam search result
+    [generated_beam] = generation_for_prompt
+
+    ndarray_data = {
+        "token_scores": np.array(
+            [
+                np.nan if elem is None else elem
+                for elem in generated_beam["token_scores"]
+            ]
+        ),
+    }
+    generated_beam.pop("token_scores")
+
+    # Just check presence of noisy / env-sensitive metrics
+    assert "metrics" in generated_beam
+    assert "gpu_peak_mem_bytes" in generated_beam["metrics"]
+    assert "gpu_time_seconds" in generated_beam["metrics"]
+    generated_beam["metrics"].pop("gpu_peak_mem_bytes")
+    generated_beam["metrics"].pop("gpu_time_seconds")
 
     num_regression.check(ndarray_data, default_tolerance=dict(atol=1e-2))
     data_regression.check(generated_beam)

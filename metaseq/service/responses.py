@@ -32,6 +32,7 @@ class OAIResponse:
                         "top_logprobs": result["top_logprobs"],
                         "finish_reason": "length",  # TODO: implement this
                     },
+                    "metrics": result.get("metrics", None),
                 }
                 for result in self.results
             ],

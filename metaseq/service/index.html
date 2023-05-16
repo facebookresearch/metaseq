@@ -211,6 +211,42 @@ demo, NO safety measures are in place.
         oninput="this.nextElementSibling.value = this.value" name="top_p">
     <output>0.9</output>
     </div>
+    <div>
+        <label>Repetition Penalty (presence):</label>
+        <input type="range" value="0.0" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="alpha_presence">
+        <output>0.0</output>
+    </div>
+    <div>
+        <label>Repetition Penalty (frequency):</label>
+        <input type="range" value="0.0" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="alpha_frequency">
+        <output>0.0</output>
+    </div>
+    <div>
+        <label>Repetition Penalty (context presence):</label>
+        <input type="range" value="0.0" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="alpha_presence_src">
+        <output>0.0</output>
+    </div>
+    <div>
+        <label>Repetition Penalty (context frequency):</label>
+        <input type="range" value="0.0" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="alpha_frequency_src">
+        <output>0.0</output>
+    </div>
+    <div>
+        <label>top-p decay factor</label>
+        <input type="range" value="0.0" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="lambda_decay">
+        <output>0.0</output>
+    </div>
+    <div>
+        <label>top-p decay lower-bound</label>
+        <input type="range" value="0.3" min="0.0" max="1.0" step="0.10" class="slider"
+            oninput="this.nextElementSibling.value = this.value" name="omega_bound">
+        <output>0.3</output>
+    </div>
     <div class="submit-holder">
         <input type="submit" value="Submit" id="generate-form-button"/>
     </div>

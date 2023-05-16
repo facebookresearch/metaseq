@@ -8,25 +8,168 @@
 
 import logging
 import math
+# <<<<<<< HEAD
 import sys
 from typing import Dict, List, Optional
+# =======
+from typing import Dict, List, Optional, Tuple
+from metaseq.data.dictionary import Dictionary
+# >>>>>>> origin/debiasing
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
+# <<<<<<< HEAD
 from metaseq import utils
 from metaseq.data import data_utils
 from metaseq.models import BaseDecoder
+# =======
+# added for self-debiasing
+from transformers import PreTrainedTokenizer
+
+# >>>>>>> origin/debiasing
 
 logger = logging.getLogger(__name__)
+
+
+class SelfDebiasingLogitsProcessor:
+    """
+    This class represents a logits processor that applies self-debiasing.
+    Modified based on Schick et al. (https://arxiv.org/pdf/2103.00453.pdf)
+    """
+
+    def __init__(
+        self,
+        num_debiasing_prefixes: int,
+        decay_constant: float = 50,
+        epsilon: float = 0.01,
+        debug: bool = False,
+        tokenizer: Optional[PreTrainedTokenizer] = None,
+    ):
+        """
+        :param num_debiasing_prefixes: the number of debiasing prefixes used
+        :param decay_constant: the decay constant (lambda in the paper)
+        :param epsilon: the minimum factor by which each probability is multiplied
+        :param debug: whether to print additional debugging output
+        :param tokenizer: a tokenizer used to print debugging output
+        """
+        assert (
+            not debug or tokenizer
+        ), "If debug=True, a tokenizer must be passed to SelfDebiasingLogitsProcessor()"
+        self.num_debiasing_prefixes = num_debiasing_prefixes
+        self.decay_constant = decay_constant
+        self.epsilon = epsilon
+        self.debug = debug
+        self.tokenizer = tokenizer
+
+    def __call__(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor
+    ) -> torch.FloatTensor:
+        batch_size = scores.shape[0] // (1 + self.num_debiasing_prefixes)
+        regular_sentence_indices = range(batch_size)
+        for regular_sentence_idx in regular_sentence_indices:
+            bias_indices = self._get_bias_indices(regular_sentence_idx, batch_size)
+            if bias_indices:
+                self._debias_scores(scores, regular_sentence_idx, bias_indices)
+        return scores
+
+    def _get_bias_indices(
+        self, regular_sentence_idx: int, batch_size: int
+    ) -> List[int]:
+        """
+        Returns the indices of all self-debiasing inputs for a regular input
+        """
+        return [
+            regular_sentence_idx + (prefix_idx + 1) * batch_size
+            for prefix_idx in range(self.num_debiasing_prefixes)
+        ]
+
+    def _debias_scores(
+        self, scores: torch.FloatTensor, regular_sent_idx: int, bias_indices: List[int]
+    ) -> None:
+        """
+        Partially debiases the given scores considering a single sentence
+        and the corresponding self-debiasing inputs
+        """
+        logits_biased = [scores[bias_idx] for bias_idx in bias_indices]
+
+        mask = self._generate_decay_mask(scores[regular_sent_idx], logits_biased)
+        scores[regular_sent_idx] = torch.log(
+            self._apply_decay_mask(scores[regular_sent_idx], mask)
+        )
+
+        for debiasing_sent_idx in bias_indices:
+            scores[debiasing_sent_idx] = scores[regular_sent_idx]
+
+    def _apply_decay_mask(
+        self, logits: torch.Tensor, decay_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Applies exponential decay to a tensor of logits
+        """
+        probabilities = logits.softmax(dim=-1)
+        decay_mask = torch.exp(-decay_mask * self.decay_constant)
+        decay_mask = torch.max(
+            decay_mask, torch.tensor([self.epsilon], device=decay_mask.device)
+        )
+        probabilities = probabilities * decay_mask
+        probabilities = probabilities / probabilities.sum(dim=-1)
+        return probabilities
+
+    def _generate_decay_mask(
+        self,
+        logits_regular: torch.FloatTensor,
+        logits_biased_list: List[torch.FloatTensor],
+    ) -> torch.Tensor:
+        """Computes the alpha values (see paper) for each token and stores them in a mask tensor"""
+        p_regular = logits_regular.softmax(dim=-1)
+        p_biased = None
+
+        for logits_biased in logits_biased_list:
+            if p_biased is None:
+                p_biased = logits_biased.softmax(dim=-1)
+            else:
+                p_biased = torch.max(p_biased, logits_biased.softmax(dim=-1))
+
+        if self.debug:
+            print(
+                f"== Before Debiasing ==\n"
+                f"Top 5 predictions (regular): {self._get_most_likely_tokens(p_regular, k=5)}\n"
+                f"Top 5 predictions (biased): {self._get_most_likely_tokens(p_biased, k=5)}"
+            )
+
+        mask = torch.max(
+            p_biased - p_regular, torch.tensor([0.0], device=p_regular.device)
+        )
+
+        if self.debug:
+            p_regular = self._apply_decay_mask(logits_regular, mask)
+            print(
+                f"== After Debiasing ==\n"
+                f"Top 5 predictions (regular): {self._get_most_likely_tokens(p_regular, k=5)}"
+            )
+
+        return mask
+
+    def _get_most_likely_tokens(
+        self, probabilities_tensor: torch.Tensor, k: int
+    ) -> List[Tuple[str, float]]:
+        """
+        Returns the most likely tokens according to a tensor of probabilities
+        """
+        assert len(probabilities_tensor.shape) == 1
+        values, indices = torch.topk(probabilities_tensor, k=k, dim=-1)
+        # tokens = self.tokenizer.convert_ids_to_tokens(indices)
+        tokens = self.tokenizer.decode(indices.tolist())
+        return list(zip(tokens, [pv.item() for pv in values]))
 
 
 class SequenceGenerator(nn.Module):
     def __init__(
         self,
         models,
-        tgt_dict,
+        tgt_dict: Dictionary,
         beam_size: int = 1,
         max_len_a: int = 0,
         max_len_b: int = 200,
@@ -36,8 +179,27 @@ class SequenceGenerator(nn.Module):
         stop: Optional[List[int]] = None,
         topp: float = -1,
         profile=False,
+        omega_bound: float = 0.3,
+        lambda_decay: float = -1,
+        alpha_presence: float = 0.0,
+        alpha_frequency: float = 0.0,
+        alpha_presence_src: float = 0.0,
+        alpha_frequency_src: float = 0.0,
+        alpha_src_penalty_end_idx: int = -1,
+        # added self-debiasing args
+        self_debiasing: bool = False,
+        num_debiasing_prefixes: int = 0,
+        decay_constant: float = 50,
+        epsilon: float = 0.01,
+        debug: bool = False,
+        tokenizer=None,
+        collect_metrics: bool = False,
     ):
         """Generates translations of a given source sentence.
+
+        For discussion of repetition penalties, see
+        https://github.com/facebookresearch/metaseq/pull/306
+
         Args:
             models: ensemble of models
             beam_size (int, optional): beam width (default: 1)
@@ -51,6 +213,26 @@ class SequenceGenerator(nn.Module):
             stop: An optional list of other tokens that can cause early termination.
             need_logprobs (bool): Return additional log-prob distributions for
                 every timestep of the search.
+            omega_bound (float, optional): lower p-bound when decaying nucleus
+            lamda_decay (float, optional): decay factor for decaying p in nucleus sampling
+                default -1 disables.
+            alpha_presence (float, optional): repetition penalty for token presence in
+                current generation
+            alpha_frequency (float, optional): repetition penalty for token frequency in
+                current generation
+            alpha_presence_src (float, optional): repetition penalty for token presence in
+                incoming context
+            alpha_frequency_src (float, optional): repetition penalty for token frequency in
+                incoming context
+            alpha_src_penalty_end_idx (int, optional): index of the last token in incoming
+                context to consider for repetition penalty
+            self_debiasing (bool, optional): whether to conduct self-debiasing or not,
+                default is not.
+            num_debiasing_prefixes (int, optional): the number of debiasing prefixes used
+            decay_constant (float, optional): the decay constant (lambda in the paper)
+            epsilon (float, optional): the minimum factor by which each probability is multiplied
+            debug (bool, optional): whether to print additional debugging output
+            tokenizer (optional): a tokenizer used to print debugging output
         """
         super().__init__()
         self.model = models[0]
@@ -76,6 +258,36 @@ class SequenceGenerator(nn.Module):
 
         self.model.eval()
         self.profile = profile
+
+        # factual nucleus
+        buffer = torch.zeros(beam_size)
+        self.sampling_topp = max(0, topp)
+        self.sampling_topp_tensor = (
+            buffer.clone().fill_(self.sampling_topp).unsqueeze(1)
+        )
+        self.init_p = self.sampling_topp_tensor.clone()
+        self.lambda_decay = lambda_decay
+        self.omega_bound = torch.tensor([omega_bound])
+        self.toks_since_reset = buffer.clone()
+        self.full_stop_list = torch.tensor([tgt_dict.index(w) for w in [".", "?", "!"]])
+
+        # repetition reduction
+        self.alpha_presence = alpha_presence
+        self.alpha_frequency = alpha_frequency
+        self.alpha_presence_src = alpha_presence_src
+        self.alpha_frequency_src = alpha_frequency_src
+        self.alpha_src_penalty_end_idx = alpha_src_penalty_end_idx
+
+        # self-debiasing args
+        self.self_debiasing = self_debiasing
+        self.num_debiasing_prefixes = num_debiasing_prefixes
+        self.decay_constant = decay_constant
+        self.epsilon = epsilon
+        self.debug = debug
+        self.tokenizer = tokenizer
+
+        # metrics
+        self.collect_metrics = collect_metrics
 
     def cuda(self):
         self.model.cuda()
@@ -148,14 +360,20 @@ class SequenceGenerator(nn.Module):
         new_order = new_order.to(src_tokens.device).long()
 
         # initialize buffers
-        scores = torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
-        tokens = (
-            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
+        (
+            scores,
+            tokens,
+            count_tokens,
+            count_tokens_src,
+        ) = self._initialize_generation_buffers(
+            bsz, beam_size, int(max_len), src_tokens
         )
 
         # notes:
         # - scores \in FloatTensor(bsz * beam_size, max_len)
         # - tokens \in LongTensor(bsz * beam_size, max_len)
+        # - count_tokens \in LongTensor(bsz * beam_size, vocab_size)
+        # - count_tokens_src \in LongTensor(bsz * beam_size, vocab_size)
         # - src_tokens \in LongTensor(bsz, prompt_len)
         # - all_lprobs \in FloatTensor(bsz * beam_size, max_len, vocab_size)
         #   is the next word distribution at every timestep
@@ -179,6 +397,24 @@ class SequenceGenerator(nn.Module):
             tokens[:, :start_step],
             incremental_state=incremental_states,
         )
+
+        if self.self_debiasing:
+            # instantiate logits processors
+            logits_processor = SelfDebiasingLogitsProcessor(
+                num_debiasing_prefixes=self.num_debiasing_prefixes,
+                decay_constant=self.decay_constant,
+                epsilon=self.epsilon,
+                debug=self.debug,
+                tokenizer=self.tokenizer,
+            )
+
+            # pre-process distribution (get the next token logits)
+            next_token_logits = model_out[0][:, -1, :]
+            next_token_scores = logits_processor(None, next_token_logits)
+
+            # plug back to model_predictions
+            model_out[0][:, -1, :] = next_token_scores
+
         # temperature and normalization
         # convert to float before the temparture divide to ensure good precision.
         # Avoid dividing by 1.0 to prevent unnecessary numerical instability
@@ -188,7 +424,9 @@ class SequenceGenerator(nn.Module):
             model_predictions.div_(self.temperature)
         # lprobs is the log probability of each possible token in every position
         # lprobs \in FloatTensor(bsz * beam_size, prompt_len, vocab_size)
-        lprobs = self.model.get_normalized_probs(model_predictions, log_probs=True)
+        lprobs = self.model.get_normalized_probs(
+            model_predictions, log_probs=True
+        )  # [7,30,50272]
 
         # don't allow generation of eos/pad
         model_predictions[:, :, self.eos] = -math.inf
@@ -205,7 +443,9 @@ class SequenceGenerator(nn.Module):
         # rest of the vocab. Note the shift of 1 here b/c autoregressive.
         prompt_tokens = tokens[:, 1:start_step].unsqueeze(-1)
         # look up a specific vocab logprob, and broadcast it into scores
-        toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(-1)
+        toscores = torch.gather(lprobs, -1, prompt_tokens).squeeze(
+            -1
+        )  # find logprob correspond to original prompt tokens
         scores[:, 1:start_step] = toscores.type_as(scores)
         # reset scores after the last point of forced decoding and gather the
         # probabilities of the most recent token prediction, as search
@@ -215,10 +455,19 @@ class SequenceGenerator(nn.Module):
             prompt_len = src_lengths[i]
             scores[i * beam_size : (i + 1) * beam_size, prompt_len + 1 :] = 0.0  # reset
             lprobs_cut.append(lprobs[i * beam_size : (i + 1) * beam_size, prompt_len])
-        lprobs = torch.cat(lprobs_cut, dim=0)
+            # most recent token lprobs
+        lprobs = torch.cat(lprobs_cut, dim=0)  # lprobs for most recent token
 
         eos_mask = torch.zeros(lprobs.size(0), dtype=torch.bool, device=lprobs.device)
 
+# <<<<<<< HEAD
+# =======
+        if self.collect_metrics:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+
+# >>>>>>> origin/debiasing
         for step in range(start_step, max_len):
             if step < min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
@@ -234,13 +483,37 @@ class SequenceGenerator(nn.Module):
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
 
+            # apply repetition penalties
+            lprobs = self._apply_repetition_penalties(
+                lprobs, count_tokens, count_tokens_src
+            )
+
             # already ended beams should only do eos
             lprobs[eos_mask, : self.eos] = -math.inf
             lprobs[eos_mask, self.eos + 1 :] = -math.inf
 
             # find our next tokens and record them
             # protect this step for the last token so we don't overflow
+            # get lprobs for the most probable next token
             next_scores, next_toks = self._sample_topp(lprobs)
+
+            # ensure that each debiasing sentence is continued
+            # in the same way as the original sentence
+            if self.self_debiasing:
+                batch_size = next_toks.shape[0] // (
+                    1 + logits_processor.num_debiasing_prefixes
+                )
+                regular_sentence_indices = range(batch_size)
+                for regular_sentence_idx in regular_sentence_indices:
+                    debiasing_sentence_indices = logits_processor._get_bias_indices(
+                        regular_sentence_idx, batch_size
+                    )
+                    for debiasing_sentence_idx in debiasing_sentence_indices:
+                        next_toks[debiasing_sentence_idx] = next_toks[
+                            regular_sentence_idx
+                        ]
+
+            count_tokens = self._update_repetition_counts(next_toks, count_tokens)
             if step < max_len:
                 tokens[:, step] = next_toks
                 scores[:, step] = next_scores
@@ -260,6 +533,15 @@ class SequenceGenerator(nn.Module):
                 tokens[:, : step + 1],
                 incremental_state=incremental_states,
             )
+
+            if self.self_debiasing:
+                # pre-process distribution
+                next_token_logits = model_out[0][:, -1, :]
+                next_token_scores = logits_processor(None, next_token_logits)
+
+                # plug back to model_predictions
+                model_out[0][:, -1, :] = next_token_scores
+
             # see above for why this must remain float
             model_predictions = model_out[0].float()
             if self.temperature > 0 and self.temperature != 1.0:
@@ -281,12 +563,83 @@ class SequenceGenerator(nn.Module):
             "tokens": tokens.view(bsz, beam_size, -1),
             "scores": scores.view(bsz, beam_size, -1),
         }
+
         if all_lprobs is not None:
             all_lprobs = all_lprobs[sorted_indices]
             retval["distributions"] = all_lprobs.view(
                 bsz, beam_size, -1, self.vocab_size
             )
+
+        if self.collect_metrics:
+            end.record()
+            torch.cuda.synchronize()
+            gpu_time_seconds = start.elapsed_time(end)
+            gpu_peak_mem_bytes = torch.cuda.memory_stats()["allocated_bytes.all.peak"]
+            gen_tokens = tokens[:, start_step:]
+            output_tokens = (
+                (gen_tokens.ne(self.eos) & gen_tokens.ne(self.pad)).long().sum().item()
+            )
+            retval["metrics"] = {
+                "gpu_time_seconds": gpu_time_seconds,
+                "gpu_peak_mem_bytes": gpu_peak_mem_bytes,
+                "input_tokens": src_lengths.sum().item(),
+                "output_tokens": output_tokens,
+            }
+
         return retval
+
+    def _initialize_generation_buffers(
+        self, bsz: int, beam_size: int, max_len: int, src_tokens: torch.Tensor
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
+    ]:
+        """
+        Initialize buffers for use during generation.
+
+        Args:
+            bsz (int): batch size
+            beam_size (int): beam size
+            max_len (int): max gen length
+            src_tokens (tensor): incoming context
+
+        Returns:
+            scores: token score buffer [bsz*beam_size, max_len]
+            tokens: generation tokens [bsz*beam_size, max_len]
+            count_tokens: token count buffer for in-generation repetition penalty
+                [bsz*beam_size, vocab_size]
+            count_tokens_src: token count buffer for in-context repetition penalty
+                [bsz*beam_size, vocab_size]
+        """
+        scores = torch.zeros(bsz * beam_size, max_len).to(src_tokens).float()
+        tokens = (
+            torch.zeros(bsz * beam_size, max_len).to(src_tokens).long().fill_(self.pad)
+        )
+        count_tokens = None
+        count_tokens_src = None
+        if self.alpha_presence > 0 or self.alpha_frequency > 0:
+            count_tokens = torch.zeros(bsz * beam_size, self.vocab_size).to(src_tokens)
+        if self.alpha_presence_src > 0 or self.alpha_frequency_src > 0:
+            # histc requires floats
+            float_src_tokens = src_tokens.float()
+            if self.alpha_src_penalty_end_idx > 0 and not (bsz > 1):
+                # ignore this parameter if we're in a batch. sorry!
+                float_src_tokens = float_src_tokens[:, : self.alpha_src_penalty_end_idx]
+            count_tokens_src = torch.zeros(bsz * beam_size, self.vocab_size).to(
+                src_tokens
+            )
+            for i in range(bsz * beam_size):
+                # histc constructs a histogram counting frequencies of occuring values
+                # and buckets into vocab_size bins
+                count_tokens_src[i] = torch.histc(
+                    float_src_tokens[i], self.vocab_size, min=0, max=self.vocab_size
+                )
+        if self.lambda_decay > 0:
+            # need to reset the buffers
+            self.toks_since_reset = self.toks_since_reset.unsqueeze(0).repeat(bsz, 1)
+            self.sampling_topp_tensor = self.sampling_topp_tensor.repeat(bsz, 1)
+            self.init_p = self.init_p.repeat(bsz, 1)
+
+        return scores, tokens, count_tokens, count_tokens_src
 
     def _sample_topp(self, lprobs):
         """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
@@ -304,11 +657,23 @@ class SequenceGenerator(nn.Module):
         """
         if self.temperature == 0.0 or self.sampling_topp == 0.0:
             # greedy search
-            return tuple(lprobs.max(dim=-1))
+            return tuple(lprobs.max(dim=-1))  # (output, index)
+
+        # torch.multinomial gives error when every entry in lprobs are -inf
+        # similar issue in https://github.com/huggingface/transformers/issues/15169
+        lprobs[lprobs == -math.inf] = torch.finfo(lprobs.dtype).min
 
         probs = torch.softmax(lprobs, dim=-1)
         sprobs, sinds = probs.sort(dim=-1, descending=True)
-        mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        if self.lambda_decay <= 0:
+            # normal nucleus sampling
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        else:
+            # factual/decayed nucleus sampling. each batch item may have
+            # a different topp value, so the mask is different for each
+            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp_tensor.expand(
+                sprobs.size()
+            ).to(sprobs.device)
         trunc_sprobs = sprobs.detach().clone()
         trunc_sprobs[mask] = 0
         trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
@@ -316,8 +681,109 @@ class SequenceGenerator(nn.Module):
         hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
         tok_ids = sinds[hyp_ids, choices]
         scores = sprobs[hyp_ids, choices].log()
+        if self.lambda_decay > 0:
+            self._update_sampling_topp(tok_ids)
         return scores, tok_ids
 
+    def _update_sampling_topp(self, tokens: torch.Tensor):
+        """
+        Update the p for sampling according to Factual Nucleus generation
+        (see https://arxiv.org/abs/2206.04624 for more details)
+
+        Args:
+            tokens (torch.Tensor): chosen generation tokens
+        """
+        for batch_i, toks in enumerate(tokens):
+            if toks.dim() == 1:
+                for beam_i, t in enumerate(toks):
+                    if self.full_stop_list.to(tokens.device).eq(t).sum() > 0:
+                        self.toks_since_reset[batch_i, beam_i] = 0
+                    else:
+                        self.toks_since_reset[batch_i, beam_i] += 1
+                    decay_factor = max(0, self.toks_since_reset[batch_i, beam_i] - 1)
+                    self.sampling_topp_tensor[batch_i, beam_i] = torch.max(
+                        self.omega_bound,
+                        self.init_p[batch_i, beam_i]
+                        * (self.lambda_decay ** (decay_factor)),
+                    )
+            else:
+                t = toks
+                if self.full_stop_list.to(tokens.device).eq(t).sum() > 0:
+                    self.toks_since_reset[batch_i] = 0
+                else:
+                    self.toks_since_reset[batch_i] += 1
+                decay_factor = max(0, self.toks_since_reset[batch_i] - 1)
+                self.sampling_topp_tensor[batch_i] = torch.max(
+                    self.omega_bound,
+                    self.init_p[batch_i] * (self.lambda_decay ** (decay_factor)),
+                )
+
+    def _apply_repetition_penalties(
+        self,
+        lprobs: torch.Tensor,
+        count_tokens: Optional[torch.Tensor],
+        count_tokens_src: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Apply repetition penalties.
+
+        From https://beta.openai.com/docs/api-reference/engines/retrieve:
+
+        mu[j] -> mu[j] - c[j] * alpha_frequency - float(c[j] > 0) * alpha_presence
+        Where:
+
+        mu[j] is the logit of the j-th token
+        c[j] is how often that token was sampled prior to the current position
+        float(c[j] > 0) is 1 if c[j] > 0 and 0 otherwise
+        alpha_frequency is the frequency penalty coefficient
+        alpha_presence is the presence penalty coefficient
+
+        :param lprobs:
+            (bsz*beam_size, vocab_size) tensor
+        :param count_tokens:
+            (bsz*beam_size, vocab_size) tensor
+        :param count_tokens_src:
+            (bsz*beam_size, vocab_size) tensor
+
+        :return lprobs:
+            return new lprobs!
+        """
+        if self.alpha_frequency > 0 or self.alpha_presence > 0:
+            assert count_tokens is not None
+            lprobs = (
+                lprobs
+                - (count_tokens * self.alpha_frequency)
+                - (count_tokens.gt(0) * self.alpha_presence)
+            )
+        if self.alpha_frequency_src > 0 or self.alpha_presence_src > 0:
+            assert count_tokens_src is not None
+            lprobs = (
+                lprobs
+                - (count_tokens_src * self.alpha_frequency_src)
+                - (count_tokens_src.gt(0) * self.alpha_presence_src)
+            )
+
+        return lprobs
+
+    def _update_repetition_counts(
+        self, tokens: torch.Tensor, count_tokens: Optional[torch.Tensor]
+    ) -> Optional[torch.Tensor]:
+        """
+        Update the repetition counts
+
+        :param tokens:
+            [batchsize * beam, 1]
+        :param count_tokens:
+            [batchsize * beam, vocab_size]
+        """
+        if self.alpha_frequency > 0 or self.alpha_presence > 0:
+            assert count_tokens is not None
+            for i, t in enumerate(tokens):
+                count_tokens[i, t] += 1
+        return count_tokens
+
+
+# <<<<<<< HEAD
 
 class EnsembleModel(nn.Module):
     """A wrapper around an ensemble of models."""
@@ -575,3 +1041,6 @@ class EnsembleModelWithAlignment(EnsembleModel):
         if len(self.models) > 1:
             avg_attn.div_(len(self.models))
         return avg_attn
+# =======
+
+# >>>>>>> origin/debiasing
