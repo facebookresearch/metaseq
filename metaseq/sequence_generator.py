@@ -178,6 +178,7 @@ class SequenceGenerator(nn.Module):
         need_logprobs: bool = False,
         stop: Optional[List[int]] = None,
         topp: float = -1,
+        topk: int = -1,
         profile=False,
         omega_bound: float = 0.3,
         lambda_decay: float = -1,
@@ -252,7 +253,11 @@ class SequenceGenerator(nn.Module):
         self.stop = stop if stop is not None else []
         if topp is None:
             topp = 0.0
+        if topk is None:
+            topk = -1
         self.sampling_topp = max(0, topp)
+        self.sampling_topk = max(0, topk)
+        assert not (self.sampling_topp > 0 and self.sampling_topk > 0)
         self.temperature = temperature
         assert temperature >= 0, "--temperature must be >=0"
 
@@ -261,12 +266,16 @@ class SequenceGenerator(nn.Module):
 
         # factual nucleus
         buffer = torch.zeros(beam_size)
-        self.sampling_topp = max(0, topp)
         self.sampling_topp_tensor = (
             buffer.clone().fill_(self.sampling_topp).unsqueeze(1)
         )
         self.init_p = self.sampling_topp_tensor.clone()
+        self.sampling_topk_tensor = (
+            buffer.clone().fill_(self.sampling_topk).unsqueeze(1)
+        )
         self.lambda_decay = lambda_decay
+        if topk > 0 and self.lambda_decay > 0:
+            raise NotImplementedError('top-k not supported with lambda decay!')
         self.omega_bound = torch.tensor([omega_bound])
         self.toks_since_reset = buffer.clone()
         self.full_stop_list = torch.tensor([tgt_dict.index(w) for w in [".", "?", "!"]])
@@ -495,7 +504,7 @@ class SequenceGenerator(nn.Module):
             # find our next tokens and record them
             # protect this step for the last token so we don't overflow
             # get lprobs for the most probable next token
-            next_scores, next_toks = self._sample_topp(lprobs)
+            next_scores, next_toks = self._sample_topp_topk(lprobs)
 
             # ensure that each debiasing sentence is continued
             # in the same way as the original sentence
@@ -641,8 +650,9 @@ class SequenceGenerator(nn.Module):
 
         return scores, tokens, count_tokens, count_tokens_src
 
-    def _sample_topp(self, lprobs):
-        """Sample among the smallest set of elements whose cumulative probability mass exceeds p.
+    def _sample_topp_topk(self, lprobs):
+        """Sample among the smallest set of elements whose cumulative probability mass exceeds p
+        (top p), or sample among the top k elements (top k).
         See `"The Curious Case of Neural Text Degeneration"
         (Holtzman et al., 2019) <https://arxiv.org/abs/1904.09751>`_.
         Args:
@@ -655,7 +665,8 @@ class SequenceGenerator(nn.Module):
             truncated_indices: (bsz x input_beam_size x ?)
                 the indices of the chosen elements.
         """
-        if self.temperature == 0.0 or self.sampling_topp == 0.0:
+        # TODO: update docstring given topk implementation, once it's tested on BS > 1
+        if self.temperature == 0.0 or (self.sampling_topp == 0.0 and self.sampling_topk == 0):
             # greedy search
             return tuple(lprobs.max(dim=-1))  # (output, index)
 
@@ -664,25 +675,41 @@ class SequenceGenerator(nn.Module):
         lprobs[lprobs == -math.inf] = torch.finfo(lprobs.dtype).min
 
         probs = torch.softmax(lprobs, dim=-1)
-        sprobs, sinds = probs.sort(dim=-1, descending=True)
-        if self.lambda_decay <= 0:
-            # normal nucleus sampling
-            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+        if self.sampling_topp > 0:
+            sprobs, sinds = probs.sort(dim=-1, descending=True)
+            if self.lambda_decay <= 0:
+                # normal nucleus sampling
+                mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp
+            else:
+                # factual/decayed nucleus sampling. each batch item may have
+                # a different topp value, so the mask is different for each
+                mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp_tensor.expand(
+                    sprobs.size()
+                ).to(sprobs.device)
+            trunc_sprobs = sprobs.detach().clone()
+            trunc_sprobs[mask] = 0
+            trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
+            choices = torch.multinomial(trunc_sprobs, 1)[:, 0]
+            hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
+            tok_ids = sinds[hyp_ids, choices]
+            scores = sprobs[hyp_ids, choices].log()
+            if self.lambda_decay > 0:
+                self._update_sampling_topp(tok_ids)
+        elif self.sampling_topk > 0:
+            if probs.dim() != 2 or probs.size(0) != 1:
+                raise NotImplementedError('The top-k implementation must be checked in the case where batch size is greater than 1!')
+                # TODO: test this out
+            topk_value, _ = torch.topk(probs, self.sampling_topk, dim=-1)
+            min_value_top_k = topk_value[:, [-1]]
+            trunc_probs = probs.detach().clone()
+            trunc_probs[trunc_probs < min_value_top_k] = 0.0
+            trunc_probs.div_(trunc_probs.sum(dim=-1).unsqueeze(-1))
+            choices = torch.multinomial(trunc_probs, 1)[:, 0]
+            hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
+            tok_ids = choices.to(lprobs.device)
+            scores = probs[hyp_ids, choices].log()
         else:
-            # factual/decayed nucleus sampling. each batch item may have
-            # a different topp value, so the mask is different for each
-            mask = (sprobs.cumsum(dim=-1) - sprobs) >= self.sampling_topp_tensor.expand(
-                sprobs.size()
-            ).to(sprobs.device)
-        trunc_sprobs = sprobs.detach().clone()
-        trunc_sprobs[mask] = 0
-        trunc_sprobs.div_(trunc_sprobs.sum(dim=-1).unsqueeze(-1))
-        choices = torch.multinomial(trunc_sprobs, 1)[:, 0]
-        hyp_ids = torch.arange(lprobs.size(0)).to(lprobs.device)
-        tok_ids = sinds[hyp_ids, choices]
-        scores = sprobs[hyp_ids, choices].log()
-        if self.lambda_decay > 0:
-            self._update_sampling_topp(tok_ids)
+            raise ValueError('Either top-p or top-k must be used!')
         return scores, tok_ids
 
     def _update_sampling_topp(self, tokens: torch.Tensor):

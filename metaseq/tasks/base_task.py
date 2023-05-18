@@ -344,11 +344,9 @@ class BaseTask(object):
         sampling = getattr(args, "sampling", False)
         sampling_topp = getattr(args, "sampling_topp", -1.0)
         assert sampling_topp < 0 or sampling, "--sampling-topp requires --sampling"
-
-        if getattr(args, "sampling_topk", False):
-            logger.warning(
-                "sampling with topk is not supported, ignoring the sampling_topk argument"
-            )
+        sampling_topk = getattr(args, "sampling_topk", -1.0)
+        assert sampling_topk < 0 or sampling, "--sampling-topk requires --sampling"
+        assert not (sampling_topp > 0 and sampling_topk > 0)
 
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
         if seq_gen_cls is None:
@@ -363,6 +361,7 @@ class BaseTask(object):
             min_len=getattr(args, "min_len", 1),
             temperature=getattr(args, "temperature", 1.0),
             topp=sampling_topp,
+            topk=sampling_topk,
             **extra_gen_cls_kwargs,
         )
 

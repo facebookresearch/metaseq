@@ -636,6 +636,12 @@ class GenerationConfig(MetaseqDataclass):
             "help": "sample from the smallest set whose cumulative probability mass exceeds p for next words"
         },
     )
+    sampling_topk: int = field(
+        default=-1,
+        metadata={
+            "help": "sample from the top k next words"
+        },
+    )
     temperature: float = field(
         default=1.0,
         metadata={"help": "temperature for generation"},
