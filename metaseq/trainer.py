@@ -24,7 +24,7 @@ import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap
+from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.models.ema import build_ema
@@ -244,7 +244,9 @@ class Trainer(object):
                     "use_sharded_state": self.use_sharded_state,
                 }
                 with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
-                    model = fsdp_wrap(self.task.build_model(self.cfg.model))
+                    model = self.task.build_model(self.cfg.model)
+                    if not isinstance(model, FullyShardedDataParallel):
+                        model = fsdp_wrap(model)
 
                 if self.cfg.common.memory_efficient_fp16:
                     if self.cfg.common.bf16:

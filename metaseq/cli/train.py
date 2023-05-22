@@ -36,7 +36,7 @@ from metaseq import (
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
@@ -144,10 +144,12 @@ def main(cfg: DictConfig) -> None:
             cfg.distributed_training,
             use_sharded_state=cfg.distributed_training.use_sharded_state,
         ):
-            model = fsdp_wrap(
-                task.build_model(cfg.model),
-                process_group=distributed_utils.get_data_parallel_group(),
-            )
+            model = task.build_model(cfg.model)
+            if not isinstance(model, FullyShardedDataParallel):
+                model = fsdp_wrap(
+                    model,
+                    process_group=distributed_utils.get_data_parallel_group(),
+                )
     else:
         model = task.build_model(cfg.model)
 
