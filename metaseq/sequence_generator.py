@@ -696,9 +696,6 @@ class SequenceGenerator(nn.Module):
             if self.lambda_decay > 0:
                 self._update_sampling_topp(tok_ids)
         elif self.sampling_topk > 0:
-            if probs.dim() != 2 or probs.size(0) != 1:
-                raise NotImplementedError('The top-k implementation must be checked in the case where batch size is greater than 1!')
-                # TODO: test this out
             topk_value, _ = torch.topk(probs, self.sampling_topk, dim=-1)
             min_value_top_k = topk_value[:, [-1]]
             trunc_probs = probs.detach().clone()
