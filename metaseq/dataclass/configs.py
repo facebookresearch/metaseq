@@ -639,7 +639,7 @@ class GenerationConfig(MetaseqDataclass):
     sampling_topk: int = field(
         default=-1,
         metadata={
-            "help": "sample from the top k next words"
+            "help": "sample from among the top k next tokens"
         },
     )
     temperature: float = field(
