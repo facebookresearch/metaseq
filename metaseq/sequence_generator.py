@@ -665,7 +665,6 @@ class SequenceGenerator(nn.Module):
             truncated_indices: (bsz x input_beam_size x ?)
                 the indices of the chosen elements.
         """
-        # TODO: update docstring given topk implementation, once it's tested on BS > 1
         if self.temperature == 0.0 or (self.sampling_topp == 0.0 and self.sampling_topk == 0):
             # greedy search
             return tuple(lprobs.max(dim=-1))  # (output, index)
