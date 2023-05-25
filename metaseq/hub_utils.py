@@ -233,7 +233,7 @@ class GeneratorInterface:
         max_tokens: forces EOS after this many tokens
         temperature: softmax temperature
         top_p: nucleus probability
-        top_k: top-k probability
+        top_k: top-k threshold
         log_probs: return this cutoff of the probability distribution
         best_of: beam size
         n: number of beams to return. must be <= best_of
