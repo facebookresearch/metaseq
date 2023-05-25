@@ -13,6 +13,7 @@ import math
 QUEUE_KEYS = [
     "temperature",
     "top_p",
+    "top_k",
     "n",
     "lambda_decay",
     "omega_bound",

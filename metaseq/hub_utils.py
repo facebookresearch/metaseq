@@ -200,6 +200,7 @@ class GeneratorInterface:
         max_tokens: List[int] = None,
         temperature: float = 1.0,
         top_p: float = -1.0,
+        top_k: int = -1,
         logprobs: int = 0,
         n: int = 1,
         best_of: Optional[int] = None,
@@ -232,6 +233,7 @@ class GeneratorInterface:
         max_tokens: forces EOS after this many tokens
         temperature: softmax temperature
         top_p: nucleus probability
+        top_k: top-k threshold
         log_probs: return this cutoff of the probability distribution
         best_of: beam size
         n: number of beams to return. must be <= best_of
@@ -264,8 +266,10 @@ class GeneratorInterface:
         if not best_of:
             best_of = n
         assert best_of >= n
+        assert not (top_p > 0 and top_k > 0)
         self.cfg.generation.sampling_topp = top_p if top_p > 0 else -1
-        self.cfg.generation.sampling = top_p > 0.0
+        self.cfg.generation.sampling_topk = top_k if top_k > 0 else -1
+        self.cfg.generation.sampling = top_p > 0.0 or top_k > 0
         self.cfg.generation.beam = best_of
         if temperature > 0:
             self.cfg.generation.temperature = temperature
@@ -273,6 +277,7 @@ class GeneratorInterface:
             self.cfg.generation.sampling = False
             self.cfg.generation.temperature = 1.0
             self.cfg.generation.sampling_topp = -1
+            self.cfg.generation.sampling_topk = -1
         elif temperature < 0:
             raise ValueError("temperature must be >= 0 and <= 1")
 
