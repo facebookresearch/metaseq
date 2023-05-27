@@ -58,7 +58,7 @@ def map_old_image_token_to_new_image_token(text):
 
 
 def map_new_image_token_to_old_image_token(text):
-    text = text.replace("Z", "")
+    text = text.replace("Z", " ")
     for i in range(10):
         text = text.replace(chr(ord("A") + i), str(i))
     return text.replace("IMGIMG", "I")
