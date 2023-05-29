@@ -495,8 +495,6 @@ def validate_and_save(
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
             )
-            if cfg.checkpoint.cloud_upload_path
-            else None,
         )
 
     valid_losses = [None]
@@ -637,6 +635,14 @@ def post_checkpoint_callback(
                         PathManager.copy(final_path, dest, overwrite=True)
             except (FileNotFoundError, AssertionError) as e:
                 logger.info(f"could not upload {filename}: {e}")
+    else:
+        if files_to_symlink_to:
+            for other_checkpoint in files_to_symlink_to:
+                if PathManager.islink(other_checkpoint):
+                    PathManager.rm(other_checkpoint)
+                assert PathManager.symlink(
+                    filename, other_checkpoint
+                ), f"Failed to symlink {filename} to {other_checkpoint}"
 
 
 def nfs_evaluation(
