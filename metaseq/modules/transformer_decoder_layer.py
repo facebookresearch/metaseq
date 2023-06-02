@@ -39,6 +39,35 @@ def _weight_init(weight):
     return nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
 
 
+def drop_path(x, dim, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+    """
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[dim],) + (1,) * (x.ndim - dim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
+    if keep_prob > 0.0 and scale_by_keep:
+        random_tensor.div_(keep_prob)
+    return x * random_tensor
+
+
+class DropPath(nn.Module):
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    """
+    def __init__(self, drop_prob=None, dim=0, scale_by_keep=True):
+        super(DropPath, self).__init__()
+        self.drop_prob = drop_prob
+        self.dim=dim
+        self.scale_by_keep = scale_by_keep
+
+    def forward(self, x):
+        return drop_path(x, self.dim, self.drop_prob, self.training, self.scale_by_keep)
+
+    def extra_repr(self) -> str:
+        return 'p={}, dim={}, keep_scale={}'.format(self.drop_prob, self.dim, self.scale_by_keep)
+    
+
 class TransformerDecoderLayer(nn.Module):
     """Pre-norm Decoder layer block.
 
@@ -53,12 +82,14 @@ class TransformerDecoderLayer(nn.Module):
         args,
         add_bias_kv=False,
         add_zero_attn=False,
+        layer_id: int=-1,
     ):
         super().__init__()
         load_megatron_fused_kernel()
         self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
+        self.residual_dropout_module = DropPath(args.residual_dropout[layer_id])
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
@@ -205,7 +236,7 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
-        x = residual + x
+        x = residual + self.residual_dropout_module(x)
         return x
 
     def forward(
@@ -258,7 +289,7 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        x = residual + x
+        x = residual + self.residual_dropout_module(x)
         return x
 
     def make_generation_fast_(self, **kwargs):
@@ -414,5 +445,5 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             p=self.args.dropout,
             training=self.training,
         )
-        x = x + residual
+        x = self.residual_dropout_module(x) + residual
         return x

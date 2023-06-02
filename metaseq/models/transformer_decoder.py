@@ -62,7 +62,7 @@ def _log_weight_stats(tensor, name):
     logger.debug(
         f"{name}, mean: {tensor.mean():.5f}, std: {tensor.std():.5f}, min: {tensor.min():.5f}, max: {tensor.max():.5f}"
     )
-
+    
 
 class TransformerDecoder(BaseDecoder):
     """
@@ -82,7 +82,7 @@ class TransformerDecoder(BaseDecoder):
         self._future_mask = torch.empty(0)
 
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-
+        
         if getattr(args, "no_emb_dropout", False):
             self.dropout_module = None
 
@@ -124,7 +124,7 @@ class TransformerDecoder(BaseDecoder):
         self.layers = nn.ModuleList([])
         layers = []
         for i in range(args.decoder_layers):
-            layers.append(self.build_decoder_layer(args))
+            layers.append(self.build_decoder_layer(args, i))
 
         if getattr(self.args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
             assert (
@@ -234,11 +234,11 @@ class TransformerDecoder(BaseDecoder):
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
 
-    def build_base_decoder_layer(self, args):
-        return TransformerDecoderLayer(args)
+    def build_base_decoder_layer(self, args, layer_id):
+        return TransformerDecoderLayer(args, layer_id=layer_id)
 
-    def build_decoder_layer(self, args):
-        layer = self.build_base_decoder_layer(args)
+    def build_decoder_layer(self, args, layer_id):
+        layer = self.build_base_decoder_layer(args, layer_id)
         for name, param in layer.named_parameters():
             _log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
