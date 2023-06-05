@@ -9,8 +9,8 @@ MAX_SEQ_LEN = 2048
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
-MODEL_PARALLEL = 2
-TOTAL_WORLD_SIZE = 2
+MODEL_PARALLEL = 8
+TOTAL_WORLD_SIZE = 8
 MAX_BEAM = 16
 
 try:
@@ -35,7 +35,7 @@ except ImportError:
 BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
 MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
-DICT_FILE = os.environ["DICT_FILE"]
+DICT_FILE = os.environ.get("DICT_FILE", "")
 
 LAUNCH_ARGS = [
     f"--model-parallel-size {MODEL_PARALLEL}",
@@ -44,15 +44,12 @@ LAUNCH_ARGS = [
     # If using FSDP shards, replace ddp-backend and add use-sharded-state
     # "--ddp-backend fully_sharded",
     # "--use-sharded-state",
-    # "--task language_modeling",
-    # f"--bpe-merges {BPE_MERGES}",
-    # f"--bpe-vocab {BPE_VOCAB}",
-    # "--bpe hf_byte_bpe",
-    "--task sentencepiece_bpe_task",
-    f"--sentencepiece-model-path {DICT_FILE}",
-    "--bpe sentencepiece_bpe",
-    # f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    # f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    "--task language_modeling",
+    f"--bpe-merges {BPE_MERGES}",
+    f"--bpe-vocab {BPE_VOCAB}",
+    "--bpe hf_byte_bpe",
+    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {MODEL_FILE}",
     "--beam 1",
     "--distributed-port 13000",
@@ -60,8 +57,6 @@ LAUNCH_ARGS = [
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
     f"--max-tokens {BATCH_SIZE * MAX_SEQ_LEN}",
-    "--fp16",
-    "--memory-efficient-fp16",
     "/tmp",  # required "data" argument.
 ]
 
