@@ -50,7 +50,10 @@ class TransformerLanguageModelConfig(MetaseqDataclass):
     attention_dropout: float = field(
         default=0.0, metadata={"help": "dropout probability for attention weights"}
     )
-    residual_dropout: float = field(default=0.0, metadata={"help": "residual dropout probability (fixed or for the last layer)"})
+    residual_dropout: float = field(
+        default=0.0,
+        metadata={"help": "residual dropout probability (fixed or for the last layer)"},
+    )
     residual_dropout_linear_decay: bool = field(
         default=False,
         metadata={"help": "use linear decay of residual dropout rate across layers"},
@@ -355,11 +358,16 @@ def base_lm_architecture(args):
     args.add_bos_token = getattr(args, "add_bos_token", False)
 
     # a hack: the type of args.residual_dropout changes from float to a list
-    args.residual_dropout_linear_decay = getattr(args, "residual_dropout_linear_decay", False)
+    args.residual_dropout_linear_decay = getattr(
+        args, "residual_dropout_linear_decay", False
+    )
     if args.residual_dropout_linear_decay:
-        args.residual_dropout = [x.item() for x in torch.linspace(0, args.residual_dropout, args.decoder_layers)]
+        args.residual_dropout_by_layer = [
+            x.item()
+            for x in torch.linspace(0, args.residual_dropout, args.decoder_layers)
+        ]
     else:
-        args.residual_dropout = [args.residual_dropout] * args.decoder_layers
+        args.residual_dropout_by_layer = [args.residual_dropout] * args.decoder_layers
 
 
 @register_model_architecture("model_parallel_transformer_lm", "transformer_lm_megatron")

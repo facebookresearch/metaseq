@@ -62,7 +62,7 @@ def _log_weight_stats(tensor, name):
     logger.debug(
         f"{name}, mean: {tensor.mean():.5f}, std: {tensor.std():.5f}, min: {tensor.min():.5f}, max: {tensor.max():.5f}"
     )
-    
+
 
 class TransformerDecoder(BaseDecoder):
     """
@@ -82,7 +82,7 @@ class TransformerDecoder(BaseDecoder):
         self._future_mask = torch.empty(0)
 
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        
+
         if getattr(args, "no_emb_dropout", False):
             self.dropout_module = None
 
@@ -516,8 +516,8 @@ class ModelParallelTransformerDecoder(TransformerDecoder):
     is a :class:`ModelParallelTransformerDecoderLayer`.
     """
 
-    def build_base_decoder_layer(self, args, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args)
+    def build_base_decoder_layer(self, args, layer_id, **kwargs):
+        return ModelParallelTransformerDecoderLayer(args, layer_id=layer_id)
 
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
