@@ -267,7 +267,7 @@ def _spawn_helper(main, cfg, kwargs):
 
 def call_main(cfg: MetaseqConfig, main, **kwargs):
     if cfg.distributed_training.distributed_init_method is None:
-        infer_init_method(cfg.distributed_training)
+        infer_init_method(cfg.distributed_training, force_distributed=True)
 
     if cfg.distributed_training.distributed_init_method is not None:
         # distributed training

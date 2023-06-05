@@ -574,7 +574,4 @@ class ModelParallelMultiheadAttention(nn.Module):
 
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
-        if 'revert' in unused and unused['revert']:
-            self.inference = False
-        else:
-            self.inference = True
+        self.inference = True

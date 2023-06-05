@@ -95,14 +95,9 @@ class BaseModel(nn.Module):
         Legacy entry point to optimize model for faster generation.
         Prefer prepare_for_inference_.
         """
-        if 'revert' in kwargs and kwargs['revert']:
-            self._is_generation_fast = False
-            revert = True
-        elif self._is_generation_fast:
+        if self._is_generation_fast:
             return  # only apply once
-        else:
-            self._is_generation_fast = True
-            revert = False
+        self._is_generation_fast = True
 
         # remove weight norm from all modules in the network
         def apply_remove_weight_norm(module):
@@ -111,7 +106,7 @@ class BaseModel(nn.Module):
             except (AttributeError, ValueError):  # this module didn't have weight norm
                 return
 
-        # self.apply(apply_remove_weight_norm)
+        self.apply(apply_remove_weight_norm)
 
         def apply_make_generation_fast_(module, prefix):
             if len(prefix) > 0:
@@ -136,13 +131,8 @@ class BaseModel(nn.Module):
                 raise RuntimeError("cannot train after make_generation_fast")
 
         # this model should no longer be used for training
-        if not revert:
-            self.train_cache = self.train
-            self.train = train
-            self.eval()
-        else:
-            self.train = self.train_cache
-            self.train()
+        self.eval()
+        self.train = train
 
     @classmethod
     def from_pretrained(
