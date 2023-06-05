@@ -319,6 +319,10 @@ def completions(engine=None):
         generation_args["top_p"] = round(float(generation_args["top_p"]), 1)
     else:
         generation_args["top_p"] = 1.0
+    if "top_k" in generation_args:
+        generation_args["top_k"] = int(generation_args["top_k"])
+    else:
+        generation_args["top_k"] = 0
     if "n" not in generation_args:
         generation_args["n"] = 1
     if "best_of" not in generation_args:
