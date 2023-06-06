@@ -367,7 +367,9 @@ def base_lm_architecture(args):
             for x in torch.linspace(0, args.residual_dropout, args.decoder_layers)
         ]
     else:
-        args.residual_dropout_by_layer = [args.residual_dropout] * args.decoder_layers
+        args.residual_dropout_by_layer = [
+            getattr(args, "residual_dropout", 0.0)
+        ] * args.decoder_layers
 
 
 @register_model_architecture("model_parallel_transformer_lm", "transformer_lm_megatron")
