@@ -105,6 +105,7 @@ def save_checkpoint(
         async_executer = ThreadPoolExecutor(max_workers=1)
         async_executer.submit(delete_old_checkpoint_files, cfg, end_of_epoch, suffix)
 
+    # If there are checkpoints to save, save the first in the list
     if len(checkpoint_file_paths) > 0:
         _save_checkpoint(checkpoint_file_paths[0])
 
@@ -143,7 +144,7 @@ def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffi
 
 # Reference:
 # https://github.com/facebookresearch/fairseq/blob/0338cdc3094ca7d29ff4d36d64791f7b4e4b5e6e/fairseq/checkpoint_utils.py#L538
-def checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
+def checkpoint_paths(path, pattern=None):
     """Retrieves all checkpoints found in `path` directory.
     Checkpoints are identified by matching filename to the specified pattern. If
     the pattern contains groups, the result will be sorted by the first group in
