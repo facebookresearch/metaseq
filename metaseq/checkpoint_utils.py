@@ -11,6 +11,7 @@ import re
 import socket
 from typing import Any, Dict, List, Optional, Tuple
 import math
+from concurrent.futures import ThreadPoolExecutor
 import torch
 from omegaconf import OmegaConf
 
@@ -72,61 +73,72 @@ def save_checkpoint(
 
     save_for_updates = not end_of_epoch and (save_to_NFS or save_locally)
 
-    checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
+    checkpoint_conds[f"checkpoint{epoch}_{updates}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
-    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
-        (training_finished and cfg.save_last_checkpoint)
-        or save_for_epoch
-        or save_for_updates
-    )
+    checkpoint_last_file_name = f"checkpoint_last{suffix}.pt"
 
     extra_state = {"train_iterator": epoch_itr.state_dict()}
 
-    checkpoints = [
-        os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
+    checkpoint_file_paths = [
+        os.path.join(cfg.save_dir, checkpoint_file_name) for checkpoint_file_name, cond in checkpoint_conds.items() if cond
     ]
 
-    if len(checkpoints) > 0:
-        if PathManager.islink(checkpoints[0]):
-            PathManager.rm(checkpoints[0])
+    def _save_checkpoint(checkpoint_file_path: str):
+        if PathManager.islink(checkpoint_file_path):
+            PathManager.rm(checkpoint_file_path)
 
         trainer.save_checkpoint(
-            checkpoints[0],
+            checkpoint_file_path,
             extra_state,
             training_finished=training_finished,
-            async_callback_fn=async_callback_fn if save_to_NFS else None,
-            files_to_symlink_to=checkpoints[1:] if len(checkpoints) > 1 else None,
+            async_callback_fn=async_callback_fn,
         )
 
         write_timer.stop()
         logger.info(
-            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
+            f"Saved checkpoint {checkpoint_file_path} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
 
         # See if there's any older checkpoints to delete after saving a new one.
-        # Only deletes if keep_last_updates > 0 or keep_last_epochs > 0 (default -1 for both).
-        delete_old_checkpoint_files(cfg, end_of_epoch, suffix)
+        # Only deletes if keep_last_updates > 0 or keep_last_epochs > 0.
+        async_executer = ThreadPoolExecutor(max_workers=1)
+        async_executer.submit(delete_old_checkpoint_files, cfg, end_of_epoch, suffix)
+
+    if len(checkpoint_file_paths) > 0:
+        _save_checkpoint(checkpoint_file_paths[0])
+
+    if training_finished and cfg.save_last_checkpoint:
+        checkpoint_last_file_path = os.path.join(cfg.save_dir, checkpoint_last_file_name)
+        _save_checkpoint(checkpoint_last_file_path)
 
 
 def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffix: str):
+    removed_checkpoint = False
     if not end_of_epoch and cfg.keep_last_updates > 0:
         # remove old checkpoints; checkpoints are sorted in descending order
         checkpoints = checkpoint_paths(
-            cfg.save_dir, pattern=r"checkpoint_\d+_(\d+){}\.pt".format(suffix)
+            cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(suffix)
         )
-        for old_chk in checkpoints[cfg.keep_last_updates :]:
-            if os.path.lexists(old_chk):
-                os.remove(old_chk)
+        for old_checkpoint in checkpoints[cfg.keep_last_updates:]:
+            if os.path.lexists(old_checkpoint):
+                logger.warning(f"Removing checkpoint {old_checkpoint} because it's older than {cfg.keep_last_updates} updates")
+                os.remove(old_checkpoint)
+                removed_checkpoint = True
 
     if cfg.keep_last_epochs > 0:
         # remove old epoch checkpoints; checkpoints are sorted in descending order
         checkpoints = checkpoint_paths(
-            cfg.save_dir, pattern=r"checkpoint(\d+){}\.pt".format(suffix)
+            cfg.save_dir, pattern=r"checkpoint\d+_(\d+){}\.pt".format(suffix)
         )
-        for old_chk in checkpoints[cfg.keep_last_epochs :]:
-            if os.path.lexists(old_chk):
-                os.remove(old_chk)
+        for old_checkpoint in checkpoints[cfg.keep_last_epochs:]:
+            if os.path.lexists(old_checkpoint):
+                logger.warning(f"Removing checkpoint {old_checkpoint} because it's older than {cfg.keep_last_epochs} epochs")
+                os.remove(old_checkpoint)
+                removed_checkpoint = True
+
+    if removed_checkpoint:
+        logger.info("Done removing old checkpoints on worker {}".format(distributed_utils.get_global_rank()))
 
 
 # Reference:
@@ -207,11 +219,37 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     else:
         checkpoint_path_to_load = cfg.restore_file
 
-    if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
-        raise ValueError(
-            "--finetune-from-model and --restore-file (non-default value) "
-            "can not be specified together: " + str(cfg)
-        )
+    last_checkpoint = None
+    default_restore_file = "checkpoint_last.pt"
+    if PathManager.exists(cfg.save_dir):
+        if PathManager.exists(os.path.join(cfg.save_dir, default_restore_file.replace(".pt", suffix + ".pt"))):
+            last_checkpoint = os.path.join(cfg.save_dir, default_restore_file.replace(".pt", suffix + ".pt"))
+        elif PathManager.exists(os.path.join(cfg.save_dir, default_restore_file)):
+            last_checkpoint = os.path.join(cfg.save_dir, default_restore_file)
+        else:
+            checkpoints = checkpoint_paths(cfg.save_dir, pattern=r"checkpoint\d*_(\d+){}\.pt".format(suffix))
+            if len(checkpoints) > 0 and PathManager.exists(checkpoints[0]):
+                last_checkpoint = checkpoints[0]
+
+            if last_checkpoint is None:
+                checkpoints = checkpoint_paths(cfg.save_dir, pattern=r"checkpoint\d*_(\d+)\.pt")
+                if len(checkpoints) > 0 and PathManager.exists(checkpoints[0]):
+                    last_checkpoint = checkpoints[0]
+
+    if last_checkpoint is not None and last_checkpoint != checkpoint_path_to_load:
+        if PathManager.exists(last_checkpoint):
+            logger.warning(f"Overriding restore-file-path to load with {last_checkpoint}")
+            checkpoint_path_to_load = last_checkpoint
+            logger.info(
+                f"Disregarding --reset-dataloader, --reset-lr-scheduler, --reset-optimizer, --reset-meters\
+                         flags since we are resuming from a intermediate output checkpoint"
+            )
+            reset_optimizer = False
+            reset_lr_scheduler = False
+            reset_meters = False
+            reset_dataloader = False
+        else:
+            raise ValueError(f"Checkpoint {last_checkpoint} does not exist. Incorrect value found in save_checkpoint_log.txt")
 
     # Azure logic
     try:
