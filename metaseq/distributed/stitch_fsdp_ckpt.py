@@ -92,7 +92,7 @@ def consolidate_fsdp_shards(
         do_consolidate = False
     if do_consolidate:
         num_parts = find_num_parts(names)
-        if num_parts:
+        if num_parts > 1:
             logger.info("consolidate_model_parallel")
             consolidated_weights = consolidate_model_parallel(
                 metadata,
