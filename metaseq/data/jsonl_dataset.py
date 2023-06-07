@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import argparse
+from io import TextIOWrapper
 import json
 import logging
 import mmap
@@ -135,19 +136,14 @@ class JsonlDataset(torch.utils.data.Dataset):
     def _build_index(self, path: str):
         """Build index of start positions of each line."""
         logger.info(f"Building index for file: {path}")
-        f = self._get_mmap()
-        f.seek(0)
-        offsets = []
-        cur = 0
-        line_num = 0
-        while True:
-            line = f.readline()
-            if line == b"":
-                break
-            offsets.append(cur)
-            cur += len(line)
-            line_num += 1
-        return offsets
+        f: TextIOWrapper = self._get_mmap()
+
+        offsets = [0]
+        for _ in iter(f.readline, b""):
+            offsets.append(f.tell())
+
+        # return all offsets except the last one, which is the end of the file
+        return offsets[:-1]
 
     def __setstate__(self, state):
         self.__dict__ = state
