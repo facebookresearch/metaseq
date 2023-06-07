@@ -203,10 +203,10 @@ def main(cfg: DictConfig) -> None:
         disable_iterator_cache=True,
     )
 
-    max_epoch = cfg.optimization.max_epoch or math.inf
     train_meter = meters.StopwatchMeter()
     train_meter.start()
-    while epoch_itr.next_epoch_idx <= max_epoch:
+
+    while True:
         # train for one epoch
         valid_losses, should_stop = train(cfg, trainer, task, epoch_itr)
         if should_stop:
@@ -221,6 +221,9 @@ def main(cfg: DictConfig) -> None:
             disable_iterator_cache=True,
         )
     train_meter.stop()
+
+    # make sure every process finishes before exiting...
+    distributed_utils.global_barrier()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
 
@@ -433,6 +436,8 @@ def validate_and_save(
     end_of_epoch: bool,
     was_successful_step: bool,
 ) -> Tuple[List[Optional[float]], bool]:
+    num_epoch = epoch_itr.epoch
+    max_epoch = cfg.optimization.max_epoch or math.inf
     num_updates = trainer.get_num_updates()
     max_update = cfg.optimization.max_update or math.inf
 
@@ -444,44 +449,47 @@ def validate_and_save(
     # Stopping conditions (and an additional one based on validation loss later
     # on)
     should_stop = False
-    if num_updates >= max_update:
-        should_stop = True
-        logger.info(
-            f"Stopping training due to "
-            f"num_updates: {num_updates} >= max_update: {max_update}"
-        )
 
-    save_locally = (
+    if num_epoch > max_epoch:
+        should_stop = True
+        logger.info(f"Stopping training due to "
+                    f"num_epoch: {num_epoch} > max_epoch: {max_epoch}")
+    elif num_updates > max_update:
+        should_stop = True
+        logger.info(f"Stopping training due to "
+                    f"num_updates: {num_updates} > max_update: {max_update}")
+
+    is_epoch_save_interval = (
+        end_of_epoch
+        and cfg.checkpoint.save_interval_epochs > 0
+        and num_epoch % cfg.checkpoint.save_interval_epochs == 0
+    )
+    is_successful_update_local_save_interval = (
         cfg.checkpoint.local_save_interval_updates > 0
         and num_updates > 0
-        and num_updates % cfg.checkpoint.local_save_interval_updates == 0
+        and num_updates % cfg.checkpoint.local_save_interval_updates == 0 and was_successful_step
     )
-    save_to_NFS = (
+    is_successful_update_save_interval = (
         cfg.checkpoint.save_interval_updates > 0
         and num_updates > 0
-        and num_updates % cfg.checkpoint.save_interval_updates == 0
+        and num_updates % cfg.checkpoint.save_interval_updates == 0 and was_successful_step
+    )
+    is_successful_update_validate_interval = (
+        cfg.checkpoint.validate_interval_updates > 0
+        and num_updates > 0
+        and num_updates % cfg.checkpoint.validate_interval_updates == 0 and was_successful_step
     )
 
     do_save = (
-        (
-            end_of_epoch
-            and cfg.checkpoint.save_interval_epochs > 0
-            and epoch_itr.epoch % cfg.checkpoint.save_interval_epochs == 0
-        )
-        or (
-            (save_locally or save_to_NFS)
-            and num_updates >= cfg.dataset.validate_after_updates
-            and was_successful_step
-        )
+        is_epoch_save_interval
+        or (is_successful_update_local_save_interval or is_successful_update_save_interval)
         or should_stop
     )
     do_validate = (
         should_stop
         or (
-            cfg.dataset.validate_interval_updates > 0
-            and num_updates > 0
-            and num_updates % cfg.dataset.validate_interval_updates == 0
-            and was_successful_step
+            is_successful_update_validate_interval
+            and num_updates >= cfg.dataset.validate_after_updates
         )
     ) and not cfg.dataset.disable_validation
 
