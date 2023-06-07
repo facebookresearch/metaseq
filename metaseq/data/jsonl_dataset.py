@@ -133,14 +133,14 @@ class JsonlDataset(torch.utils.data.Dataset):
         # and then wraps around if the epoch id goes beyond the data_subshard_count
         return (self.epoch - 1) % self.data_subshard_count
 
-    def _build_index(self, path: str):
+    def _build_index(self, file_path: str):
         """Build index of start positions of each line."""
-        logger.info(f"Building index for file: {path}")
-        f: TextIOWrapper = self._get_mmap()
+        logger.info(f"Building index for file: {file_path}")
+        file: TextIOWrapper = self._get_mmap()
 
         offsets = [0]
-        for _ in iter(f.readline, b""):
-            offsets.append(f.tell())
+        for _ in iter(file.readline, b""):
+            offsets.append(file.tell())
 
         # return all offsets except the last one, which is the end of the file
         return offsets[:-1]
