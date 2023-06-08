@@ -494,7 +494,7 @@ def validate_and_save(
             training_finished=should_stop,
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
-            )
+            ),
         )
 
     valid_losses = [None]
