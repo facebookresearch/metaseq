@@ -60,7 +60,6 @@ install_repo: &install_repo
       name: Install Repository
       command: |
         source activate metaseq
-        pip install setuptools==58.2.0
         pip install -v -e .[dev,test]
 
 check_nvidia_driver: &check_nvidia_driver
