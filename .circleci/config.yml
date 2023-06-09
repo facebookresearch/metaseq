@@ -130,6 +130,7 @@ commands:
             python -m pytest --junitxml=test-results/junit.xml cpu_tests
       - run:
           name: Run GPU Unit Tests
+          no_output_timeout: 30m
           command: |
             source activate metaseq
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
