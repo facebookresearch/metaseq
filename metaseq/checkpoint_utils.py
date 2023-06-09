@@ -74,39 +74,46 @@ def save_checkpoint(
 
     checkpoint_conds[f"checkpoint{epoch}{suffix}.pt"] = save_for_epoch
     checkpoint_conds[f"checkpoint_{updates}{suffix}.pt"] = save_for_updates
-    checkpoint_conds[f"checkpoint_last{suffix}.pt"] = (
-        (training_finished and cfg.save_last_checkpoint)
-        or save_for_epoch
-        or save_for_updates
-    )
+    checkpoint_last_file_name = f"checkpoint_last{suffix}.pt"
 
     extra_state = {"train_iterator": epoch_itr.state_dict()}
 
-    checkpoints = [
-        os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
+    checkpoint_file_paths = [
+        os.path.join(cfg.save_dir, checkpoint_file_name)
+        for checkpoint_file_name, cond in checkpoint_conds.items()
+        if cond
     ]
 
-    if len(checkpoints) > 0:
-        if PathManager.islink(checkpoints[0]):
-            PathManager.rm(checkpoints[0])
+    def _save_checkpoint(checkpoint_file_path: str):
+        if PathManager.islink(checkpoint_file_path):
+            PathManager.rm(checkpoint_file_path)
 
         trainer.save_checkpoint(
-            checkpoints[0],
+            checkpoint_file_path,
             extra_state,
             training_finished=training_finished,
-            async_callback_fn=async_callback_fn if save_to_NFS else None,
-            files_to_symlink_to=checkpoints[1:] if len(checkpoints) > 1 else None,
+            async_callback_fn=async_callback_fn,
         )
 
         write_timer.stop()
         logger.info(
-            f"Saved checkpoint {checkpoints[0]} (epoch {epoch} @ {updates} updates) "
+            f"Saved checkpoint {checkpoint_file_path} (epoch {epoch} @ {updates} updates) "
             f"(writing took {write_timer.sum} seconds)"
         )
 
         # See if there's any older checkpoints to delete after saving a new one.
         # Only deletes if keep_last_updates > 0 or keep_last_epochs > 0 (default -1 for both).
         delete_old_checkpoint_files(cfg, end_of_epoch, suffix)
+
+    # If there are checkpoints to save, save the first in the list
+    if len(checkpoint_file_paths) > 0:
+        _save_checkpoint(checkpoint_file_paths[0])
+
+    if training_finished and cfg.save_last_checkpoint:
+        checkpoint_last_file_path = os.path.join(
+            cfg.save_dir, checkpoint_last_file_name
+        )
+        _save_checkpoint(checkpoint_last_file_path)
 
 
 def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffix: str):
