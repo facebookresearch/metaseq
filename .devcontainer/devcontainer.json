@@ -65,7 +65,6 @@
         "--env-file",
         ".devcontainer/devcontainer.env"
     ],
-    // This user must match the name of the user used in the singularity image. The user is
-    // configured here: https://github.com/microsoft/grindstone/blob/9d25b14bc9f5f8494711ab55f7b86551717a11f0/docker/Dockerfile?rgh-link-date=2023-01-31T17%3A13%3A53Z#L158
+    // This user must match the name of the user used in the singularity image.
     "remoteUser": "aiscuser",
 }
