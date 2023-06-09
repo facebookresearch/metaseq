@@ -270,7 +270,7 @@ def do_setup():
             "markupsafe",  # for evals
             "more_itertools",
             "ninja",
-            'numpy; python_version>="3.7"',
+            'numpy==1.24.0; python_version>="3.7"',
             "omegaconf<=2.1.1",
             "portalocker>=2.5",
             "pre-commit",
