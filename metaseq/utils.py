@@ -678,7 +678,7 @@ def extract_soft_alignment(attn, src_sent, tgt_sent, pad, eos):
     return alignment
 
 
-def _flatten_config(cfg: DictConfig):
+def flatten_config(cfg: DictConfig):
     config = OmegaConf.to_container(cfg)
     # remove any legacy Namespaces and replace with a single "args"
     namespace = None

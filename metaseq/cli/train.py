@@ -40,6 +40,7 @@ from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distribute
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
+from metaseq.utils import flatten_config
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -75,7 +76,7 @@ def main(cfg: DictConfig) -> None:
         # TODO(roller): only works when launched with a sweep script
         # should fix that
         OmegaConf.save(
-            config=_flatten_config(cfg),
+            config=flatten_config(cfg),
             f=os.path.join(os.environ["METASEQ_SAVE_DIR"], "config.yml"),
         )
 
@@ -288,7 +289,7 @@ def train(
             "WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir)
         ),
     )
-    progress.update_config(_flatten_config(cfg))
+    progress.update_config(flatten_config(cfg))
 
     trainer.begin_epoch(epoch_itr.epoch)
     valid_subsets = cfg.dataset.valid_subset.split(",")
@@ -409,19 +410,6 @@ def train(
     # reset epoch-level meters
     metrics.reset_meters("train")
     return valid_losses, should_stop
-
-
-def _flatten_config(cfg: DictConfig):
-    config = OmegaConf.to_container(cfg)
-    # remove any legacy Namespaces and replace with a single "args"
-    namespace = None
-    for k, v in list(config.items()):
-        if isinstance(v, argparse.Namespace):
-            namespace = v
-            del config[k]
-    if namespace is not None:
-        config["args"] = vars(namespace)
-    return config
 
 
 def validate_and_save(

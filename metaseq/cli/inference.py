@@ -26,7 +26,7 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.generation_metrics.metrics import GenerationMetrics, evaluate_inference_files
 from metaseq.hub_utils import GeneratorInterface
 from metaseq.logging import get_logger
-from metaseq.utils import _flatten_config
+from metaseq.utils import flatten_config
 
 logger = get_logger(__name__)
 
@@ -752,7 +752,7 @@ def cli_main():
     if os.environ.get("RANK", "0") == "0":
         os.makedirs(os.path.join(args.results_path, "config"), exist_ok=True)
         OmegaConf.save(
-            config=_flatten_config(cfg),
+            config=flatten_config(cfg),
             f=os.path.join(args.results_path, "config", "config.yml"),
         )
 
