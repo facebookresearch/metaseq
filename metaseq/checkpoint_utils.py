@@ -79,7 +79,9 @@ def save_checkpoint(
     extra_state = {"train_iterator": epoch_itr.state_dict()}
 
     checkpoint_file_paths = [
-        os.path.join(cfg.save_dir, checkpoint_file_name) for checkpoint_file_name, cond in checkpoint_conds.items() if cond
+        os.path.join(cfg.save_dir, checkpoint_file_name)
+        for checkpoint_file_name, cond in checkpoint_conds.items()
+        if cond
     ]
 
     def _save_checkpoint(checkpoint_file_path: str):
@@ -108,7 +110,9 @@ def save_checkpoint(
         _save_checkpoint(checkpoint_file_paths[0])
 
     if training_finished and cfg.save_last_checkpoint:
-        checkpoint_last_file_path = os.path.join(cfg.save_dir, checkpoint_last_file_name)
+        checkpoint_last_file_path = os.path.join(
+            cfg.save_dir, checkpoint_last_file_name
+        )
         _save_checkpoint(checkpoint_last_file_path)
 
 

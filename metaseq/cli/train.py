@@ -452,12 +452,16 @@ def validate_and_save(
 
     if num_epoch > max_epoch:
         should_stop = True
-        logger.info(f"Stopping training due to "
-                    f"num_epoch: {num_epoch} > max_epoch: {max_epoch}")
+        logger.info(
+            f"Stopping training due to "
+            f"num_epoch: {num_epoch} > max_epoch: {max_epoch}"
+        )
     elif num_updates > max_update:
         should_stop = True
-        logger.info(f"Stopping training due to "
-                    f"num_updates: {num_updates} > max_update: {max_update}")
+        logger.info(
+            f"Stopping training due to "
+            f"num_updates: {num_updates} > max_update: {max_update}"
+        )
 
     is_epoch_save_interval = (
         end_of_epoch
@@ -467,22 +471,28 @@ def validate_and_save(
     is_successful_update_local_save_interval = (
         cfg.checkpoint.local_save_interval_updates > 0
         and num_updates > 0
-        and num_updates % cfg.checkpoint.local_save_interval_updates == 0 and was_successful_step
+        and num_updates % cfg.checkpoint.local_save_interval_updates == 0
+        and was_successful_step
     )
     is_successful_update_save_interval = (
         cfg.checkpoint.save_interval_updates > 0
         and num_updates > 0
-        and num_updates % cfg.checkpoint.save_interval_updates == 0 and was_successful_step
+        and num_updates % cfg.checkpoint.save_interval_updates == 0
+        and was_successful_step
     )
     is_successful_update_validate_interval = (
         cfg.checkpoint.validate_interval_updates > 0
         and num_updates > 0
-        and num_updates % cfg.checkpoint.validate_interval_updates == 0 and was_successful_step
+        and num_updates % cfg.checkpoint.validate_interval_updates == 0
+        and was_successful_step
     )
 
     do_save = (
         is_epoch_save_interval
-        or (is_successful_update_local_save_interval or is_successful_update_save_interval)
+        or (
+            is_successful_update_local_save_interval
+            or is_successful_update_save_interval
+        )
         or should_stop
     )
     do_validate = (
@@ -502,7 +512,7 @@ def validate_and_save(
             training_finished=should_stop,
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
-            )
+            ),
         )
 
     valid_losses = [None]
