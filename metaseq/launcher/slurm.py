@@ -8,6 +8,7 @@ import fnmatch
 import hashlib
 import itertools
 import os
+import logging
 import random
 import shlex
 import shutil
@@ -18,8 +19,8 @@ from pathlib import Path
 
 import metaseq
 from metaseq.utils import get_random_port
-from metaseq.launcher.tombyard import tombstones
 from metaseq.launcher.sweep import get_env_from_args
+from metaseq.launcher.tombyard import tombstones
 
 try:
     import metaseq_internal
@@ -28,6 +29,8 @@ try:
     has_internal = True
 except ImportError:
     has_internal = False
+
+logger: logging.Logger = logging.getLogger()
 
 
 def main(get_grid, postprocess_hyperparams, args):
@@ -251,6 +254,7 @@ def gen_srun_command_and_str(args, save_dir_key, train_log, train_stderr, train_
     if args.salloc:
         excluded_hosts = os.environ.get("EXCLUDED_HOSTS", None)
         included_hosts = os.environ.get("INCLUDED_HOSTS", None)
+        included_hosts_file = os.environ.get("INCLUDED_HOSTS_FILE", None)
         base_srun_cmd += [
             "--nodes",
             str(args.num_nodes),
@@ -263,7 +267,9 @@ def gen_srun_command_and_str(args, save_dir_key, train_log, train_stderr, train_
         ]
         base_srun_cmd += ["-x", excluded_hosts] if excluded_hosts is not None else []
         base_srun_cmd += ["-w", included_hosts] if included_hosts is not None else []
-
+        base_srun_cmd += (
+            ["-F", included_hosts_file] if included_hosts_file is not None else []
+        )
     srun_cmd = base_srun_cmd + train_cmd
     srun_cmd_str = " ".join(map(shlex.quote, srun_cmd))
     if getattr(args, "requeue_on_fail", False):
@@ -284,6 +290,7 @@ def gen_sbatch_command_and_str(
 ):
     excluded_hosts = os.environ.get("EXCLUDED_HOSTS", None)
     included_hosts = os.environ.get("INCLUDED_HOSTS", None)
+    included_hosts_file = os.environ.get("INCLUDED_HOSTS_FILE", None)
     sbatch_cmd = [
         "sbatch",
         "--job-name",
@@ -331,6 +338,7 @@ def gen_sbatch_command_and_str(
         sbatch_cmd += ["--qos", "high"]
     sbatch_cmd += ["-x", excluded_hosts] if excluded_hosts is not None else []
     sbatch_cmd += ["-w", included_hosts] if included_hosts is not None else []
+    sbatch_cmd += ["-F", included_hosts_file] if included_hosts_file is not None else []
 
     wrapped_cmd = requeue_support()
     if args.azure:
@@ -445,11 +453,14 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             subprocess.check_output(
                 f"ln -fs {abs_oss} {save_dir}/snapshot_public", shell=True
             )
+
         # clone base env and update for this job, e.g., we set WANDB_RUN_ID
         # based on the save_dir, which is based on the current hyperparam values
         env = base_env.copy()
         env["METASEQ_SAVE_DIR"] = save_dir
-
+        env["METASEQ_OSS_DESTINATION"] = os.path.abspath(
+            os.path.abspath(oss_destination)
+        )
         # generate train command
         train_cmd = gen_train_command(
             args,
@@ -505,7 +516,7 @@ def launch_train(args, grid, grid_product, dry_run, postprocess_hyperparams):
             print("Launched {}".format(job_id))
         if hasattr(args, "tombstonable"):
             if args.tombstonable:
-                tombstones(job_id=job_id, base_dir=args.base_directory)
+                tombstones(job_id=job_id, base_dir=args.tombstoning_superdir)
 
 
 def has_finished(save_dir):

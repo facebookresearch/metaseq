@@ -71,7 +71,7 @@ def tombstones_procedure(
                         f"remove the file {tombstone_name} within the next {period_before_tombstone_detected} "
                         f"for it not to trigger the same command again "
                     )
-                    _ = os.popen(f"scontrol requeuehold {job_id}").read()
+                    _ = os.popen(f"scontrol requeuehold {job_id} ").read()
             for tombstone_name in dirstones["requeuehold"]:
                 if os.path.exists(tombstone_name):
                     print(
@@ -86,7 +86,12 @@ def tombstones_procedure(
         time.sleep(period.total_seconds())
 
 
-def tombstones(job_id, base_dir, period=datetime.timedelta(seconds=60), dirstones=None):
+def tombstones(
+    job_id,
+    base_dir,
+    period=datetime.timedelta(seconds=60),
+    dirstones=None,
+):
     if dirstones is None:
         dirstones = {"scancel": [], "requeuehold": [], "release": []}
         for userdir in os.listdir(base_dir):
