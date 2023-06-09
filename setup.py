@@ -251,7 +251,7 @@ def do_setup():
         setup_requires=[
             "cython",
             'numpy; python_version>="3.7"',
-            "setuptools>=18.0",
+            "setuptools==58.2.0",
         ],
         install_requires=[
             # protobuf version pinned due to tensorboard not pinning a version.

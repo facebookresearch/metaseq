@@ -495,6 +495,8 @@ def validate_and_save(
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
             )
+            if cfg.checkpoint.cloud_upload_path
+            else None,
         )
 
     valid_losses = [None]

@@ -23,7 +23,7 @@ install_dep_common: &install_dep_common
       command: |
         source activate metaseq
         # Fixed version to work around https://github.com/pytorch/pytorch/pull/69904
-        pip install setuptools==59.5.0
+        pip install setuptools==58.2.0
         pip install -i https://test.pypi.org/simple/ bitsandbytes-cuda111 -U
         python -c 'import torch; print("Torch version:", torch.__version__)'
         python -m torch.utils.collect_env
@@ -109,8 +109,8 @@ commands:
       - checkout
       - <<: *check_nvidia_driver
       - <<: *create_conda_env
-      - restore_cache:
-          key: *cache_key
+#      - restore_cache:
+#          key: *cache_key
 
   gpu_post: &gpu_post
     steps:
@@ -130,6 +130,7 @@ commands:
             python -m pytest --junitxml=test-results/junit.xml cpu_tests
       - run:
           name: Run GPU Unit Tests
+          no_output_timeout: 30m
           command: |
             source activate metaseq
             python -m pytest --junitxml=test-results/junit.xml gpu_tests
