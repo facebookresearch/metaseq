@@ -109,8 +109,8 @@ commands:
       - checkout
       - <<: *check_nvidia_driver
       - <<: *create_conda_env
-      - restore_cache:
-          key: *cache_key
+#      - restore_cache:
+#          key: *cache_key
 
   gpu_post: &gpu_post
     steps:
