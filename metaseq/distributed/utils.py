@@ -113,7 +113,17 @@ def _infer_single_node_init(cfg: DistributedTrainingConfig):
     assert (
         cfg.distributed_world_size <= torch.cuda.device_count()
     ), f"world size is {cfg.distributed_world_size} but have {torch.cuda.device_count()} available devices"
-    port = random.randint(10000, 20000)
+
+    def find_free_port():
+        import socket
+        from contextlib import closing
+
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(('', 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            return str(s.getsockname()[1])
+
+    port = find_free_port()
     cfg.distributed_init_method = "tcp://localhost:{port}".format(port=port)
 
 
