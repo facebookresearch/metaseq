@@ -43,7 +43,6 @@ RUN git checkout fixing_memory_issues_with_keeping_overlap_may24
 RUN pip3 install -e .
 
 RUN pip install \
-        aim==3.16.2 \
         py-rouge==1.1 \
         rouge_score==0.1.2 \
         parlai==1.7.1 \
