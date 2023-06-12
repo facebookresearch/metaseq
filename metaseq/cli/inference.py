@@ -292,6 +292,8 @@ def write_inference_results_to_file(output_file: str, **kwargs):
 
 def generate(cfg: MetaseqConfig, args: argparse.Namespace):
     global TOTAL_TOKENS_GENERATED
+    TOTAL_TOKENS_GENERATED = 0
+
     generator_interface = GeneratorInterface(cfg)
     generator_interface.load_model()
     logger.info(f"loaded model {cfg.distributed_training.distributed_rank}")
