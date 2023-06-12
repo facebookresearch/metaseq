@@ -485,10 +485,6 @@ def generate(cfg: MetaseqConfig, args: argparse.Namespace):
 
         if args.merge_preds_on_all_ranks:
             unified_output_prediction_file = os.path.join(str(cfg.common_eval.results_path), "all_prediction_results.jsonl")
-            # TODO this means that files are not sorted! In previous
-            # implementation the predictions were sorted by `instance_idx`.
-            # Confirm if this is really necessary (it isn't as far as I've seen)
-
             result_file_max_chunk_bytes_size = None
             if args.result_file_max_chunk_mb_size is not None:
                 result_file_max_chunk_bytes_size = args.result_file_max_chunk_mb_size * 1024 * 1024
