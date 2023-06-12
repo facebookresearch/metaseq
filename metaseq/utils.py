@@ -124,8 +124,8 @@ def make_positions(tensor, padding_idx: int):
     return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx
 
 
-def strip_pad(tensor, pad):
-    return tensor[tensor.ne(pad)]
+def strip_token(tensor, token):
+    return tensor[tensor.ne(token)]
 
 
 def item(tensor):
