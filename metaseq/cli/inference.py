@@ -345,6 +345,9 @@ def generate(cfg: MetaseqConfig, args: argparse.Namespace):
             data_subshard_count=1,
             output_raw_items=args.copy_input_to_output
         )
+
+        # TODO: stream instead of loading entire dataset
+        # will fail if loading dataset greater than RAM
         for data in json_dataset:
             if args.copy_input_to_output:
                 token_data, input_data = data
