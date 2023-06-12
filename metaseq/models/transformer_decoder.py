@@ -60,10 +60,10 @@ def log_weight_stats(tensor, name):
     )
 
 
-class ModelParallelTransformerDecoder(BaseDecoder):
+class TransformerDecoder(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
-    is a :class:`ModelParallelTransformerDecoderLayer`.
+    is a :class:`TransformerDecoderLayer`.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
@@ -232,7 +232,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         return alibi
 
     def build_base_decoder_layer(self, args, **kwargs):
-        return ModelParallelTransformerDecoderLayer(args)
+        return TransformerDecoderLayer(args)
 
     def build_decoder_layer(self, args, **kwargs):
         layer = self.build_base_decoder_layer(args, **kwargs)
@@ -243,7 +243,9 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         checkpoint = getattr(args, "checkpoint_activations", False)
         if checkpoint:
             offload_to_cpu = getattr(args, "offload_activations", False)
-            distribute_checkpointed_activations = getattr(args, "distribute_checkpointed_activations", False)
+            distribute_checkpointed_activations = getattr(
+                args, "distribute_checkpointed_activations", False
+            )
             layer = checkpoint_wrapper(
                 layer,
                 offload_to_cpu=offload_to_cpu,
@@ -251,7 +253,11 @@ class ModelParallelTransformerDecoder(BaseDecoder):
             )
         # if we are checkpointing, enforce that FSDP always wraps the
         # checkpointed layer, regardless of layer size
-        min_params_to_wrap = (getattr(args, "min_params_to_wrap", DEFAULT_MIN_PARAMS_TO_WRAP) if not checkpoint else 0)
+        min_params_to_wrap = (
+            getattr(args, "min_params_to_wrap", DEFAULT_MIN_PARAMS_TO_WRAP)
+            if not checkpoint
+            else 0
+        )
         layer = fsdp_wrap(
             layer,
             min_num_params=min_params_to_wrap,
@@ -289,7 +295,8 @@ class ModelParallelTransformerDecoder(BaseDecoder):
                 # The self_attn_doc_sep token marks the end of the previous document. Therefore,
                 # we need to add 1 to the indices to mark the start of documents.
                 batch_doc_indices = [
-                    index[1] + 1 for index in doc_id_indices
+                    index[1] + 1
+                    for index in doc_id_indices
                     # index[1] + 1 < tokens.size(1) to prevent overflow
                     if index[0] == batch_idx and index[1] + 1 < tokens.size(1)
                 ]
@@ -337,10 +344,6 @@ class ModelParallelTransformerDecoder(BaseDecoder):
 
         # Returning in T x B x C format as that makes integrating sequence parallelism easier.
         x = x.transpose(0, 1).contiguous()
-
-        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
-        if is_sequence_parallel:
-            x = scatter_to_sequence_parallel_region(x)
         return x, embed, positions
 
     # forward for TransformerDecoder
@@ -440,7 +443,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
         return x, {"inner_states": inner_states}
 
-    def output_layer(self, features, **kwargs):
+    def output_layer(self, features):
         """Project features to the vocabulary size."""
         return self.output_projection(features)
 
