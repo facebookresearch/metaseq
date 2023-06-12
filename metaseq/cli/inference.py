@@ -70,7 +70,7 @@ def _tokenize_one_json(
     # NOTE: if you pass in a delimiter, we assume the target is already included
     # in the `text/src` field, and we split on the delimiter to get the prompt
     # and target respectively. That means that if you pass in a delimiter, you
-    # should not pass in a `tgt` field since it will be ignored.
+    # should not pass in a `tgt` field.
     if delimiter is not None and target_key is not None:
         raise AssertionError("You passed in a delimiter and a target key, but the target key will be ignored.")
 
