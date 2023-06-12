@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import random
+import argparse
 import re
 import sys
 import warnings
@@ -21,6 +22,19 @@ import torch.distributed as dist
 import torch.nn.functional as F
 
 from metaseq.distributed import utils as distributed_utils
+from omegaconf import DictConfig, OmegaConf
+
+try:
+    from megatron.mpu import (
+        get_tensor_model_parallel_group,
+        get_tensor_model_parallel_rank,
+        get_tensor_model_parallel_world_size,
+    )
+    from megatron.mpu.utils import VocabUtility
+
+    has_megatron_submodule = True
+except (ImportError, ModuleNotFoundError):
+    has_megatron_submodule = False
 
 try:
     from amp_C import multi_tensor_l2norm
@@ -80,6 +94,23 @@ def move_to_cpu(sample, cast_to_fp32=True):
     return apply_to_sample(_move_to_cpu, sample)
 
 
+def load_align_dict(replace_unk):
+    if replace_unk is None:
+        align_dict = None
+    elif isinstance(replace_unk, str) and len(replace_unk) > 0:
+        # Load alignment dictionary for unknown word replacement if it was passed as an argument.
+        align_dict = {}
+        with open(replace_unk, "r") as f:
+            for line in f:
+                cols = line.split()
+                align_dict[cols[0]] = cols[1]
+    else:
+        # No alignment dictionary provided but we still want to perform unknown word replacement by copying the
+        # original source word.
+        align_dict = {}
+    return align_dict
+
+
 def make_positions(tensor, padding_idx: int):
     """Replace non-padding symbols with their position numbers.
 
@@ -91,6 +122,10 @@ def make_positions(tensor, padding_idx: int):
     # how to handle the dtype kwarg in cumsum.
     mask = tensor.ne(padding_idx).int()
     return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx
+
+
+def strip_token(tensor, token):
+    return tensor[tensor.ne(token)]
 
 
 def item(tensor):
@@ -348,6 +383,67 @@ def get_perplexity(loss, round=2, base=2):
         return float("inf")
 
 
+def vocab_parallel_token_accuracy(
+    vocab_parallel_logits: torch.Tensor,
+    target: torch.Tensor,
+    ignored_token_ids: Optional[List[int]] = None,
+    ignored_tokens_mask: Optional[torch.Tensor] = None
+):
+    # Maximum value along vocab dimension across all GPUs.
+    logits_max = torch.max(vocab_parallel_logits, dim=-1)[0]
+    torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=get_tensor_model_parallel_group())
+    # Subtract the maximum value. This is done for numerical stability.
+    # This helps prevent exp() from overflowing while computing the softmax.
+    vocab_parallel_logits.sub_(logits_max.unsqueeze(dim=-1))
+
+    # Get the partition's vocab indecies
+    get_vocab_range = VocabUtility.vocab_range_from_per_partition_vocab_size
+    partition_vocab_size = vocab_parallel_logits.size()[-1]
+    rank = get_tensor_model_parallel_rank()
+    world_size = get_tensor_model_parallel_world_size()
+    vocab_start_index, vocab_end_index = get_vocab_range(partition_vocab_size, rank, world_size)
+
+    # Create a mask of valid vocab ids (1 means it needs to be masked).
+    target_mask = (target < vocab_start_index) | (target >= vocab_end_index)
+    # If given explicit token ids to ignore, add them to the mask
+    if ignored_token_ids is not None:
+        for token_id in ignored_token_ids:
+            target_mask |= target == token_id
+
+    # If given mask tensor, add it to the mask
+    if ignored_tokens_mask is not None:
+        target_mask |= ignored_tokens_mask
+
+    # Shift the target ids to be in the range [0, vocab-size - vocab_start_index).
+    masked_target = target.clone() - vocab_start_index
+
+    # For Simplicity, we convert logits to a 2-D tensor with size
+    # [*, partition-vocab-size] and target to a 1-D tensor of size [*].
+    logits_2d = vocab_parallel_logits.view(-1, partition_vocab_size)
+    masked_target_1d = masked_target.view(-1)
+    target_mask_1d = target_mask.view(-1)
+
+    # Compute accuracy across vocab parallel logits.
+    # Find the token index with the maximum logit value and compare it to the target token index.
+    # The result has 1s where the prediction was correct and 0s otherwise. Mask out the invalid tokens.
+
+    # Note that max logit index will be in range [0, partition-vocab-size) while target token index
+    # will be in range [0, vocab-size - vocab_start_index).
+    # All reduce SUM is critical to this implementation since the right index could be on a
+    # different model parallel partition. By SUM, we get 1 if any partition has the right index.
+    # This is also why sum() is computed after all reduce step.
+    accuracy = (torch.argmax(logits_2d, dim=-1) == masked_target_1d).float()
+    accuracy.masked_fill_(target_mask_1d, 0.0)
+    # All reduce is needed to get the chunks from other GPUs.
+    torch.distributed.all_reduce(accuracy, op=torch.distributed.ReduceOp.SUM, group=get_tensor_model_parallel_group())
+
+    accuracy_correct_tokens = accuracy.sum()
+    n_unmasked_tokens = (~target_mask_1d).sum()
+    torch.distributed.all_reduce(n_unmasked_tokens, op=torch.distributed.ReduceOp.SUM, group=get_tensor_model_parallel_group())
+
+    return accuracy_correct_tokens / n_unmasked_tokens
+
+
 def has_parameters(module):
     try:
         next(module.parameters())
@@ -580,3 +676,30 @@ def extract_soft_alignment(attn, src_sent, tgt_sent, pad, eos):
             ["{:.6f}".format(p) for p in src_probs.tolist()] for src_probs in attn_valid
         ]
     return alignment
+
+
+def flatten_config(cfg: DictConfig):
+    config = OmegaConf.to_container(cfg)
+    # remove any legacy Namespaces and replace with a single "args"
+    namespace = None
+    for k, v in list(config.items()):
+        if isinstance(v, argparse.Namespace):
+            namespace = v
+            del config[k]
+    if namespace is not None:
+        config["args"] = vars(namespace)
+    return config
+
+
+# a function to print current rank and then message
+def print_with_rank(*args):
+    rank = get_tensor_model_parallel_rank()
+    print(f"MRank {rank}, ", end="")
+    print(*args)
+
+def print_tensor_with_rank(tensor):
+    # get the indices of the non-zero values
+    indices = tensor.nonzero()
+    # print the indices and values of the non-zero values
+    for index in indices:
+        print_with_rank(f"I: {index.tolist()}, V: {tensor[index[0], index[1]]}")
