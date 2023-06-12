@@ -67,7 +67,7 @@ def _build_bert_scorer() -> EvalFunctionType:
     return evaluate_closure
 
 
-def _buld_accuracy_scorer() -> EvalFunctionType:
+def _build_accuracy_scorer() -> EvalFunctionType:
 
     # Scorer comes directly from HELM:
     # https://github.dev/stanford-crfm/helm/blob/80ecb204a9fed6a54a53e1f5950e9c1e145acddc/src/helm/benchmark/metrics/basic_metrics.py#L137-L138
@@ -115,7 +115,7 @@ class GrindstoneMetrics:
             self.metric_name_to_eval_fn["rouge"] = _build_rouge_function(["rouge1", "rouge2", "rougeL"])
 
         if "accuracy" in self.metrics:
-            self.metric_name_to_eval_fn["accuracy"] = _buld_accuracy_scorer()
+            self.metric_name_to_eval_fn["accuracy"] = _build_accuracy_scorer()
 
     def __call__(self, _prompt: str, prediction: str, label: Union[List[str], str]) -> Dict:
         response = {}
