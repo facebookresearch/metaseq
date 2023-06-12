@@ -8,6 +8,7 @@ import math
 import torch
 
 from metaseq import metrics, utils
+from metaseq.distributed.utils import get_data_parallel_world_size
 from metaseq.criterions import BaseCriterion, register_criterion
 from metaseq.modules.megatron.mpu import vocab_parallel_cross_entropy
 
@@ -25,15 +26,24 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        target = sample["target"]
-        has_pad = target.eq(self.padding_idx).any().item()
+        target_token_ids = sample["target"]
+        has_mask = target_token_ids.eq(self.padding_idx).any().item()
 
         net_output = model(**sample["net_input"])
-        loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
-        if has_pad:
-            loss = loss * (target != self.padding_idx)
+        logits = net_output[0].float()
+
+        loss = vocab_parallel_cross_entropy(logits.clone(), target_token_ids)
+        if has_mask:
+            loss = loss * (target_token_ids != self.padding_idx)
         loss = loss.sum()
-        # When using target loss only, use num tokens in target only as the sample_size
+
+        # Compute token accuracy across vocab parallel groups
+        ignored_token_ids = [self.padding_idx, self.eos_token_id] if has_mask else []
+        token_accuracy = utils.vocab_parallel_token_accuracy(
+            vocab_parallel_logits=logits, target=target_token_ids, ignored_token_ids=ignored_token_ids
+        )
+
+        # When using target loss only, use num tokens in target as the sample_size
         # See StreamingSrcTgtDataset
         sample_size = (
             sample["ntokens_target"]
@@ -42,12 +52,14 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         )
         logging_output = {
             "loss": loss.data,
+            "token_accuracy": token_accuracy.data,
             "ntokens": sample["ntokens"],
-            "nsentences": sample["target"].size(0),
+            "nsentences": target_token_ids.size(0),
             "sample_size": sample_size,
         }
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
-            logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
+            logging_output["ndocseps"] = (target_token_ids == self.task.eod).sum()
+
         if (
             len(net_output) >= 2
             and isinstance(net_output[1], dict)
@@ -55,7 +67,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         ):
             with torch.no_grad():
                 # yank out the inner states we wish to instrument
-                # see transformer_decoder.py ModelParallelTransformerDecoder.extract_features
+                # see transformer_decoder.py TransformerDecoder.extract_features
                 emb, *_, actv = net_output[1]["inner_states"]
                 assert isinstance(
                     emb, dict
@@ -76,6 +88,7 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        token_accuracy_sum = sum(log.get("token_accuracy", 0.0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -98,6 +111,10 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
+        )
+        ddp_world_size = get_data_parallel_world_size()
+        metrics.log_scalar(
+            "token_accuracy", token_accuracy_sum / ddp_world_size, ddp_world_size, round=3
         )
 
     @staticmethod

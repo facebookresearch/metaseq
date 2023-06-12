@@ -157,6 +157,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         permute_documents (bool, optional): randomly permute the order the documents are read (default: True)
         source_target (bool, optional): the input dataset returns a tuple of tokens lists (source, target) (default: False)
         to_skip (int, optional): skip the first to_skip sequences before iteration begins (Default: 0)
+        mask_token_id (float, optional): required during distillation for creation of mask tensors
+        mask_prediction_value (float, optional): required during distillation for creation of mask tensors
     """
 
     def __init__(
@@ -172,6 +174,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         to_skip=0,
         permute_documents=True,
         source_target=False,
+        mask_token_id: Optional[int] = None,
+        mask_prediction_value: Optional[float] = None,
     ):
         super().__init__()
         self.dataset = dataset
@@ -208,6 +212,8 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         self.to_skip = to_skip
         self.permute_documents = permute_documents
         self.source_target = source_target
+        self.mask_token_id = mask_token_id
+        self.mask_prediction_value = mask_prediction_value
 
         if break_mode == "none":
             if self.source_target:
@@ -288,17 +294,27 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             the document because we might end up skipping it entirely.
             """
             for idx in indices:
-                ln = self.len_cache.data[idx]
-                if ln == 0:
+                num_token_ids = self.len_cache.data[idx]
+                if num_token_ids == 0:
                     # Cache miss: we don't know the number of tokens
                     # so we have to load and tokenize the document.
-                    r = self.dataset[idx]
+                    token_ids = self.dataset[idx]
                     if self.source_target:
-                        ln = r[0].shape[0]
+                        if isinstance(token_ids[0], tuple):
+                            # TODO: Raw input data handling
+                            token_ids, raw_input_data = token_ids
+                        if isinstance(token_ids[0], torch.Tensor):
+                            num_token_ids = token_ids[0].shape[0]
+                        else:
+                            raise ValueError("Invalid type for source")
+                        assert token_ids[0].shape[0] == token_ids[1].shape[0]
                     else:
-                        ln = r.shape[0]
-                    self.len_cache.data[idx] = ln
-                    yield (ln, [r])
+                        if isinstance(token_ids, torch.Tensor):
+                            num_token_ids = token_ids.shape[0]
+                        else:
+                            raise ValueError("Invalid type for source")
+                    self.len_cache.data[idx] = num_token_ids
+                    yield (num_token_ids, [token_ids])
                 else:
                     # Cache hit: we know the number of tokens, so we can
                     # skip loading the document for now.
@@ -306,7 +322,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     # We create a single-element list here, so that we can replace the single element
                     # with the real Tensor value the first time _any_ SentenceFragment needs the
                     # real data from this document.
-                    yield (ln, [int(idx)])
+                    yield (num_token_ids, [int(idx)])
 
         block_itr = self.block_iterator(documents(), self.block_size, self.drop_last)
 
@@ -376,7 +392,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 elem["ids"] = torch.LongTensor(elem["ids"])
                 subsequences = []
                 # assemble the sequence form the SequenceFragment
-                for doc, start, ln in elem["block"]:
+                for doc, start, num_token_ids in elem["block"]:
                     # doc[0] can be (1) "padding", (2) a tensor of tokens,
                     # or (3) and index into self.dataset that hasn't been loaded yet.
 
@@ -385,7 +401,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                         example = subsequences[-1]
                         if self.source_target:
                             example = example[0]
-                        padding_tensor = example.new_full((ln,), self.padding_idx)
+                        padding_tensor = self._get_padding_tensor(example, num_token_ids)
                         if self.source_target:
                             padding_tensor = (padding_tensor, padding_tensor)
                         subsequences.append(padding_tensor)
@@ -399,10 +415,10 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                             doc[0] = self.dataset[doc[0]]
                         if self.source_target:
                             subsequences.append(
-                                tuple(elem[start : start + ln] for elem in doc[0])
+                                tuple(elem[start : start + num_token_ids] for elem in doc[0])
                             )
                         else:
-                            subsequences.append(doc[0][start : start + ln])
+                            subsequences.append(doc[0][start : start + num_token_ids])
                 if self.source_target:
                     del elem["block"]
                     elem["src_block"] = torch.cat(tuple(s for s, t in subsequences))
@@ -413,6 +429,21 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 yield elem
         except StopIteration:
             return
+
+    def _get_padding_tensor(self, example, num_token_ids):
+        is_soft_distillation = len(example.shape) > 1
+        if not is_soft_distillation:
+            padding_tensor = example.new_full((num_token_ids, ), self.padding_idx)
+        else:
+            # In soft distillation the mask tensor has 3 dimensions
+            dim_num_k_predictions = example.shape[1]
+            dim_tokens_predictions = example.shape[2]
+            padding_tensor = example.new_full(
+                (num_token_ids, dim_num_k_predictions, dim_tokens_predictions), self.mask_token_id
+            )
+            padding_tensor[:, :, 1] = self.mask_prediction_value
+
+        return padding_tensor
 
 
 def yield_single_sentences_pad_8(iterable, block_size, drop_last) -> Iterable[Sequence]:
