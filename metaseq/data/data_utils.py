@@ -7,13 +7,18 @@ try:
     from collections.abc import Iterable
 except ImportError:
     from collections import Iterable
+
+from collections.abc import Iterator as AbcIterator
+
 import contextlib
 import itertools
 import logging
 import os
 import re
+from typing import List
 
 import numpy as np
+import torch
 
 from metaseq import utils
 from metaseq.file_io import PathManager
@@ -30,15 +35,67 @@ def collate_tokens(
     pad_to_length=None,
     pad_to_multiple=1,
     pad_to_bsz=None,
+    mask_prediction_value=None,
 ):
-    """Convert a list of 1d tensors into a padded 2d tensor."""
+    """ Gets a list with <batch_size> tensors and transform them
+        into a single padded tensor.
+        E.g. 1: receiving tokens as inputs
+            input with batch size of 2:
+            values = [[13650, 290, 2692], [13650, 1245, 287]]
+            pad_to_length = 4
+            output:
+            tensor([[13650, 290, 2692, 1], [13650, 1245, 287, 1]])
+        E.g. 2: receiving logprobs as inputs
+            input with batch size of 2, top k = 3:
+            values = [
+                [[[13650, -0.04], [14234, -1.24], [567, -2.21]],
+                [[290, -0.001],  [1244, -2.35],  [534, -3.64]],
+                [[2692, -0.2],   [134,  -2.34],  [342, -5.89]]],
+                [[[13650, -0.04], [2342, -1.24], [213, -2.21]],
+                [[1245, -0.001], [7561, -2.35], [3211, -3.64]],
+                [[287, -0.2], [5456, -2.34], [3125, -5.89]]],
+            ]
+            pad_to_length = 4
+            mask_prediction_value = 0
+            output:
+            tensor(
+                [[[[13650, -0.04], [14234, -1.24], [567, -2.21]],
+                [[290, -0.001],  [1244, -2.35],  [534, -3.64]],
+                [[2692, -0.2],   [134,  -2.34],  [342, -5.89]]
+                [[-1, 0],    [-1,  0],   [-1, 0]]],
+                [[[13650, -0.04], [2342, -1.24], [213, -2.21]],
+                [[1245, 0], [7561, -2.35], [3211, -3.64]],
+                [[287, -0.2], [5456, -2.34], [3125, -5.89]],
+                [[-1, 0], [-1,  0],  [-1, 0]]]]
+            )
+    """
     size = max(v.size(0) for v in values)
     size = size if pad_to_length is None else max(size, pad_to_length)
     if pad_to_multiple != 1 and size % pad_to_multiple != 0:
         size = int(((size - 0.1) // pad_to_multiple + 1) * pad_to_multiple)
 
     batch_size = len(values) if pad_to_bsz is None else max(len(values), pad_to_bsz)
-    res = values[0].new(batch_size, size).fill_(pad_idx)
+    dimensions = [batch_size, size]
+
+    num_dimensions = max(v.dim() for v in values)
+    assert num_dimensions in (1, 3)
+    if num_dimensions > 1:
+        # The first dimension is the generation size. We already have it. Now we need to
+        # get the size of other dimensions.
+
+        max_top_k = max(v.size(1) for v in values)
+        # data stands for the token_id and the correspondent logit/logprob value
+        max_data = max(v.size(2) for v in values)
+
+        dimensions.extend([max_top_k, max_data])
+
+    res = values[0].new(*dimensions).fill_(pad_idx)
+
+    if num_dimensions > 1:
+        if mask_prediction_value is None:
+            raise ValueError('mask_prediction_value must not be None when using multiple dimensions as target')
+        # Masked tokens will be removed from loss computation after the forward pass.
+        res.index_fill_(dim=-1, index=torch.LongTensor([-1]), value=mask_prediction_value)
 
     def copy_tensor(src, dst):
         assert dst.numel() == src.numel()
@@ -303,3 +360,109 @@ def raise_if_valid_subsets_unintentionally_ignored(train_cfg) -> None:
         advice = "Set --combine-val to combine them or --ignore-unused-valid-subsets to ignore them."
         msg = f"Valid paths {ignored_paths} will be ignored. {advice}"
         raise ValueError(msg)
+
+
+def get_number_of_lines_in_file(file_path: str):
+    """
+    Get the number of lines in a file.
+
+    :param str file_path: Path of the file we want to count the lines of.
+    :return int: the number of lines in the file.
+    """
+    with open(file_path, "r") as fh:
+        return sum(1 for _ in fh)
+
+
+def multiple_file_line_generator(file_paths: List[str]):
+    """
+    Takes a list of file_paths and returns a iterator that will yield one line
+    at a time from all files one after the other.
+
+    The files paths are first ordered lexicographically, and the generator will
+    consume each file in order, yielding one line at a time.
+
+    :param List[str] file_paths: Paths of the files that want to be iterated over
+    """
+
+    class MultiFileIterator(AbcIterator):
+
+        def __init__(self, file_paths) -> None:
+            assert len(file_paths) > 0, "Can't iterate over an empty list of files!"
+
+            self.file_paths = sorted(file_paths)
+
+            self.total_lines = sum(get_number_of_lines_in_file(file_path) for file_path in file_paths)
+
+            self.current_line_num = 0
+            self.current_file_path = self.file_paths.pop(0)
+
+            self.f_handle = open(self.current_file_path, "r", encoding="utf-8")
+
+        def __len__(self):
+            return self.total_lines
+
+        def __iter__(self):
+            return self
+
+        def __next__(self) -> str:
+            return self._get_next_line()
+
+        def _get_next_line(self):
+            try:
+                line = next(self.f_handle)
+                self.current_line_num += 1
+                return line
+            except StopIteration:
+                if len(self.file_paths) > 0:
+                    # close current file and open next one
+                    self.f_handle.close()
+
+                    self.current_file_path = self.file_paths.pop(0)
+                    self.current_line_num = 0
+                    self.f_handle = open(self.current_file_path, "r", encoding="utf-8")
+
+                    return self._get_next_line()
+                else:
+                    # stop iteration if there are no more files
+                    raise StopIteration
+
+    return MultiFileIterator(file_paths)
+
+
+def truncate_target(target_tokens, tokens_per_sample):
+    if len(target_tokens) <= tokens_per_sample:
+        return target_tokens
+
+    logger.warning(f"Target sequence length {len(target_tokens)} is longer than max sequence length {tokens_per_sample}")
+    logger.warning("Truncating target sequence to 70% of max sequence length")
+
+    # Right truncation for Target tokens
+    target_tokens = target_tokens[:int(tokens_per_sample * 0.7)]
+
+    return target_tokens
+
+
+def truncate_source(
+    source_tokens,
+    max_context_length,
+    truncation_type: str,
+    len_prompt_eos_tokens: int = 0,
+    masked_source_tokens: list = None
+):
+    if len(source_tokens) <= max_context_length:
+        return source_tokens, masked_source_tokens
+
+    if truncation_type == "left":
+        source_tokens = source_tokens[-max_context_length:]
+        if masked_source_tokens:
+            masked_source_tokens = masked_source_tokens[-max_context_length:]
+    elif truncation_type == "right":
+        source_tokens = source_tokens[:max_context_length]
+        if masked_source_tokens:
+            masked_source_tokens = masked_source_tokens[:max_context_length]
+    else:
+        logger.warning(
+            f"Source prompt has more tokens than max context length of {max_context_length + len_prompt_eos_tokens}, but truncation is set to {truncation_type}"
+        )
+
+    return source_tokens, masked_source_tokens
