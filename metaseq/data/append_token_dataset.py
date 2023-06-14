@@ -10,7 +10,7 @@ from . import BaseWrapperDataset
 
 
 class AppendTokenDataset(BaseWrapperDataset):
-    def __init__(self, dataset, token=None):
+    def __init__(self, dataset: BaseWrapperDataset, token: str = None):
         super().__init__(dataset)
         self.token = token
         if token is not None:
@@ -18,7 +18,7 @@ class AppendTokenDataset(BaseWrapperDataset):
         else:
             self._sizes = dataset.sizes
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         item = self.dataset[idx]
         if self.token is not None:
             item = torch.cat([item, item.new([self.token])])
@@ -28,13 +28,13 @@ class AppendTokenDataset(BaseWrapperDataset):
     def sizes(self):
         return self._sizes
 
-    def num_tokens(self, index):
+    def num_tokens(self, index: int):
         n = self.dataset.num_tokens(index)
         if self.token is not None:
             n += 1
         return n
 
-    def size(self, index):
+    def size(self, index: int):
         n = self.dataset.size(index)
         if self.token is not None:
             n += 1
