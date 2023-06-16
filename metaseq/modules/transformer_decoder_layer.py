@@ -94,9 +94,15 @@ class TransformerDecoderLayer(nn.Module):
         self.args = args
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
-        self.residual_dropout_module = DropPath(
-            args.residual_dropout_by_layer[layer_id]
-        )
+
+        self.residule_dropout = getattr(args, "residual_dropout_by_layer", None)
+        if self.residule_dropout is not None:
+            self.residual_dropout_module = DropPath(
+                args.residual_dropout_by_layer[layer_id]
+            )
+        else:
+            self.residual_dropout_module = None
+
         self.self_attn = self.build_self_attention(
             self.embed_dim,
             args,
@@ -243,7 +249,9 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
         )
         x = self.dropout_module(x)
-        x = residual + self.residual_dropout_module(x)
+        if self.residual_dropout_module is not None:
+            x = self.residual_dropout_module(x)
+        x = residual + x  # self.residual_dropout_module(x)
         return x
 
     def forward(
@@ -296,7 +304,9 @@ class TransformerDecoderLayer(nn.Module):
             fc2=self.fc2,
             dropout_module=self.dropout_module,
         )
-        x = residual + self.residual_dropout_module(x)
+        if self.residual_dropout_module is not None:
+            x = self.residual_dropout_module(x)
+        x = residual + x  # self.residual_dropout_module(x)
         return x
 
     def make_generation_fast_(self, **kwargs):
@@ -452,5 +462,7 @@ class ModelParallelTransformerDecoderLayer(TransformerDecoderLayer):
             p=self.args.dropout,
             training=self.training,
         )
-        x = residual + self.residual_dropout_module(x)
+        if self.residual_dropout_module is not None:
+            x = self.residual_dropout_module(x)
+        x = residual + x  # self.residual_dropout_module(x)
         return x
