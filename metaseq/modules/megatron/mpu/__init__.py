@@ -12,11 +12,13 @@ from .initialize import get_tensor_model_parallel_group
 from .initialize import get_tensor_model_parallel_rank
 from .initialize import get_tensor_model_parallel_world_size
 from .initialize import initialize_model_parallel
+from .initialize import get_data_parallel_world_size
 
 from .layers import LinearWithGradAccumulationAndAsyncCommunication
 from .layers import ColumnParallelLinear
 from .layers import RowParallelLinear
 from .layers import VocabParallelEmbedding
+from .layers import ParallelEmbedding
 
 from .mappings import copy_to_tensor_model_parallel_region
 from .mappings import reduce_from_tensor_model_parallel_region

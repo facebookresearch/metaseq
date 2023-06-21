@@ -5,6 +5,8 @@
 #
 # Taken from:
 # https://github.com/ngoyal2707/Megatron-LM/blob/fa6c0860b62e4ed2ac13a513e7d950d72f576a44/megatron/mpu/layers.py
+from collections import Callable
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -247,6 +249,72 @@ class VocabParallelEmbedding(torch.nn.Module):
         # Reduce across all the model parallel GPUs.
         output = reduce_from_tensor_model_parallel_region(output_parallel)
 
+        return output
+
+
+class ParallelEmbedding(torch.nn.Module):
+    """Embedding parallelized in the embedding dimension.
+
+    This is mainly adapted from torch.nn.Embedding and all the default
+    values are kept.
+    Arguments:
+        num_embeddings: vocabulary size.
+        embedding_dim: size of hidden state.
+        init_method: method to initialize weights.
+    """
+
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        padding_idx: Optional[int] = None,
+        max_norm: Optional[float] = None,
+        norm_type: float = 2.0,
+        scale_grad_by_freq: bool = False,
+        sparse: bool = False,
+        init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
+        keep_master_weight_for_test: bool = False,
+    ) -> None:
+        super(ParallelEmbedding, self).__init__()
+        # Keep the input dimensions.
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.padding_idx = padding_idx
+        self.max_norm = max_norm
+        self.norm_type = scale_grad_by_freq
+        self.scale_grad_by_freq = scale_grad_by_freq
+        self.sparse = sparse
+        self._weight = None
+        # Divide the weight matrix along the embedding dimension.
+        world_size = get_tensor_model_parallel_world_size()
+        self.embedding_dim_per_partition = self.embedding_dim // world_size
+
+        # Allocate weights.
+        self.weight = Parameter(torch.Tensor(self.num_embeddings, self.embedding_dim_per_partition))
+        # And initialize.
+        _initialize_affine_weight_cpu(
+            self.weight,
+            self.num_embeddings,
+            self.embedding_dim,
+            self.embedding_dim_per_partition,
+            1,
+            init_method,
+            stride=1,
+            return_master_weight=False,
+        )
+
+    def forward(self, input_: torch.Tensor) -> torch.Tensor:  # type: ignore
+        input_parallel = copy_to_tensor_model_parallel_region(input_)
+        output_parallel = F.embedding(
+            input_parallel,
+            self.weight,
+            self.padding_idx,
+            self.max_norm,
+            self.norm_type,
+            self.scale_grad_by_freq,
+            self.sparse,
+        )
+        output = gather_from_tensor_model_parallel_region(output_parallel)
         return output
 
 
