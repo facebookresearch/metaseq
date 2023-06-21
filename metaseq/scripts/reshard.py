@@ -319,17 +319,18 @@ def create_shard_metadata_based_on_model_layers(shard_state_dicts: Dict[int, Dic
     paddings_emb += [math.ceil(sum(numels_0_emb) / fsdp_factor) * fsdp_factor - sum(numels_0_emb)]
 
     paddings_layers = []
+    #print(shard_state_dicts[0][0]["model"])
     for layer_idx in range(n_layers):
         numels_0_layer = [
             math.prod(
-                list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.k_proj.weight"].shape)[:2]
+                list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.weight"].shape)[:2]
             ),
-            math.prod(
-                list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2]
-            ),
-            math.prod(
-                list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2]
-            ),
+            # math.prod(
+            #     list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2]
+            # ),
+            # math.prod(
+            #     list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2]
+            # ),
             #math.prod(list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.bias"].shape)[:1]),
             math.prod(
                 list(shard_state_dicts[0][0]["model"][f"decoder.layers.{layer_idx}.self_attn.out_proj.weight"].shape)[:2]
@@ -397,9 +398,9 @@ def create_shard_metadata_based_on_model_layers(shard_state_dicts: Dict[int, Dic
 
             for layer_idx in range(n_layers):
                 shapes = [
-                    list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.k_proj.weight"].shape)[:2],
-                    list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2],
-                    list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2],
+                    list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.weight"].shape)[:2],
+                    # list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2],
+                    # list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2],
                     #list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.bias"].shape)[:1],
                     list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.out_proj.weight"].shape)[:2],
                     #list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.out_proj.bias"].shape)[:1],
@@ -414,14 +415,14 @@ def create_shard_metadata_based_on_model_layers(shard_state_dicts: Dict[int, Dic
                 ]
                 numels = [
                     math.prod(
-                        list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.k_proj.weight"].shape)[:2]
+                        list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.weight"].shape)[:2]
                     ),
-                    math.prod(
-                        list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2]
-                    ),
-                    math.prod(
-                        list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2]
-                    ),
+                    # math.prod(
+                    #     list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.v_proj.weight"].shape)[:2]
+                    # ),
+                    # math.prod(
+                    #     list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.q_proj.weight"].shape)[:2]
+                    # ),
                     # math.prod(
                     #     list(shard_state_dict["model"][f"decoder.layers.{layer_idx}.self_attn.qkv_proj.bias"].shape)[:1]
                     # ),
@@ -452,9 +453,9 @@ def create_shard_metadata_based_on_model_layers(shard_state_dicts: Dict[int, Dic
                         "params": {
                             "flat_param_0": {
                                 "names": [
-                                    "self_attn.k_proj.weight",
-                                    "self_attn.v_proj.weight",
-                                    "self_attn.q_proj.weight",
+                                    "self_attn.qkv_proj.weight",
+                                    #"self_attn.v_proj.weight",
+                                    #"self_attn.q_proj.weight",
                                     #"self_attn.qkv_proj.bias",
                                     "self_attn.out_proj.weight",
                                     #"self_attn.out_proj.bias",
