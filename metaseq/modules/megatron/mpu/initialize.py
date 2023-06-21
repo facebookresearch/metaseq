@@ -242,8 +242,8 @@ def get_data_parallel_group():
 
 
 def get_data_parallel_world_size():
-    """Get the data parallel group the caller rank belongs to."""
-    return torch.distributed.get_world_size() // get_tensor_model_parallel_world_size()
+    """Return world size for the data parallel group."""
+    return torch.distributed.get_world_size(group=get_data_parallel_group())
 
 
 def get_tensor_model_parallel_world_size():
