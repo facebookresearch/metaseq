@@ -13,7 +13,9 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-
+from collections import defaultdict
+import zipfile
+from metaseq.utils import print_r0
 import numpy as np
 import torch
 from omegaconf import II
@@ -69,6 +71,7 @@ def parse_doc(doc):
     if obj is None:
         raise ValueError(f"doc not correct formated: {doc}")
     text, image = obj.group(1), obj.group(2)
+
     result = {"text": text, "image": image}
     return result
 
@@ -309,27 +312,71 @@ class StreamingLanguageModelingTask(LegacyTask):
             + [self.eod]
         )
 
-    def tokenize_single_doc(self, doc, add_eod=False):
-        doc = parse_doc(doc)
-        text, image = doc["text"], doc["image"]
-        image = map_old_image_token_to_new_image_token(image)
-        text_indexes, image_indexes = (
-            self.tokenizer.encode(text.rstrip()).ids,
-            self.tokenizer.encode(image.rstrip()).ids,
-        )
+    def tokenize_cm3_v2(self, json):
+        if "text_list" in json:
+            return self._tokenize_interleaving_json(json)
+        elif "retrieved_docs_from_img" in json:
+            return self._tokenize_ra_json(json)
+        else:
+            return self._tokenize_m2c2_json(json)
+
+    def _tokenize_image(self, image_str):
+        image = map_old_image_token_to_new_image_token(image_str)
+        image_indexes = self.tokenizer.encode(image.rstrip()).ids
         assert (
             len(image_indexes) == 1024
         ), f"Each image must be 1024 tokens, instead we got {len(image_indexes)}"
+        # if  not len(image_indexes) == 1024 and torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
         assert all(
-            [i > 4 for i in image_indexes]
+            [i > 3 for i in image_indexes]
         ), f"Images should not have any special tokens: {image_indexes}"
+        return image_indexes
+
+    def tokenize_single_html_doc(self, doc, add_eod=False):
+        doc = parse_doc(doc)
+        text, image = doc["text"], doc["image"]
+        text_indexes = self.tokenizer.encode(text.rstrip()).ids
+        image = image.strip() + " "
+        image_indexes = self._tokenize_image(image)
         indexes = text_indexes + [self.cm3_break_ind] + image_indexes
         if add_eod:
             indexes = indexes + [self.eod]
         return indexes
 
+    def _tokenize_m2c2_json(self, json):
+        query_index = self.tokenize_single_html_doc(json["text"], add_eod=True)
+        final_indexes = torch.LongTensor([self.eod] + query_index)
+        return final_indexes
+
+    def _tokenize_interleaving_json(self, json):
+        all_tokens = [self.eod]
+        all_texts = json["text_list"]
+        textid_2_image = defaultdict(list)
+        for image in json["image_info"]:
+            if "IMAGE_TOKENS" in image:
+                textid_2_image[image["matched_text_index"]].append(
+                    image["IMAGE_TOKENS"]
+                )
+        for text_idx, text in enumerate(all_texts):
+            all_tokens += self.tokenizer.encode(text.rstrip()).ids
+            if len(textid_2_image[text_idx]):
+                for image in textid_2_image[text_idx]:
+                    image = image.replace('"', "").strip() + " "
+                    image_indexes = self._tokenize_image(image)
+                    all_tokens += [self.cm3_break_ind]
+                    all_tokens += image_indexes
+                all_tokens += [self.cm3_break_ind]
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
+        all_tokens += [self.eod]
+
+        all_tokens = [int(x) for x in all_tokens]
+        final_indexes = torch.LongTensor(all_tokens)
+        return final_indexes
+
     def _tokenize_ra_json(self, json):
-        query_index = self.tokenize_single_doc(json["text"], add_eod=True)
+        query_index = self.tokenize_single_html_doc(json["text"], add_eod=True)
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
         random.shuffle(ra_docs)
@@ -337,7 +384,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
         for ra_doc in ra_docs:
-            ra_index = self.tokenize_single_doc(ra_doc, add_eod=False)
+            ra_index = self.tokenize_single_html_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
             ra_indexes.append(ra_index)
         final_indexes = torch.cat(
@@ -439,6 +486,22 @@ class StreamingLanguageModelingTask(LegacyTask):
         cur_shard_str = shards[shard_idx]
         return cur_shard_str
 
+    def get_previous_shard_str(self, epoch, split):
+        shards = {}
+        for shard_id in os.listdir(os.path.join(self.args.data, split)):
+            assert (
+                int(shard_id) not in shards
+            ), f"shard id: {shard_id} not in shards: {shards}"
+            shards[int(shard_id)] = shard_id
+        assert min(shards.keys()) == 0
+        assert max(shards.keys()) == len(shards) - 1
+
+        data_subshard_count = self.args.data_subshard_count if split == "train" else 1
+
+        shard_idx = ((epoch - 1) // data_subshard_count) % len(shards)
+        prev_shard_str = shards[shard_idx - 1] if shard_idx > 0 else None
+        return prev_shard_str
+
     def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
 
@@ -465,6 +528,45 @@ class StreamingLanguageModelingTask(LegacyTask):
         # determine number of shards for this split
         cur_shard_str = self.get_shard_str(epoch, split)
 
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
+
+        if split == "train" and "zip" in self.args.data:
+            # Delete jsonl files
+            prev_shard_str = self.get_previous_shard_str(epoch, split)
+            if prev_shard_str is not None and split == "train":
+                path_to_unzip_files = os.path.join(
+                    self.args.data, split, prev_shard_str
+                )
+                previous_extracted_files = [
+                    f"{path_to_unzip_files}/{f}"
+                    for f in os.listdir(path_to_unzip_files)
+                    if f.endswith(".jsonl")
+                ]
+                print_r0("previous_extracted_files", previous_extracted_files)
+                for f in previous_extracted_files:
+                    if torch.distributed.get_rank() == 0:
+                        print_r0("removing!: ", f)
+                        os.remove(f)
+
+            # Get list of all zip files
+            path_to_zip_files = os.path.join(self.args.data, split, cur_shard_str)
+            print_r0("path_to_zip_files", path_to_zip_files)
+            zip_files = [f for f in os.listdir(path_to_zip_files) if f.endswith(".zip")]
+
+            for zip_filename in zip_files:
+                # Create a ZipFile object
+                with zipfile.ZipFile(
+                    os.path.join(path_to_zip_files, zip_filename), "r"
+                ) as zip_ref:
+                    # Extract all the contents of the zip file in specified directory
+                    zip_ref.extractall(path=path_to_zip_files)
+            # List the extracted files
+            extracted_files = [
+                f for f in os.listdir(path_to_zip_files) if f.endswith(".jsonl")
+            ]
+            print_r0("extracted_files", extracted_files)
+
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
         data_subshard_count = self.args.data_subshard_count if split == "train" else 1
@@ -477,7 +579,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     # tokenizer=self._tokenize_one_json,
-                    tokenizer=self._tokenize_ra_json
+                    tokenizer=self.tokenize_cm3_v2
                     if self.has_retrieval
                     else self._tokenize_one_json,
                     epoch=epoch,
@@ -513,7 +615,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 drop_last=(split == "train"),
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
-                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation
+                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
             )
         else:
             self.datasets[split] = DocumentToSequenceDataset(
