@@ -147,7 +147,7 @@ def main(cfg: DictConfig) -> None:
             model = task.build_model(cfg.model)
             if not isinstance(model, FullyShardedDataParallel):
                 model = fsdp_wrap(
-                    model,
+                    model.cuda(),
                     process_group=distributed_utils.get_data_parallel_group(),
                 )
     else:

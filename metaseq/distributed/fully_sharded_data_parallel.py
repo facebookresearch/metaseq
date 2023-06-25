@@ -56,30 +56,33 @@ class FullyShardedDataParallel(FSDP):
             return self.module
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
-        if self.use_sharded_state:
-            return super().local_state_dict(
-                destination=destination, prefix=prefix, keep_vars=keep_vars
-            )
-        else:
-            if self.rank == 0:
-                return super().state_dict(
-                    destination=destination, prefix=prefix, keep_vars=keep_vars
-                )
-            else:
-                # We must call state_dict() due to use of communication
-                # primitives. But we don't use the result.
-                super().state_dict()
-                return destination or {}
+        return super().state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars
+        )
+        # if self.use_sharded_state:
+        #     return super().local_state_dict(
+        #         destination=destination, prefix=prefix, keep_vars=keep_vars
+        #     )
+        # else:
+        #     if self.rank == 0:
+        #         return super().state_dict(
+        #             destination=destination, prefix=prefix, keep_vars=keep_vars
+        #         )
+        #     else:
+        #         # We must call state_dict() due to use of communication
+        #         # primitives. But we don't use the result.
+        #         super().state_dict()
+        #         return destination or {}
 
     def load_state_dict(self, state_dict, strict=True):
-        if self.use_sharded_state:
-            return super().load_local_state_dict(state_dict, strict=strict)
-        else:
-            if not isinstance(self.process_group, DummyProcessGroup):
-                state_dict = distributed_utils.broadcast_object(
-                    state_dict, src_rank=0, group=self.process_group
-                )
-            return super().load_state_dict(state_dict, strict=strict)
+        # if self.use_sharded_state:
+        #     return super().load_local_state_dict(state_dict, strict=strict)
+        # else:
+        if not isinstance(self.process_group, DummyProcessGroup):
+            state_dict = distributed_utils.broadcast_object(
+                state_dict, src_rank=0, group=self.process_group
+            )
+        return super().load_state_dict(state_dict, strict=strict)
 
 
 @contextlib.contextmanager
@@ -112,7 +115,7 @@ def fsdp_enable_wrap(
         "sharding_strategy": ShardingStrategy.NO_SHARD,
         "mixed_precision": mixed_precision,
         "cpu_offload": cfg.cpu_offload and not cfg.memory_efficient_fp16,
-        "use_orig_params": True,
+        # "use_orig_params": True,
         **kwargs,
     }
     with enable_wrap(
