@@ -12,7 +12,7 @@ from metaseq.logging.progress_bar.base_progress_bar import (
 try:
     import functools
 
-    from aim import Repo as AimRepo
+    from aim.sdk import Repo as AimRepo
 
     @functools.lru_cache()
     def get_aim_run(repo, run_hash):
