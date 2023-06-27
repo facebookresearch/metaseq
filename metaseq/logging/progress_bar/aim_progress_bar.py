@@ -33,7 +33,7 @@ class AimProgressBarWrapper(BaseProgressBar):
 
         if get_aim_run is None:
             self.run = None
-            logger.warning("Aim not found, please install with: pip install aim")
+            logger.warning("Aim not found, please install with: pip install \"aim<4.0.0\"")
         else:
             logger.info(f"Storing logs at Aim repo: {aim_repo}")
             assert AimRepo is not None
