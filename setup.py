@@ -301,7 +301,7 @@ def do_setup():
             "dev": [
                 "flake8",
                 "black==22.3.0",
-                "aim>=3.9.4",
+                "aim>=3.9.4,<4.0.0",
                 "azure-storage-blob",
                 "mypy",
             ],
