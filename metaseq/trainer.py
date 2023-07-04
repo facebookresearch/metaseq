@@ -246,7 +246,7 @@ class Trainer(object):
                 with fsdp_enable_wrap(self.cfg.distributed_training, **extra):
                     model = self.task.build_model(self.cfg.model)
                     if not isinstance(model, FullyShardedDataParallel):
-                        model = fsdp_wrap(model.cuda())
+                        model = fsdp_wrap(model)
 
                 if self.cfg.common.memory_efficient_fp16:
                     if self.cfg.common.bf16:
