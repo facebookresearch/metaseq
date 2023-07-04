@@ -77,7 +77,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         to_skip=0,
         permute_documents=True,
         source_target=False,
-        percent_full_document_rotation: float = 0.0
+        percent_full_document_rotation: float = 0.0,
     ):
         super().__init__(
             dataset,
@@ -142,8 +142,9 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             index = index + size + 1
         return target
 
-    def get_spans_to_mask(self, document_length: int, document_boundaries: List[Tuple[int, int]]) -> List[
-        Tuple[int, int]]:
+    def get_spans_to_mask(
+        self, document_length: int, document_boundaries: List[Tuple[int, int]]
+    ) -> List[Tuple[int, int]]:
         # Ok, we do not use a budget here but instead
         # our goal is to sample from ~ U[0,1] in the case of len(sentinel_tokens) = 1
         # If len(sentinel_tokens) > 1 we try to find len(sentinel_tokens) non intersecting spans
@@ -175,7 +176,10 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             else:
                 assert start < end
                 return [(start, end)]
-        if len_sentinel_tokens < len(document_boundaries) and np.random.random() < self.percent_full_document_rotation:
+        if (
+            len_sentinel_tokens < len(document_boundaries)
+            and np.random.random() < self.percent_full_document_rotation
+        ):
             return random.sample(document_boundaries, len_sentinel_tokens)
 
         # Let's implement the general case. We will create len(self.sentinel_tokens) ** 2 possible candidates
@@ -203,6 +207,13 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
 
     def get_document_boundaries(self, item: torch.Tensor):
         boundaries = (item == self.eod).nonzero().cpu().squeeze().numpy().tolist()
+        # TODO double check if this edge cases are needed
+        if isinstance(
+            boundaries, int
+        ):  # TODO check if we can consolidate these two corner cases
+            boundaries = [boundaries]
+        if len(boundaries) == 0:
+            boundaries = [0]
         if boundaries[0] != 0:
             boundaries = [0] + boundaries
         if boundaries[-1] != item.size(0) - 1:
@@ -228,10 +239,9 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             total_count = len(causal_source) + len(causal_masked)
             total_diff = total_count - self.tokens_per_sample
             total_causal_length = len(causal_source) - total_diff
-            return torch.cat([
-                causal_source[:total_causal_length],
-                causal_masked
-            ])[: self.tokens_per_sample]  # EOSS tokens can add just enough tokens to get off by 1-2.
+            return torch.cat([causal_source[:total_causal_length], causal_masked])[
+                : self.tokens_per_sample
+            ]  # EOSS tokens can add just enough tokens to get off by 1-2.
 
     def __iter__(self):
         for packed_item in super().__iter__():

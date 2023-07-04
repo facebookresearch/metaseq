@@ -24,7 +24,12 @@ import torch.distributed as dist
 from omegaconf import OmegaConf
 
 from metaseq import checkpoint_utils, models, optim, utils
-from metaseq.distributed import utils as distributed_utils, fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel
+from metaseq.distributed import (
+    utils as distributed_utils,
+    fsdp_enable_wrap,
+    fsdp_wrap,
+    FullyShardedDataParallel,
+)
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics
 from metaseq.models.ema import build_ema

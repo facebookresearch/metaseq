@@ -36,7 +36,12 @@ from metaseq import (
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel, utils as distributed_utils
+from metaseq.distributed import (
+    fsdp_enable_wrap,
+    fsdp_wrap,
+    FullyShardedDataParallel,
+    utils as distributed_utils,
+)
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
@@ -496,7 +501,7 @@ def validate_and_save(
             training_finished=should_stop,
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
-            )
+            ),
         )
 
     valid_losses = [None]
