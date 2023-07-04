@@ -16,7 +16,7 @@ from metaseq.distributed import utils as distributed_utils
 logger = logging.getLogger(__name__)
 
 try:
-    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy
+    from fairscale.nn.data_parallel import FullyShardedDataParallel as FSDP
     from fairscale.utils.testing import DummyProcessGroup
 
     has_FSDP = True
@@ -56,33 +56,30 @@ class FullyShardedDataParallel(FSDP):
             return self.module
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
-        return super().state_dict(
-            destination=destination, prefix=prefix, keep_vars=keep_vars
-        )
-        # if self.use_sharded_state:
-        #     return super().local_state_dict(
-        #         destination=destination, prefix=prefix, keep_vars=keep_vars
-        #     )
-        # else:
-        #     if self.rank == 0:
-        #         return super().state_dict(
-        #             destination=destination, prefix=prefix, keep_vars=keep_vars
-        #         )
-        #     else:
-        #         # We must call state_dict() due to use of communication
-        #         # primitives. But we don't use the result.
-        #         super().state_dict()
-        #         return destination or {}
+        if self.use_sharded_state:
+            return super().local_state_dict(
+                destination=destination, prefix=prefix, keep_vars=keep_vars
+            )
+        else:
+            if self.rank == 0:
+                return super().state_dict(
+                    destination=destination, prefix=prefix, keep_vars=keep_vars
+                )
+            else:
+                # We must call state_dict() due to use of communication
+                # primitives. But we don't use the result.
+                super().state_dict()
+                return destination or {}
 
     def load_state_dict(self, state_dict, strict=True):
-        # if self.use_sharded_state:
-        #     return super().load_local_state_dict(state_dict, strict=strict)
-        # else:
-        if not isinstance(self.process_group, DummyProcessGroup):
-            state_dict = distributed_utils.broadcast_object(
-                state_dict, src_rank=0, group=self.process_group
-            )
-        return super().load_state_dict(state_dict, strict=strict)
+        if self.use_sharded_state:
+            return super().load_local_state_dict(state_dict, strict=strict)
+        else:
+            if not isinstance(self.process_group, DummyProcessGroup):
+                state_dict = distributed_utils.broadcast_object(
+                    state_dict, src_rank=0, group=self.process_group
+                )
+            return super().load_state_dict(state_dict, strict=strict)
 
 
 @contextlib.contextmanager
@@ -90,8 +87,9 @@ def fsdp_enable_wrap(
     cfg: DistributedTrainingConfig, use_sharded_state: bool = False, **kwargs
 ):
     try:
-        from torch.distributed.fsdp.wrap import enable_wrap
-        from torch.distributed.fsdp import MixedPrecision
+        # from torch.distributed.fsdp.wrap import enable_wrap
+        # from torch.distributed.fsdp import MixedPrecision
+        from fairscale.nn import enable_wrap
     except ImportError:
         raise ImportError(
             "Cannot find FullyShardedDataParallel. "
@@ -106,16 +104,18 @@ def fsdp_enable_wrap(
         compute_dtype = torch.bfloat16 if cfg.bf16 else torch.float16
     else:
         compute_dtype = torch.float32
-    mixed_precision = MixedPrecision(param_dtype=compute_dtype,
-                                     reduce_dtype=torch.float32 if cfg.fp32_reduce_scatter else compute_dtype,
-                                     buffer_dtype=compute_dtype,
-                                     keep_low_precision_grads=cfg.fp16 and cfg.memory_efficient_fp16)
     fsdp_config = {
         "process_group": group,
-        "sharding_strategy": ShardingStrategy.NO_SHARD,
-        "mixed_precision": mixed_precision,
+        "process_group_reduce_scatter": group,
+        "reshard_after_forward": not cfg.no_reshard_after_forward,
+        "mixed_precision": cfg.fp16 and not cfg.memory_efficient_fp16,
+        "fp32_reduce_scatter": cfg.fp32_reduce_scatter,
+        "flatten_parameters": True,
         "cpu_offload": cfg.cpu_offload and not cfg.memory_efficient_fp16,
-        # "use_orig_params": True,
+        "compute_dtype": compute_dtype,
+        "bucket_cap_mb": cfg.bucket_cap_mb,
+        "state_dict_device": torch.device("cpu"),
+        "gradient_predivide_factor": cfg.gradient_predivide_factor,
         **kwargs,
     }
     with enable_wrap(
@@ -136,7 +136,7 @@ def fsdp_wrap(module, min_num_params: Optional[int] = None, **kwargs):
         min_num_params (int, Optional): minimum number of layer params to wrap
     """
     try:
-        from torch.distributed.fsdp.wrap import wrap
+        from fairscale.nn import wrap
 
         if os.environ.get("RESHARD_OVERRIDE_PROCESS_GROUP", "False") == "True":
             logger.info("Process group was None, overriding to DummyProcessGroup")

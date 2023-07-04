@@ -5,7 +5,7 @@
 #
 # Taken from:
 # https://github.com/ngoyal2707/Megatron-LM/blob/fa6c0860b62e4ed2ac13a513e7d950d72f576a44/megatron/mpu/layers.py
-from collections import Callable
+from collections.abc import Callable
 from typing import Optional
 
 import torch
