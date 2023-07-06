@@ -250,7 +250,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         self.has_retrieval = args.language_modeling_type == "racm3"
         if self.has_cm3:
             self._check_cm3_parameterization()
-            self._create_cm3_special_tokens()
+            self._build_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
 
         final_vocab_size = args.final_vocab_size
@@ -282,18 +282,14 @@ class StreamingLanguageModelingTask(LegacyTask):
             ), "FIM requires cm3_lambda_sentinel_tokens to be 1"
             self.cm3_sentinel_type = "fixed"
 
-    def _create_cm3_special_tokens(self):
+    def _build_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
         self.cm3_break = "<racm3:break>"
-        self.dictionary.add_symbol(self.cm3_break)
-        self.dictionary.add_symbol(self.cm3_sentinel_end)
-        # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
-            self.dictionary.add_symbol(token)
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
@@ -304,21 +300,29 @@ class StreamingLanguageModelingTask(LegacyTask):
     def setup_task(cls, args, **kwargs):
         return cls(args)
 
-    def _tokenize_one_json(self, json):
+    def tokenize_cm3_v2(self, json):
+        if "dataset_name" not in json:
+            return self._tokenize_text_json(json)
+        else:
+            if json["dataset_name"] in ["m2c2v2.5", "m2c2v3"]:
+                return self._tokenize_m2c2_json(json)
+            elif json["dataset_name"] == "shutterstock":
+                return self._tokenize_ra_json(json)
+            elif json["dataset_name"] == "openflamingo":
+                return self._tokenize_interleaving_json(json)
+            elif json["dataset_name"] == "m2c2-cm3":
+                # TODO VALIDATE if m2c2-cm3 needs special handling
+                return self._tokenize_interleaving_json(json)
+            else:
+                raise ValueError(f"dataset not valid: {json['dataset_name']}")
+
+    def _tokenize_text_json(self, json):
         text = json["text"]
         return torch.LongTensor(
             # append an end-of-document symbol after each document
             self.tokenizer.encode(text.rstrip()).ids
             + [self.eod]
         )
-
-    def tokenize_cm3_v2(self, json):
-        if "text_list" in json:
-            return self._tokenize_interleaving_json(json)
-        elif "retrieved_docs_from_img" in json:
-            return self._tokenize_ra_json(json)
-        else:
-            return self._tokenize_m2c2_json(json)
 
     def _tokenize_image(self, image_str):
         image = map_old_image_token_to_new_image_token(image_str)
@@ -578,10 +582,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    # tokenizer=self._tokenize_one_json,
-                    tokenizer=self.tokenize_cm3_v2
-                    if self.has_retrieval
-                    else self._tokenize_one_json,
+                    tokenizer=self.tokenize_cm3_v2,
                     epoch=epoch,
                     data_subshard_count=data_subshard_count,
                 )
