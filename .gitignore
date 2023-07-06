@@ -148,3 +148,4 @@ _results/*
 *.swp
 
 metaseq/fair_internal/scripts/azure/nccl_tests/bin/*
+metaseq/scripts/reshard.py

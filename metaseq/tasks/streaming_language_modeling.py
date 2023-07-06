@@ -33,6 +33,7 @@ from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
 from metaseq.dataclass import ChoiceEnum
+import json
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -117,6 +118,12 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
     )
+    data_sampling_prob: Optional[str] = field(
+        default="{}",
+        metadata={
+            "help": "Proportion of each finetuning benchmark to use. Use only during finetuning"
+        },
+    )
     data_subshard_count: int = field(
         default=1,
         metadata={
@@ -159,14 +166,6 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
             "(especially when training with token blocking set to None)."
             "By default the original CM3 objective allows rotation across document boundaries."
             "For FIM it's unclear whether or not they allow this."
-        },
-    )
-    cm3_boundary_token: str = field(
-        default="<racm3:break>",
-        metadata={
-            "help": "This is a token to indicate the boundaries of document,"
-            "in image text case, a boundary_token was manually added."
-            "in long text case, we should use eod token to separate documents."
         },
     )
     num_retrieved_doc: int = field(
@@ -277,16 +276,16 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def _create_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
-        self.cm3_break = self.args.cm3_boundary_token
-        assert self.cm3_break in self.dictionary, self.cm3_break
-        assert self.cm3_sentinel_end in self.dictionary, self.cm3_sentinel_end
+        self.cm3_break = "<racm3:break>"
+        self.dictionary.add_symbol(self.cm3_break)
+        self.dictionary.add_symbol(self.cm3_sentinel_end)
         # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
-            assert token in self.dictionary, token
+            self.dictionary.add_symbol(token)
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
@@ -304,6 +303,19 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.tokenizer.encode(text.rstrip()).ids
             + [self.eod]
         )
+        return line
+
+    def _read_textimg(self, json):
+        line = torch.LongTensor(
+            [self.eod]
+            + self.tokenizer.encode(json["text"].rstrip()).ids
+            + [self.cm3_break_ind]
+            + self.tokenizer.encode(
+                map_old_image_token_to_new_image_token(json["image"]).rstrip()
+            ).ids
+            + [self.eod]
+        )
+        return line
 
     def tokenize_single_doc(self, doc, add_eod=False):
         doc = parse_doc(doc)
@@ -341,31 +353,85 @@ class StreamingLanguageModelingTask(LegacyTask):
         )
         return final_indexes
 
-    def _get_sample_prob(self, dataset_lens):
+    def _get_sample_prob(self, dataset_caps):
         """
         Get smoothed sampling porbability by corpus. This helps small corpus by upsampling them.
         """
-        if self.args.multicorpus_sampling_maximum == DEFAULT_MULTICORPUS_MAX:
-            prob = dataset_lens / dataset_lens.sum()
-            smoothed_prob = prob**self.args.multicorpus_sampling_alpha
-            smoothed_prob = smoothed_prob / smoothed_prob.sum()
-        else:
-            dataset_lens = np.array(
-                [min(l, self.args.multicorpus_sampling_maximum) for l in dataset_lens]
-            )
-            smoothed_prob = dataset_lens / sum(dataset_lens)
+        prob = dataset_caps / sum(dataset_caps)
+
+        smoothed_prob = prob**self.args.multicorpus_sampling_alpha
+        smoothed_prob = smoothed_prob / smoothed_prob.sum()
         return smoothed_prob
 
     def _alpha_sampling(self, datasets, corpora, epoch=1):
         """
         Up or down sample corpora with alpha sampling.
         """
+        # if torch.distributed.get_rank() == 0:
+        #     from metaseq import pdb; pdb.set_trace()
         dataset_lengths = np.array(
             [len(d) for d in datasets],
             dtype=float,
         )
-        logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
-        sample_probs = self._get_sample_prob(dataset_lengths)
+
+        def get_cap(b, l):
+            eps = [l]
+            if self.args.multicorpus_sampling_maximum != DEFAULT_MULTICORPUS_MAX:
+                eps.append(self.args.multicorpus_sampling_maximum)
+            return min(eps)
+
+        # If the cap for the benchmark exists in caps, then use that. Otherwise, if multicorpus_sampling_maximum is specified, then use that.
+        # Otherwise, just use the dataset length
+        dataset_caps = [
+            get_cap(c.split("__")[0], dataset_lengths[i]) for i, c in enumerate(corpora)
+        ]
+        sample_probs = self._get_sample_prob(dataset_caps)
+        logger.info(f"loaded total {sum(dataset_caps)} blocks for all corpora")
+        logger.info(f"Initial sample_probs: {sample_probs}")
+
+        def compute_benchmark_prob(sample_probs):
+            per_benchmark_prob = {}
+            for i, s in enumerate(corpora):
+                benchmark = s.split("__")[0]
+                if benchmark not in per_benchmark_prob:
+                    per_benchmark_prob[benchmark] = 0.0
+                per_benchmark_prob[benchmark] += sample_probs[i]
+            return per_benchmark_prob
+
+        per_benchmark_prob = compute_benchmark_prob(sample_probs)
+        logger.info(f"Initial data proportions: {json.dumps(per_benchmark_prob)}")
+
+        data_sampling_prob = json.loads(self.args.data_sampling_prob)
+
+        # If proportions are not specified for all the benchmarks
+        # scale up/down the remaining proportions uniformly
+        total_benchmarks = len(per_benchmark_prob)
+        total_assigned_prob = sum(data_sampling_prob.values())
+        total_assigned_benchmarks = len(data_sampling_prob)
+
+        # Assign probs for the benchmarks not present in the dictionary
+        for benchmark in per_benchmark_prob:
+            if benchmark not in data_sampling_prob:
+                benchmark_prob = per_benchmark_prob[benchmark]
+                data_sampling_prob[benchmark] = benchmark_prob * (
+                    1.0 - total_assigned_prob
+                )
+
+        # Scale prob for tasks in each benchmark
+        for i, s in enumerate(corpora):
+            benchmark = s.split("__")[0]
+            current_benchmark_prob = per_benchmark_prob[benchmark]
+            sample_probs[i] = (
+                sample_probs[i] * data_sampling_prob[benchmark] / current_benchmark_prob
+            )
+
+        new_per_benchmark_prob = compute_benchmark_prob(sample_probs)
+        logger.info(f"Final data proportions: {json.dumps(new_per_benchmark_prob)}")
+
+        assert (
+            sum(new_per_benchmark_prob.values()) == 1.0,
+            "Data Proportion probabilities do not sum to 1",
+        )
 
         logger.info(
             "Sample probability by corpus: %s",
@@ -484,7 +550,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
-        if self.args.multicorpus_sampling_alpha != 1:
+        if split == "train":  # self.args.multicorpus_sampling_alpha != 1:
             datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
