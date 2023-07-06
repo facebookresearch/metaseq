@@ -108,9 +108,11 @@ class JsonlDataset(torch.utils.data.Dataset):
                     f"{position}. Contents of line:\n{item}"
                 ),
             )
+        image_spans = None
         if self.tokenizer is not None:
-            item = self.tokenizer(item)
-        return item
+            item, image_spans = self.tokenizer(item)
+        # fixme: check whether there are other dataloaders call this func
+        return item, image_spans
 
     def __len__(self):
         # Virtual length of the dataset depends on the epoch number if the number of documents

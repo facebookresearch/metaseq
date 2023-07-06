@@ -172,6 +172,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         to_skip=0,
         permute_documents=True,
         source_target=False,
+        no_break_image=False,
     ):
         super().__init__()
         self.dataset = dataset
@@ -193,9 +194,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         self.indices = None
 
-        # A map from document id -> number of tokens in the document.
-        # This is an atomic array because it shared among the dataloader workers and the training
-        # process.
+        # # A map from document id -> number of tokens in the document.
+        # # This is an atomic array because it shared among the dataloader workers and the training
+        # # process.
         self.len_cache = (
             LockingArray(len(self.dataset)) if len_cache is None else len_cache
         )
@@ -208,9 +209,15 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         self.to_skip = to_skip
         self.permute_documents = permute_documents
         self.source_target = source_target
+        self.no_break_image = no_break_image
+
+        if self.no_break_image:
+            assert break_mode == "none", "no_break_image is only compatible with pre-training break mode"
 
         if break_mode == "none":
-            if self.source_target:
+            if self.no_break_image:
+                self.block_iterator = yield_token_blocks_no_image_break
+            elif self.source_target:
                 self.block_iterator = yield_doc_blocks
             else:
                 self.block_iterator = yield_token_blocks
@@ -280,7 +287,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             self.to_skip if isinstance(self.to_skip, int) else self.to_skip[worker_id]
         )
 
-        def documents() -> Iterable[Tuple[int, Document]]:
+        def documents() -> Iterable[Tuple[int, Document, List[Tuple]]]:
             """
             Generator that produces whole documents in a shuffled order (permute_documents=True).
             It returns a tuple of (number_of_tokens, List[Document]).
@@ -289,16 +296,18 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             """
             for idx in indices:
                 ln = self.len_cache.data[idx]
+                # this is a hack, it's hard to create a buffer for the irregular type of image_spans, so we query anyway
+                r, image_spans = self.dataset[idx]  
                 if ln == 0:
                     # Cache miss: we don't know the number of tokens
                     # so we have to load and tokenize the document.
-                    r = self.dataset[idx]
+                    # r, image_spans = self.dataset[idx]
                     if self.source_target:
                         ln = r[0].shape[0]
                     else:
                         ln = r.shape[0]
                     self.len_cache.data[idx] = ln
-                    yield (ln, [r])
+                    yield (ln, [r], image_spans)
                 else:
                     # Cache hit: we know the number of tokens, so we can
                     # skip loading the document for now.
@@ -306,7 +315,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     # We create a single-element list here, so that we can replace the single element
                     # with the real Tensor value the first time _any_ SentenceFragment needs the
                     # real data from this document.
-                    yield (ln, [int(idx)])
+                    yield (ln, [int(idx)], image_spans)
 
         block_itr = self.block_iterator(documents(), self.block_size, self.drop_last)
 
@@ -424,7 +433,7 @@ def yield_single_sentences_pad_8(iterable, block_size, drop_last) -> Iterable[Se
     return the example as is, without packing, truncating to block_size in cases of
     very long examples.
     """
-    for idx, (tokens, document) in enumerate(iterable):
+    for idx, (tokens, document, _) in enumerate(iterable):
         cur_block = []
         cur_block_ids = []
         if tokens > block_size:
@@ -454,7 +463,7 @@ def yield_doc_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
     cur_block = []
     cur_block_ids = []
     cur_block_remain = block_size
-    for idx, (tokens, document) in enumerate(iterable):
+    for idx, (tokens, document, _) in enumerate(iterable):
         if tokens > block_size:
             # truncate right side
             tokens = block_size
@@ -486,7 +495,7 @@ def yield_doc_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
 
 
 def yield_passthrough(iterable, block_size, drop_last) -> Iterable[Sequence]:
-    for idx, (tokens, document) in enumerate(iterable):
+    for idx, (tokens, document, _) in enumerate(iterable):
         yield {
             "ids": [idx],
             "block": [(document, 0, tokens)],
@@ -498,7 +507,7 @@ def yield_token_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
     cur_block = []
     cur_block_ids = []
     cur_block_remain = block_size
-    for idx, (tokens, document) in enumerate(iterable):
+    for idx, (tokens, document, _) in enumerate(iterable):
         cur_block_ids.append(idx)
         item_offset = 0
         while tokens:
@@ -516,6 +525,52 @@ def yield_token_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
                 cur_block = []
                 cur_block_ids = []
                 cur_block_remain = block_size
+
+    if not drop_last and len(cur_block):
+        if cur_block_remain:
+            cur_block.append((["padding"], 0, cur_block_remain))
+        yield {
+            "ids": cur_block_ids,
+            "block": cur_block,
+        }
+
+
+def yield_token_blocks_no_image_break(iterable, block_size, drop_last) -> Iterable[Sequence]:
+    """Sample break mode = None. (Pre-Training default), while every sample is not starting with broken images."""
+    cur_block = []
+    cur_block_ids = []
+    cur_block_remain = block_size
+    for idx, (tokens, document, image_spans) in enumerate(iterable):
+        cur_block_ids.append(idx)
+        item_offset = 0
+        while tokens:
+            num_to_take = min(tokens, cur_block_remain)
+            cur_block.append((document, item_offset, num_to_take))
+            item_offset += num_to_take
+            cur_block_remain -= num_to_take
+            tokens -= num_to_take
+
+            if cur_block_remain == 0:
+                yield {
+                    "ids": cur_block_ids,
+                    "block": cur_block,
+                }
+                cur_block = []
+                cur_block_ids = []
+                cur_block_remain = block_size
+
+                # if torch.distributed.get_rank() == 0:
+                #     from metaseq import pdb; pdb.set_trace()
+
+                # remaining tokens go to the next example
+                if tokens > 0 and image_spans:
+                    for s, e in image_spans:
+                        if s <= item_offset < e:
+                            remaining = e - item_offset
+                            item_offset = e
+                            tokens -= remaining
+                            assert tokens >= 0
+                            break
 
     if not drop_last and len(cur_block):
         if cur_block_remain:

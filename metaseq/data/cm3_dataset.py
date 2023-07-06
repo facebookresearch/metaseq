@@ -77,7 +77,8 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         to_skip=0,
         permute_documents=True,
         source_target=False,
-        percent_full_document_rotation: float = 0.0
+        percent_full_document_rotation: float = 0.0,
+        no_break_image=False,
     ):
         super().__init__(
             dataset,
@@ -91,6 +92,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             to_skip,
             permute_documents,
             source_target,
+            no_break_image=no_break_image
         )
         self.sentinel_token_expectation = sentinel_token_expectation
         self.sentinel_tokens = sentinel_tokens

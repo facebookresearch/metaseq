@@ -394,6 +394,7 @@ class BaseTask(object):
             logger.info(
                 "Starting first forward pass and waiting for dataloader in other ranks"
             )
+
         # forward
         loss, sample_size, logging_output = criterion(model, sample)
         if ignore_grad:

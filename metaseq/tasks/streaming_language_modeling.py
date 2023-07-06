@@ -179,6 +179,10 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     num_retrieved_doc: int = field(
         default=2, metadata={"help": "number of retrieved documents"}
     )
+    no_break_image: bool = field(
+        default=False, metadata={"help": "don't break images across two data samples"}
+    )
+
     # TODO common vars below add to parent
     seed: int = II("common.seed")
     batch_size: Optional[int] = II("dataset.batch_size")
@@ -252,7 +256,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             self._check_cm3_parameterization()
             self._create_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
-
+        
         final_vocab_size = args.final_vocab_size
         if final_vocab_size is not None:
             if final_vocab_size < tok_vocab_size:
@@ -310,7 +314,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             # append an end-of-document symbol after each document
             self.tokenizer.encode(text.rstrip()).ids
             + [self.eod]
-        )
+        ), None
 
     def tokenize_cm3_v2(self, json):
         if "text_list" in json:
@@ -340,19 +344,21 @@ class StreamingLanguageModelingTask(LegacyTask):
         image = image.strip() + " "
         image_indexes = self._tokenize_image(image)
         indexes = text_indexes + [self.cm3_break_ind] + image_indexes
+        image_spans = (len(text_indexes + [self.cm3_break_ind]), len(indexes)) # [)
         if add_eod:
             indexes = indexes + [self.eod]
-        return indexes
+        return indexes, image_spans
 
     def _tokenize_m2c2_json(self, json):
         query_index = self.tokenize_single_html_doc(json["text"], add_eod=True)
         final_indexes = torch.LongTensor([self.eod] + query_index)
-        return final_indexes
+        return final_indexes, None
 
     def _tokenize_interleaving_json(self, json):
         all_tokens = [self.eod]
         all_texts = json["text_list"]
         textid_2_image = defaultdict(list)
+        image_spans = []
         for image in json["image_info"]:
             if "IMAGE_TOKENS" in image:
                 textid_2_image[image["matched_text_index"]].append(
@@ -365,6 +371,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                     image = image.replace('"', "").strip() + " "
                     image_indexes = self._tokenize_image(image)
                     all_tokens += [self.cm3_break_ind]
+                    image_spans.append((len(all_tokens), len(all_tokens) + len(image_indexes)))
                     all_tokens += image_indexes
                 all_tokens += [self.cm3_break_ind]
         # if torch.distributed.get_rank() == 0:
@@ -373,24 +380,31 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         all_tokens = [int(x) for x in all_tokens]
         final_indexes = torch.LongTensor(all_tokens)
-        return final_indexes
+        return final_indexes, image_spans
 
     def _tokenize_ra_json(self, json):
-        query_index = self.tokenize_single_html_doc(json["text"], add_eod=True)
+        image_spans = []
+        query_index, query_image_span = self.tokenize_single_html_doc(json["text"], add_eod=True)
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
         random.shuffle(ra_docs)
 
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
+        cur_len = 1
         for ra_doc in ra_docs:
-            ra_index = self.tokenize_single_html_doc(ra_doc, add_eod=False)
+            ra_index, image_span = self.tokenize_single_html_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
             ra_indexes.append(ra_index)
+            image_span = (1 + cur_len + image_span[0], 1 + cur_len + image_span[1])
+            cur_len += len(ra_index)
+            image_spans.append(image_span)
+
         final_indexes = torch.cat(
             [torch.LongTensor([self.eod])] + ra_indexes + [query_index]
         )
-        return final_indexes
+        image_spans.append((1 + cur_len + query_image_span[0], 1 + cur_len + query_image_span[1]))
+        return final_indexes, image_spans
 
     def _get_sample_prob(self, dataset_lens):
         """
@@ -616,6 +630,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
                 percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
+                no_break_image=self.args.no_break_image,
             )
         else:
             self.datasets[split] = DocumentToSequenceDataset(
