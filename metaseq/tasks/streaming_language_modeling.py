@@ -317,7 +317,10 @@ class StreamingLanguageModelingTask(LegacyTask):
                 raise ValueError(f"dataset not valid: {json['dataset_name']}")
 
     def _tokenize_text_json(self, json):
-        text = json["text"]
+        if type(json) is dict:
+            text = json["text"]
+        else:
+            text = str(json)
         return torch.LongTensor(
             # append an end-of-document symbol after each document
             self.tokenizer.encode(text.rstrip()).ids
