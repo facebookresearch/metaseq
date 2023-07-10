@@ -68,7 +68,8 @@ class DynamicLossScaler(object):
                 self._overflows_since_rescale = 0
 
             if self.loss_scale < self.min_loss_scale:
-                # Don't scale down past min_loss_scale, just continue to skip grad after overflow error is raised.
+                # Use FloatingPointError as an uncommon error that parent
+                # functions can safely catch to stop training.
                 self.loss_scale = prev_scale
                 raise FloatingPointError(
                     (
