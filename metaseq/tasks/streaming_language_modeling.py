@@ -470,17 +470,31 @@ class StreamingLanguageModelingTask(LegacyTask):
         ):
             if not file.endswith(".jsonl"):
                 continue
-            datasets.append(
-                JsonlDataset(
-                    path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    # tokenizer=self._tokenize_one_json,
-                    tokenizer=self._tokenize_ra_json
-                    if self.has_retrieval
-                    else self._tokenize_one_json,
-                    epoch=epoch,
-                    data_subshard_count=data_subshard_count,
+            if "cm3" in file:  #Apply racm3 tokenization only for image-text datasets when training with multimodal mixed corpora
+                datasets.append(
+                    JsonlDataset(
+                        path=os.path.join(self.args.data, split, cur_shard_str, file),
+                        #tokenizer=self._tokenize_one_json,
+                        tokenizer=self._tokenize_ra_json
+                        if self.has_retrieval
+                        else self._tokenize_one_json,
+                        epoch=epoch,
+                        data_subshard_count=data_subshard_count,
+                    )
                 )
-            )
+                
+            else:
+                datasets.append(
+                    JsonlDataset(
+                        path=os.path.join(self.args.data, split, cur_shard_str, file),
+                        tokenizer=self._tokenize_one_json,
+                        # tokenizer=self._tokenize_ra_json
+                        # if self.has_retrieval
+                        # else self._tokenize_one_json,
+                        epoch=epoch,
+                        data_subshard_count=data_subshard_count,
+                    )
+                )
             corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
