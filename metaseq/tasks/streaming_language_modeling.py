@@ -528,6 +528,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         # determine number of shards for this split
         cur_shard_str = self.get_shard_str(epoch, split)
+        #print(f"cur_shard:{cur_shard_str}")
 
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
@@ -536,6 +537,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             os.listdir(os.path.join(self.args.data, split, cur_shard_str))
         ):
             if not file.endswith(".jsonl"):
+                #print(f"{file} not ending with jsonl")
                 continue
             if "cm3" in file:  #Apply racm3 tokenization only for image-text datasets when training with multimodal mixed corpora
                 datasets.append(
@@ -549,6 +551,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                         data_subshard_count=data_subshard_count,
                     )
                 )
+                #print("found cm3 format json file!")
                 
             else:
                 datasets.append(
