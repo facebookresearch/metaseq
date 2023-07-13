@@ -194,9 +194,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
 
         self.indices = None
 
-        # # A map from document id -> number of tokens in the document.
-        # # This is an atomic array because it shared among the dataloader workers and the training
-        # # process.
+        # A map from document id -> number of tokens in the document.
+        # This is an atomic array because it shared among the dataloader workers and the training
+        # process.
         self.len_cache = (
             LockingArray(len(self.dataset)) if len_cache is None else len_cache
         )
@@ -296,12 +296,11 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
             """
             for idx in indices:
                 ln = self.len_cache.data[idx]
-                # this is a hack, it's hard to create a buffer for the irregular type of image_spans, so we query anyway
-                r, image_spans = self.dataset[idx]  
+                # not using cache any more it's hard to create a buffer for the irregular type of image_spans, so we query anyway
+                r, image_spans = self.dataset[idx]
                 if ln == 0:
                     # Cache miss: we don't know the number of tokens
                     # so we have to load and tokenize the document.
-                    # r, image_spans = self.dataset[idx]
                     if self.source_target:
                         ln = r[0].shape[0]
                     else:
@@ -559,13 +558,10 @@ def yield_token_blocks_no_image_break(iterable, block_size, drop_last) -> Iterab
                 cur_block_ids = []
                 cur_block_remain = block_size
 
-                # if torch.distributed.get_rank() == 0:
-                #     from metaseq import pdb; pdb.set_trace()
-
                 # remaining tokens go to the next example
                 if tokens > 0 and image_spans:
                     for s, e in image_spans:
-                        if s <= item_offset < e:
+                        if s < item_offset < e:
                             remaining = e - item_offset
                             item_offset = e
                             tokens -= remaining

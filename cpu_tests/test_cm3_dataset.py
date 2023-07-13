@@ -35,10 +35,10 @@ def get_simple_dataset(
 ):
     dataset = TensorListDataset(
         [
-            torch.LongTensor([2, 2, 2, eod]),
-            torch.LongTensor([3, 3, 3, eod]),
-            torch.LongTensor([4, 4, 4, eod]),
-            torch.LongTensor([5, 5, 5, eod]),
+            (torch.LongTensor([2, 2, 2, eod]), None),
+            (torch.LongTensor([3, 3, 3, eod]), None),
+            (torch.LongTensor([4, 4, 4, eod]), None),
+            (torch.LongTensor([5, 5, 5, eod]), None),
         ]
     )
     dataset = CausalMaskedDocumentToSequenceDataset(
@@ -53,6 +53,42 @@ def get_simple_dataset(
         permute_documents=False,
         break_mode="none",
         padding_idx=1,
+    )
+    dataset.set_epoch(0)
+    return dataset
+
+
+def get_image_span_dataset(
+    sentinel_token_expectation: int = 0,
+    sentinel_tokens: List[int] = [10],
+    sentinel_method: str = "fixed",
+    sentinel_eos: int = 1,
+    allow_rotation_across_eod: bool = False,
+    eod: int = 0,
+    block_size: int = 6,
+):  # [(),]
+    dataset = TensorListDataset(
+        [                     #0, 1, 2, 3,   4, 5, 6, 7, 8, 9
+            (torch.LongTensor([2, 2, 2, eod, 6, 6, 6, 6, 6, eod]), [(4, 10),]),
+            (torch.LongTensor([3, 3, 3, eod, 7, 7, 7, eod, 17, 17]), [(4, 8), (8, 10),]),
+            (torch.LongTensor([4, 4, 4, eod, 8, 8, eod, 18, 18, eod]), [(7, 10),]),
+            (torch.LongTensor([5, 5, 5, eod, 9, eod, 19, eod, 20, eod]), [(4, 6), (8, 10)]),
+            (torch.LongTensor([6, 6, eod, 9, eod, 22, eod, 20, 21, eod]), None)
+        ]
+    )
+    dataset = CausalMaskedDocumentToSequenceDataset(
+        sentinel_token_expectation,
+        sentinel_tokens,
+        sentinel_method,
+        sentinel_eos,
+        allow_rotation_across_eod,
+        eod,
+        dataset,
+        block_size=block_size,
+        permute_documents=False,
+        break_mode="none",
+        padding_idx=1,
+        no_break_image=True,
     )
     dataset.set_epoch(0)
     return dataset
@@ -131,6 +167,48 @@ class TestCM3Dataset(unittest.TestCase):
                     "One for mask, one for prefix for generating mask.",
                 )
 
+
+class TestNoImageBreak(unittest.TestCase):
+    def test_no_image_break(self):
+        eod = 0
+
+        dataset = TensorListDataset(
+        [                     #0, 1, 2, 3,   4, 5, 6, 7, 8, 9
+            (torch.LongTensor([2, 2, 2, eod, 6, 6, 6, 6, 6, eod]), [(4, 10),]),
+            (torch.LongTensor([3, 3, 3, eod, 7, 7, 7, eod, 17, 17]), [(4, 8), (8, 10),]),
+            (torch.LongTensor([4, 4, 4, eod, 8, 8, eod, 18, 18, eod]), [(7, 10),]),
+            (torch.LongTensor([5, 5, 5, eod, 9, eod, 19, eod, 20, eod]), [(4, 6), (8, 10)]),
+            (torch.LongTensor([6, 6, eod, 9, eod, 22, eod, 20, 21, eod]), None)
+        ]
+        )
+
+        causal_masked_dataset = get_image_span_dataset(eod=0, block_size=5)
+        expected_datasets = [[2, 2, 2, eod, 6,],
+                             [3, 3, 3, eod, 7,],
+                             [17, 17, 4, 4, 4,],
+                             [eod, 8, 8, eod, 18,],
+                             [5, 5, 5, eod, 9,],
+                             [19, eod, 20, eod, 6],
+                             [6, eod, 9, eod, 22,],
+                            ]
+        for ii, item in enumerate(causal_masked_dataset):
+            item = item["block"].numpy().tolist()
+            assert item == expected_datasets[ii], "data item doesn't match expected!"
+        assert ii == len(expected_datasets) - 1, "data size doesn't match expected!"
+
+
+        causal_masked_dataset = get_image_span_dataset(eod=0, block_size=7)
+        expected_datasets = [[2, 2, 2, eod, 6, 6, 6,],
+                             [3, 3, 3, eod, 7, 7, 7,],
+                             [17, 17, 4, 4, 4, eod, 8,],
+                             [8, eod, 18, 18, eod, 5, 5,],
+                             [5, eod, 9, eod, 19, eod, 20],
+                             [6, 6, eod, 9, eod, 22, eod,],
+                            ]
+        for ii, item in enumerate(causal_masked_dataset):
+            item = item["block"].numpy().tolist()
+            assert item == expected_datasets[ii], "data item doesn't match expected!"
+        assert ii == len(expected_datasets) - 1, "data size doesn't match expected!"
 
 if __name__ == "__main__":
     unittest.main()

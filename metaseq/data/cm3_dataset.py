@@ -162,7 +162,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         if len_sentinel_tokens == 0:
             return None
         if len_sentinel_tokens == 1:
-            if np.random.random() < self.percent_full_document_rotation:
+            if np.random.random() < self.percent_full_document_rotation and len(document_boundaries) > 0:
                 return [random.choice(document_boundaries)]
 
             start, end = np.random.uniform(size=2)
@@ -205,6 +205,12 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
 
     def get_document_boundaries(self, item: torch.Tensor):
         boundaries = (item == self.eod).nonzero().cpu().squeeze().numpy().tolist()
+        # a fix: if boundaries is None
+        if not boundaries:
+            return []
+        # a fix: if boundaries is an integer
+        if isinstance(boundaries, int):
+            boundaries = [boundaries]
         if boundaries[0] != 0:
             boundaries = [0] + boundaries
         if boundaries[-1] != item.size(0) - 1:
