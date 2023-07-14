@@ -8,33 +8,33 @@ on-the-fly tokenization.
 """
 
 import logging
-import random
 import os
+import random
 import re
+import zipfile
+from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from collections import defaultdict
-import zipfile
-from metaseq.utils import print_r0
+
 import numpy as np
 import torch
-from omegaconf import II
 
 from metaseq.data import (
+    data_utils,
     Dictionary,
+    iterators,
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
     StreamingSrcTgtDataset,
-    data_utils,
-    iterators,
 )
-
-from metaseq.dataclass import MetaseqDataclass
-from metaseq.tasks import LegacyTask, register_task
-from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
-from metaseq.dataclass import ChoiceEnum
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+
+from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
+from metaseq.tasks import LegacyTask, register_task
+from metaseq.utils import print_r0
+from omegaconf import II
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -50,6 +50,10 @@ DEFAULT_MULTICORPUS_MAX = -1
 
 LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
+
+DatasetWithShardInformation = namedtuple(
+    "DatasetWithShardInformation", ["dataset", "is_sharded", "shard_id", "num_shards"]
+)
 
 
 def map_old_image_token_to_new_image_token(text):
@@ -263,6 +267,10 @@ class StreamingLanguageModelingTask(LegacyTask):
         else:
             self.dictionary.pad_to_multiple_(8)
 
+        assert (
+            self.args.data_subshard_count == 1
+        ), "We utilize subsharding as a way to do faster data processing therefore do not allow for another layer of subsharding."
+
     def _check_cm3_parameterization(self):
         assert (
             self.args.cm3_lambda_sentinel_tokens > 0
@@ -317,10 +325,10 @@ class StreamingLanguageModelingTask(LegacyTask):
                 raise ValueError(f"dataset not valid: {json['dataset_name']}")
 
     def _tokenize_text_json(self, json):
-        if 'text' in json:
+        if "text" in json:
             text = json["text"]
-        elif 'content' in json:
-            text = json['content']
+        elif "content" in json:
+            text = json["content"]
         else:
             text = str(json)
         return torch.LongTensor(
@@ -511,7 +519,14 @@ class StreamingLanguageModelingTask(LegacyTask):
         prev_shard_str = shards[shard_idx - 1] if shard_idx > 0 else None
         return prev_shard_str
 
-    def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
+    def load_dataset(
+        self, split: str, epoch=1, combine=False, num_shards=-1, shard_id=-1, **kwargs
+    ):
+        is_sharded = True
+        if num_shards < 0 or shard_id < 0:
+            num_shards = 1
+            shard_id = 1
+            is_sharded = False
         """Load a given dataset split.
 
         The folder structure is assumed to look like:
@@ -588,8 +603,8 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self.tokenize_cm3_v2,
-                    epoch=epoch,
-                    data_subshard_count=data_subshard_count,
+                    epoch=shard_id,
+                    data_subshard_count=num_shards,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -605,32 +620,42 @@ class StreamingLanguageModelingTask(LegacyTask):
             # We chose not to use compositional inheritance because there's a
             # lot of downstream code that has isinstance checks.
             # So just to be safe and not change anything we use proper inheritance.
-            self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
-                sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
-                sentinel_tokens=self.cm3_sentinel_tokens_ind,
-                sentinel_method=self.cm3_sentinel_type,
-                sentinel_eos=self.cm3_sentinel_end_ind,
-                allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
-                eod=self.cm3_break_ind,
-                dataset=dataset,
-                # We generate blocks with one extra token, so that we have a target
-                # for the final input token. This results in slight data loss.
-                block_size=self.args.tokens_per_sample + 1,
-                break_mode=self.args.sample_break_mode,
-                # we drop the remainder block during training
-                drop_last=(split == "train"),
-                padding_idx=self.source_dictionary.pad(),
-                seed=self.args.seed,
-                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
+            self.datasets[split] = DatasetWithShardInformation(
+                CausalMaskedDocumentToSequenceDataset(
+                    sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
+                    sentinel_tokens=self.cm3_sentinel_tokens_ind,
+                    sentinel_method=self.cm3_sentinel_type,
+                    sentinel_eos=self.cm3_sentinel_end_ind,
+                    allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
+                    eod=self.cm3_break_ind,
+                    dataset=dataset,
+                    # We generate blocks with one extra token, so that we have a target
+                    # for the final input token. This results in slight data loss.
+                    block_size=self.args.tokens_per_sample + 1,
+                    break_mode=self.args.sample_break_mode,
+                    # we drop the remainder block during training
+                    drop_last=(split == "train"),
+                    padding_idx=self.source_dictionary.pad(),
+                    seed=self.args.seed,
+                    percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
+                ),
+                is_sharded=is_sharded,
+                shard_id=shard_id,
+                num_shards=num_shards,
             )
         else:
-            self.datasets[split] = DocumentToSequenceDataset(
-                dataset,
-                block_size=self.args.tokens_per_sample + 1,
-                break_mode=self.args.sample_break_mode,
-                drop_last=(split == "train"),
-                padding_idx=self.source_dictionary.pad(),
-                seed=self.args.seed,
+            self.datasets[split] = DatasetWithShardInformation(
+                DocumentToSequenceDataset(
+                    dataset,
+                    block_size=self.args.tokens_per_sample + 1,
+                    break_mode=self.args.sample_break_mode,
+                    drop_last=(split == "train"),
+                    padding_idx=self.source_dictionary.pad(),
+                    seed=self.args.seed,
+                ),
+                is_sharded=is_sharded,
+                shard_id=shard_id,
+                num_shards=num_shards,
             )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
@@ -728,22 +753,34 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
+        assert isinstance(dataset, DatasetWithShardInformation)
+        assert isinstance(dataset.dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
-        dataset.set_shuffle_buffer_size(shuffle_buffer_size)
-        dataset.set_num_workers(num_workers)
+        dataset.dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.dataset.set_num_workers(num_workers)
 
-        # partition dataset across data parallel workers
-        dataset = PartitionedStreamingDataset(
-            dataset,
-            num_shards=num_shards,
-            shard_id=shard_id,
-            drop_last=skip_remainder_batch,
-        )
-
+        if not dataset.is_sharded:
+            # The dataset is not sharded, so we shard.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=num_shards,
+                shard_id=shard_id,
+                drop_last=skip_remainder_batch,
+            )
+        else:
+            # We don't need to partition by worker ID because partitioning already happens in JSONLDataset
+            # iterators.StreamingEpochBatchIterator expects and iterable dataset
+            # we can trivially achieve this by using PartitionedStreamingDataset with
+            # 0/1 shards.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=1,
+                shard_id=0,
+                drop_last=skip_remainder_batch,
+            )
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
         return iterators.StreamingEpochBatchIterator(
