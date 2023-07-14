@@ -35,6 +35,7 @@ from metaseq.tasks import LegacyTask, register_task
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
 from metaseq.dataclass import ChoiceEnum
+import json
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -125,6 +126,12 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     multicorpus_sampling_maximum: Optional[float] = field(
         default=DEFAULT_MULTICORPUS_MAX,
         metadata={"help": "Maximum size for example proportional sampling"},
+    )
+    data_weights: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Proportion of each finetuning benchmark to use. Use only during finetuning"
+        },
     )
     data_subshard_count: int = field(
         default=1,
@@ -317,10 +324,10 @@ class StreamingLanguageModelingTask(LegacyTask):
                 raise ValueError(f"dataset not valid: {json['dataset_name']}")
 
     def _tokenize_text_json(self, json):
-        if 'text' in json:
+        if "text" in json:
             text = json["text"]
-        elif 'content' in json:
-            text = json['content']
+        elif "content" in json:
+            text = json["content"]
         else:
             text = str(json)
         return torch.LongTensor(
@@ -425,7 +432,15 @@ class StreamingLanguageModelingTask(LegacyTask):
             dtype=float,
         )
         logger.info(f"loaded total {dataset_lengths.sum()} blocks for all corpora")
-        sample_probs = self._get_sample_prob(dataset_lengths)
+        data_weights = json.loads(self.args.data_weights)
+        for cp in corpora:
+            if cp not in data_weights:
+                data_weights[cp] = 1
+        dataset_lengths_weighted = np.array(
+            [len(d) * data_weights[cp] for d, cp in zip(datasets, corpora)],
+            dtype=float,
+        )
+        sample_probs = self._get_sample_prob(dataset_lengths_weighted)
 
         logger.info(
             "Sample probability by corpus: %s",
@@ -595,8 +610,13 @@ class StreamingLanguageModelingTask(LegacyTask):
             corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
-        if self.args.multicorpus_sampling_alpha != 1:
-            datasets = self._alpha_sampling(datasets, corpora, epoch)
+        if split == "train":
+            # Let's don't change validation data at all
+            if (
+                self.args.data_weights is not None
+                or self.args.multicorpus_sampling_alpha != 1
+            ):
+                datasets = self._alpha_sampling(datasets, corpora, epoch)
 
         dataset = torch.utils.data.ConcatDataset(datasets)
 
