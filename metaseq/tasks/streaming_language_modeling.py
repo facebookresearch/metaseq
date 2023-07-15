@@ -180,7 +180,8 @@ class StreamingLanguageModelingConfig(MetaseqDataclass):
     cm3_percent_full_document_rotation: float = field(
         default=0.0,
         metadata={
-            "help": "What percent of the time to rotate full documents while still abiding by the number of sentinel tokens used."
+            "help": "What percent of the time to rotate full documents while still abiding"
+            "by the number of sentinel tokens used."
         },
     )
     num_retrieved_doc: int = field(
