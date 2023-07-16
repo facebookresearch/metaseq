@@ -404,7 +404,7 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                         if isinstance(doc[0], int):
                             # an index into dataset that hasn't been loaded yet
                             # load it now (and for all other SequenceFragments where it hasn't been loaded yet)
-                            doc[0] = self.dataset[doc[0]]
+                            doc[0], _ = self.dataset[doc[0]]
                         if self.source_target:
                             subsequences.append(
                                 tuple(elem[start : start + ln] for elem in doc[0])
