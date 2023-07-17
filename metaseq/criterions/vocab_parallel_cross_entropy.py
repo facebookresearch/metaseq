@@ -16,6 +16,8 @@ from metaseq.modules.megatron.mpu import vocab_parallel_cross_entropy
 class VocabParallelCrossEntropyCriterion(BaseCriterion):
     def __init__(self, task):
         super().__init__(task)
+        self.start_image_token_index = task.start_image_token_index
+        self.end_image_token_index = task.end_image_token_index
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -30,6 +32,23 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
 
         net_output = model(**sample["net_input"])
         loss = vocab_parallel_cross_entropy(net_output[0].float(), target)
+
+        loss_flattened = loss.view(-1)
+        flat_target = sample["target"].view(-1)
+
+        # Get Image Specific Loss
+        image_tokens = torch.logical_and(
+            flat_target >= self.start_image_token_index,
+            flat_target <= self.end_image_token_index,
+        )
+        image_loss_unreduced = loss_flattened * image_tokens
+
+        # Get Text Specific Loss
+        text_tokens = torch.logical_and(
+            torch.logical_not(image_tokens), flat_target != self.padding_idx
+        )
+        text_loss_unreduced = loss_flattened * text_tokens
+
         if has_pad:
             loss = loss * (target != self.padding_idx)
         loss = loss.sum()
@@ -45,6 +64,12 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
+            # Image Modality
+            "image_loss": image_loss_unreduced.sum().data,
+            "image_ntokens": image_tokens.sum().data,
+            # Text Modality
+            "text_loss": text_loss_unreduced.sum().data,
+            "text_ntokens": text_tokens.sum().data,
         }
         if "src_tokens" in sample["net_input"] and hasattr(self.task, "eod"):
             logging_output["ndocseps"] = (sample["target"] == self.task.eod).sum()
@@ -79,6 +104,12 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
+        image_sum = sum(log.get("image_loss", 0) for log in logging_outputs)
+        ntokens_image = sum(log.get("image_ntokens", 0) for log in logging_outputs)
+
+        text_sum = sum(log.get("text_loss", 0) for log in logging_outputs)
+        ntokens_text = sum(log.get("text_ntokens", 0) for log in logging_outputs)
+
         for type_ in ("actv", "pos", "tok", "emb"):
             key = f"{type_}_norm"
             if any(key in log for log in logging_outputs):
@@ -98,6 +129,28 @@ class VocabParallelCrossEntropyCriterion(BaseCriterion):
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["loss"].avg)
+        )
+
+        # IMAGE MODALITY
+        metrics.log_scalar(
+            "loss_image",
+            image_sum / ntokens_image / math.log(2),
+            ntokens_image,
+            round=3,
+        )
+        metrics.log_derived(
+            "ppl_image", lambda meters: utils.get_perplexity(meters["loss_image"].avg)
+        )
+
+        # TEXT MODALITY
+        metrics.log_scalar(
+            "loss_text",
+            text_sum / ntokens_text / math.log(2),
+            ntokens_text,
+            round=3,
+        )
+        metrics.log_derived(
+            "ppl_text", lambda meters: utils.get_perplexity(meters["loss_text"].avg)
         )
 
     @staticmethod

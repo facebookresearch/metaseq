@@ -31,7 +31,7 @@ from metaseq.data import (
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
-from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
+from metaseq.dataclass import ChoiceEnum, ChoiceEnum, MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 from metaseq.utils import print_r0
 from omegaconf import II
@@ -55,9 +55,11 @@ DatasetWithShardInformation = namedtuple(
     "DatasetWithShardInformation", ["dataset", "is_sharded", "shard_id", "num_shards"]
 )
 
+IMAGE_PREFIX = "IMGIMG"
+
 
 def map_old_image_token_to_new_image_token(text):
-    text = text.replace("I", "IMGIMG")
+    text = text.replace("I", IMAGE_PREFIX)
     for i in range(10):
         text = text.replace(str(i), chr(ord("A") + i))
     return text.replace(" ", "Z")
@@ -67,7 +69,7 @@ def map_new_image_token_to_old_image_token(text):
     text = text.replace("Z", " ")
     for i in range(10):
         text = text.replace(chr(ord("A") + i), str(i))
-    return text.replace("IMGIMG", "I")
+    return text.replace(IMAGE_PREFIX, "I")
 
 
 def parse_doc(doc):
@@ -267,9 +269,35 @@ class StreamingLanguageModelingTask(LegacyTask):
         else:
             self.dictionary.pad_to_multiple_(8)
 
+        (
+            self.start_image_token_index,
+            self.end_image_token_index,
+        ) = self._find_image_token_bounds()
+
+        logger.info(
+            f"First Image Token and Index: {self.dictionary[self.start_image_token_index]} -- {self.start_image_token_index}"
+        )
+        logger.info(
+            f"Last Image Token and Index: {self.dictionary[self.end_image_token_index]} -- {self.end_image_token_index}"
+        )
         assert (
             self.args.data_subshard_count == 1
         ), "We utilize subsharding as a way to do faster data processing therefore do not allow for another layer of subsharding."
+
+    def _find_image_token_bounds(self):
+        start = None
+        end = None
+        for i in range(len(self.dictionary)):
+            token: str = self.dictionary[i]
+            token_has_prefix = token.startswith(IMAGE_PREFIX)
+            if start is None and token_has_prefix:
+                start = i
+            elif token_has_prefix:
+                end = i
+
+        assert IMAGE_PREFIX in self.dictionary[start]
+        assert IMAGE_PREFIX in self.dictionary[end]
+        return start, end
 
     def _check_cm3_parameterization(self):
         assert (
