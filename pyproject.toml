@@ -1,3 +1,75 @@
 [build-system]
 requires = ["setuptools", "wheel", "cython"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "metaseq"
+version = "0.0.1"
+description = "MetaSeq, a framework for large language models, from Meta"
+readme = "README.md"
+dependencies = [
+    "Jinja2==3.1.1",
+    "aim>=3.9.4",
+    "azure-storage-blob",
+    "black==22.3.0",
+    "boto3",
+    "click==8.0.4",
+    "cython",
+    "dataclasses; python_version<\"3.7\"",
+    "editdistance",
+    "fire",
+    "flask==2.1.1",
+    "hydra-core>=1.1.0,<1.2",
+    "ipdb",
+    "ipython",
+    "markupsafe",
+    "more_itertools",
+    "mypy",
+    "ninja",
+    "numpy; python_version>=\"3.7\"",
+    "omegaconf<=2.1.1",
+    "portalocker>=2.5",
+    "pre-commit",
+    "protobuf==3.20.2",
+    "pytest",
+    "pytest-regressions",
+    "regex",
+    "sacrebleu",
+    "scikit-learn",
+    "tensorboard==2.8.0",
+    "timeout-decorator",
+    "tokenizers",
+    "torch",
+    "tqdm",
+    "typing_extensions",
+]
+requires-python = ">=3.9"
+
+[project.urls]
+Homepage = "https://github.com/facebookresearch/metaseq"
+
+[project.optional-dependencies]
+dev = [
+    "black==22.3.0",
+    "boto3",
+    "flake8",
+    "iopath",
+    "pandas",
+    "pyarrow",
+    "transformers",
+]
+multimodal = [
+    "albumentations",
+    "dalle_pytorch",
+    "einops",
+    "matplotlib",
+    "pytorchvideo==0.1.5",
+    "wandb",
+    "webdataset==0.1.103",
+]
+
+[project.scripts]
+metaseq-api-local = "metaseq.cli.interactive_hosted:cli_main"
+metaseq-train = "metaseq.cli.train:cli_main"
+metaseq-validate = "metaseq.cli.validate:cli_main"
+opt-baselines = "metaseq.launcher.opt_baselines:cli_main"
