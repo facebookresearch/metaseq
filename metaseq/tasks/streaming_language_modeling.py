@@ -12,7 +12,7 @@ import os
 import random
 import re
 import zipfile
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -31,7 +31,7 @@ from metaseq.data import (
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 
-from metaseq.dataclass import ChoiceEnum, MetaseqDataclass
+from metaseq.dataclass import ChoiceEnum, ChoiceEnum, MetaseqDataclass
 from metaseq.tasks import LegacyTask, register_task
 from metaseq.utils import print_r0
 from omegaconf import II
@@ -50,6 +50,10 @@ DEFAULT_MULTICORPUS_MAX = -1
 
 LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
+
+DatasetWithShardInformation = namedtuple(
+    "DatasetWithShardInformation", ["dataset", "is_sharded", "shard_id", "num_shards"]
+)
 
 IMAGE_PREFIX = "IMGIMG"
 
@@ -276,6 +280,9 @@ class StreamingLanguageModelingTask(LegacyTask):
         logger.info(
             f"Last Image Token and Index: {self.dictionary[self.end_image_token_index]} -- {self.end_image_token_index}"
         )
+        assert (
+            self.args.data_subshard_count == 1
+        ), "We utilize subsharding as a way to do faster data processing therefore do not allow for another layer of subsharding."
 
     def _find_image_token_bounds(self):
         start = None
@@ -540,7 +547,20 @@ class StreamingLanguageModelingTask(LegacyTask):
         prev_shard_str = shards[shard_idx - 1] if shard_idx > 0 else None
         return prev_shard_str
 
-    def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
+    def load_dataset(
+        self,
+        split: str,
+        epoch=1,
+        combine=False,
+        num_shards=None,
+        shard_id=None,
+        **kwargs,
+    ):
+        is_sharded = True
+        if num_shards is None or shard_id is None:
+            num_shards = 1
+            shard_id = 1
+            is_sharded = False
         """Load a given dataset split.
 
         The folder structure is assumed to look like:
@@ -617,8 +637,8 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     tokenizer=self.tokenize_cm3_v2,
-                    epoch=epoch,
-                    data_subshard_count=data_subshard_count,
+                    epoch=shard_id,
+                    data_subshard_count=num_shards,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -661,6 +681,13 @@ class StreamingLanguageModelingTask(LegacyTask):
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
             )
+
+        self.datasets[split] = DatasetWithShardInformation(
+            self.datasets[split],
+            is_sharded=is_sharded,
+            shard_id=shard_id,
+            num_shards=num_shards,
+        )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
         # StreamingTokenBlockDataset returns None as filler
@@ -757,22 +784,39 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
+        assert isinstance(dataset, DatasetWithShardInformation)
+        if dataset.is_sharded:
+            # guarantee partitioning/shard consistency across load_dataset/get_iterator's.
+            assert num_shards == dataset.num_shards
+            assert shard_id == dataset.shard_id - 1
+
+        assert isinstance(dataset.dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
-        dataset.set_shuffle_buffer_size(shuffle_buffer_size)
-        dataset.set_num_workers(num_workers)
+        dataset.dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.dataset.set_num_workers(num_workers)
 
-        # partition dataset across data parallel workers
-        dataset = PartitionedStreamingDataset(
-            dataset,
-            num_shards=num_shards,
-            shard_id=shard_id,
-            drop_last=skip_remainder_batch,
-        )
-
+        if not dataset.is_sharded:
+            # The dataset is not sharded, so we shard.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=num_shards,
+                shard_id=shard_id,
+                drop_last=skip_remainder_batch,
+            )
+        else:
+            # We don't need to partition by worker ID because partitioning already happens in JSONLDataset
+            # iterators.StreamingEpochBatchIterator expects and iterable dataset
+            # we can trivially achieve this by using PartitionedStreamingDataset with
+            # 0/1 shards.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=1,
+                shard_id=0,
+                drop_last=skip_remainder_batch,
+            )
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
         return iterators.StreamingEpochBatchIterator(

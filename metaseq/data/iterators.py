@@ -10,15 +10,16 @@ import operator
 import os
 import queue
 import time
+from ctypes import addressof, c_int, memmove, sizeof
 from threading import Thread
 from typing import Callable, Optional
+
 import numpy as np
 import torch
-from metaseq.distributed import utils as distributed_utils
 
 from metaseq.data import data_utils
 from metaseq.data.document_to_sequence import DocumentToSequenceDataset
-from ctypes import c_int, sizeof, memmove, addressof
+from metaseq.distributed import utils as distributed_utils
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +242,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         self.num_workers = num_workers
         self.epoch = max(epoch, 1)  # we use 1-based indexing for epochs
         self.num_shards = num_shards
-        assert isinstance(dataset, torch.utils.data.IterableDataset)
+        assert isinstance(
+            dataset, torch.utils.data.IterableDataset
+        ), f"Expected type `torch.utils.data.IterableDataset` instead got {dataset}"
 
         self._itr: Optional[StreamingCountingIterator] = None
         self.worker_offset = 0

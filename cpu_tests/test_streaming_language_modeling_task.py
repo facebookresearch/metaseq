@@ -8,14 +8,11 @@ import tempfile
 import unittest
 
 import torch
+from cpu_tests.test_utils import write_dummy_bpe, write_one_jsonl
 from metaseq import options
+from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 
 from metaseq.tasks.streaming_language_modeling import StreamingLanguageModelingTask
-from cpu_tests.test_utils import (
-    write_one_jsonl,
-    write_dummy_bpe,
-)
-from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 
 try:
     import tokenizers  # noqa
@@ -24,9 +21,114 @@ try:
 except ImportError:
     has_hf_tokenizers = False
 
+import itertools
+
+
+def split_list(lst, val):
+    return [
+        list(group) for k, group in itertools.groupby(lst, lambda x: x == val) if not k
+    ]
+
 
 class TestDatasetLoading(unittest.TestCase):
     @unittest.skipIf(not has_hf_tokenizers, "skip test if tokenizers is missing")
+    def test_load_partitioned_dataset(self):
+        with tempfile.TemporaryDirectory() as data_dir:
+            print(data_dir)
+            train_dir = os.path.join(data_dir, "train")
+            shard_00 = os.path.join(train_dir, "00")
+            shard_01 = os.path.join(train_dir, "01")
+
+            vocab_file, merges_file = write_dummy_bpe(data_dir)
+
+            # Create shard folders, and jsonl files
+            os.makedirs(shard_00)
+            os.makedirs(shard_01)
+
+            shard_00_json_1 = write_one_jsonl(
+                os.path.join(shard_00, "json_1.jsonl"), num_lines=8
+            )
+            shard_00_json_2 = write_one_jsonl(
+                os.path.join(shard_00, "json_2.jsonl"), num_lines=8
+            )
+
+            train_parser = options.get_training_parser()
+            train_args = options.parse_args_and_arch(
+                train_parser,
+                [
+                    "--arch",
+                    "transformer_lm_gpt2_tiny",
+                    "--task",
+                    "streaming_language_modeling",
+                    data_dir,
+                    "--vocab-filename",
+                    vocab_file,
+                    "--merges-filename",
+                    merges_file,
+                    "--sample-break-mode",
+                    "complete",
+                ],
+            )
+            cfg = convert_namespace_to_omegaconf(train_args)
+            # Data subshard count = 1
+            cfg.task.data_subshard_count = 1
+
+            self.task = StreamingLanguageModelingTask(cfg.task)
+
+            jsonl_data = {
+                "shard_00_json_1": [],
+                "shard_00_json_2": [],
+            }
+            for elem in shard_00_json_1:
+                jsonl_data["shard_00_json_1"].append(
+                    self.task._tokenize_text_json(elem)
+                )
+            for elem in shard_00_json_2:
+                jsonl_data["shard_00_json_2"].append(
+                    self.task._tokenize_text_json(elem)
+                )
+
+            num_shards = 2
+            shard_id = 1
+            self.task.load_dataset(
+                "train", epoch=1, num_shards=num_shards, shard_id=shard_id
+            )
+            dataset = self.task.datasets["train"].dataset
+            assert len(dataset.dataset) == 8  # (8+8)//2
+            dataset.set_epoch(1)
+            dataset.set_num_workers(0)
+            dataset.drop_last = False
+            dataset.permute_documents = False
+
+            list_from_iterator = []
+            for i, d in enumerate(dataset):
+                list_from_iterator.extend(d["block"].numpy().tolist())
+
+            list_from_jsonl = []
+            for ind in range(0, len(jsonl_data["shard_00_json_1"]), 2):
+                list_from_jsonl.extend(
+                    jsonl_data["shard_00_json_2"][ind].numpy().tolist()
+                )
+                list_from_jsonl.extend(
+                    jsonl_data["shard_00_json_1"][ind].numpy().tolist()
+                )
+
+            list_from_iterator = split_list([x for x in list_from_iterator if x > 1], 2)
+            list_from_jsonl = split_list([x for x in list_from_jsonl if x > 1], 2)
+
+            assert len(list_from_iterator) == len(list_from_jsonl)
+            for item in list_from_iterator:
+                success = False
+                for test in list_from_jsonl:
+                    if test == item:
+                        success = True
+                        break
+                assert success
+
+    # TODO: Was not fixed post DocumentToSequence migration
+    @unittest.skipIf(
+        not has_hf_tokenizers and False, "skip test if tokenizers is missing"
+    )
     def test_load_dataset(self):
         with tempfile.TemporaryDirectory() as data_dir:
             print(data_dir)
@@ -71,8 +173,8 @@ class TestDatasetLoading(unittest.TestCase):
                 ],
             )
             cfg = convert_namespace_to_omegaconf(train_args)
-            # Data subshard count = 3
-            cfg.task.data_subshard_count = 3
+            # Data subshard count = 1
+            cfg.task.data_subshard_count = 1
 
             self.task = StreamingLanguageModelingTask(cfg.task)
 
@@ -83,13 +185,21 @@ class TestDatasetLoading(unittest.TestCase):
                 "shard_01_json_2": [],
             }
             for elem in shard_00_json_1:
-                jsonl_data["shard_00_json_1"].append(self.task._tokenize_one_json(elem))
+                jsonl_data["shard_00_json_1"].append(
+                    self.task._tokenize_text_json(elem)
+                )
             for elem in shard_00_json_2:
-                jsonl_data["shard_00_json_2"].append(self.task._tokenize_one_json(elem))
+                jsonl_data["shard_00_json_2"].append(
+                    self.task._tokenize_text_json(elem)
+                )
             for elem in shard_01_json_1:
-                jsonl_data["shard_01_json_1"].append(self.task._tokenize_one_json(elem))
+                jsonl_data["shard_01_json_1"].append(
+                    self.task._tokenize_text_json(elem)
+                )
             for elem in shard_01_json_2:
-                jsonl_data["shard_01_json_2"].append(self.task._tokenize_one_json(elem))
+                jsonl_data["shard_01_json_2"].append(
+                    self.task._tokenize_text_json(elem)
+                )
 
             # Iterate over epochs 1 to 3
             # After these epochs, we should have iterated over shard 00, which consists of
