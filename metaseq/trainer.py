@@ -652,7 +652,7 @@ class Trainer(object):
             epoch=epoch,
             combine=combine,
             num_shards=self.data_parallel_world_size if shard_batch_itr else 1,
-            shard_id=self.data_parallel_rank if shard_batch_itr else 1, # different than what's below because sub-sharding in JSONLDataset is indexed from 0
+            shard_id=self.data_parallel_rank + 1 if shard_batch_itr else 1, # different than what's below because sub-sharding in JSONLDataset is indexed from 0
             data_selector=data_selector,
         )
         batch_iterator = self.task.get_batch_iterator(

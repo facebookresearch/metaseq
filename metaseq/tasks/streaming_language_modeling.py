@@ -520,10 +520,16 @@ class StreamingLanguageModelingTask(LegacyTask):
         return prev_shard_str
 
     def load_dataset(
-        self, split: str, epoch=1, combine=False, num_shards=-1, shard_id=-1, **kwargs
+        self,
+        split: str,
+        epoch=1,
+        combine=False,
+        num_shards=None,
+        shard_id=None,
+        **kwargs,
     ):
         is_sharded = True
-        if num_shards < 0 or shard_id < 0:
+        if num_shards is None or shard_id is None:
             num_shards = 1
             shard_id = 1
             is_sharded = False
@@ -620,43 +626,40 @@ class StreamingLanguageModelingTask(LegacyTask):
             # We chose not to use compositional inheritance because there's a
             # lot of downstream code that has isinstance checks.
             # So just to be safe and not change anything we use proper inheritance.
-            self.datasets[split] = DatasetWithShardInformation(
-                CausalMaskedDocumentToSequenceDataset(
-                    sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
-                    sentinel_tokens=self.cm3_sentinel_tokens_ind,
-                    sentinel_method=self.cm3_sentinel_type,
-                    sentinel_eos=self.cm3_sentinel_end_ind,
-                    allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
-                    eod=self.cm3_break_ind,
-                    dataset=dataset,
-                    # We generate blocks with one extra token, so that we have a target
-                    # for the final input token. This results in slight data loss.
-                    block_size=self.args.tokens_per_sample + 1,
-                    break_mode=self.args.sample_break_mode,
-                    # we drop the remainder block during training
-                    drop_last=(split == "train"),
-                    padding_idx=self.source_dictionary.pad(),
-                    seed=self.args.seed,
-                    percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
-                ),
-                is_sharded=is_sharded,
-                shard_id=shard_id,
-                num_shards=num_shards,
+            self.datasets[split] = CausalMaskedDocumentToSequenceDataset(
+                sentinel_token_expectation=self.args.cm3_lambda_sentinel_tokens,
+                sentinel_tokens=self.cm3_sentinel_tokens_ind,
+                sentinel_method=self.cm3_sentinel_type,
+                sentinel_eos=self.cm3_sentinel_end_ind,
+                allow_rotation_across_eod=self.args.cm3_allow_across_eod_boundaries,
+                eod=self.cm3_break_ind,
+                dataset=dataset,
+                # We generate blocks with one extra token, so that we have a target
+                # for the final input token. This results in slight data loss.
+                block_size=self.args.tokens_per_sample + 1,
+                break_mode=self.args.sample_break_mode,
+                # we drop the remainder block during training
+                drop_last=(split == "train"),
+                padding_idx=self.source_dictionary.pad(),
+                seed=self.args.seed,
+                percent_full_document_rotation=self.args.cm3_percent_full_document_rotation,
             )
         else:
-            self.datasets[split] = DatasetWithShardInformation(
-                DocumentToSequenceDataset(
-                    dataset,
-                    block_size=self.args.tokens_per_sample + 1,
-                    break_mode=self.args.sample_break_mode,
-                    drop_last=(split == "train"),
-                    padding_idx=self.source_dictionary.pad(),
-                    seed=self.args.seed,
-                ),
-                is_sharded=is_sharded,
-                shard_id=shard_id,
-                num_shards=num_shards,
+            self.datasets[split] = DocumentToSequenceDataset(
+                dataset,
+                block_size=self.args.tokens_per_sample + 1,
+                break_mode=self.args.sample_break_mode,
+                drop_last=(split == "train"),
+                padding_idx=self.source_dictionary.pad(),
+                seed=self.args.seed,
             )
+
+        self.datasets[split] = DatasetWithShardInformation(
+            self.datasets[split],
+            is_sharded=is_sharded,
+            shard_id=shard_id,
+            num_shards=num_shards,
+        )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
         # StreamingTokenBlockDataset returns None as filler
@@ -754,6 +757,11 @@ class StreamingLanguageModelingTask(LegacyTask):
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
         assert isinstance(dataset, DatasetWithShardInformation)
+        if dataset.is_sharded:
+            # guarantee partitioning/shard consistency across load_dataset/get_iterator's.
+            assert num_shards == dataset.num_shards
+            assert shard_id == dataset.shard_id - 1
+
         assert isinstance(dataset.dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
