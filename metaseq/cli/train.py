@@ -8,38 +8,38 @@ Train a new model on one or across multiple GPUs.
 """
 
 import argparse
-from datetime import datetime
 import functools
 import logging
 import math
 import os
+import re
+import socket
 import subprocess
 import sys
 import time
-import socket
-import re
-from typing import Dict, Optional, Any, List, Tuple, Callable
-from urllib.parse import urlparse
 import warnings
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import numpy as np
 import torch
 import torch.profiler as profiler
-from omegaconf import DictConfig, OmegaConf
 
-from metaseq import (
-    checkpoint_utils,
-    options,
-    tasks,
-    utils,
-)
-from metaseq.data import iterators, data_utils
+from metaseq import checkpoint_utils, options, tasks, utils
+from metaseq.data import data_utils, iterators
 from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel, utils as distributed_utils
+from metaseq.distributed import (
+    fsdp_enable_wrap,
+    fsdp_wrap,
+    FullyShardedDataParallel,
+    utils as distributed_utils,
+)
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
+from omegaconf import DictConfig, OmegaConf
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -317,6 +317,14 @@ def train(
                 metrics.reset_meters("train_inner")
 
         end_of_epoch = not itr.has_next()
+        end_of_epochs_all = distributed_utils.all_gather_list(
+            [end_of_epoch],
+            max_size=cfg.common.all_gather_list_size,
+            group=distributed_utils.get_global_group(),
+        )
+        end_of_epochs_all = [x[0] for x in end_of_epochs_all]
+        end_of_epoch = any(end_of_epochs_all)
+
         if end_of_epoch:
             grank = distributed_utils.get_global_rank()
 
@@ -496,7 +504,7 @@ def validate_and_save(
             training_finished=should_stop,
             async_callback_fn=functools.partial(
                 post_checkpoint_callback, cfg, num_updates, should_stop
-            )
+            ),
         )
 
     valid_losses = [None]

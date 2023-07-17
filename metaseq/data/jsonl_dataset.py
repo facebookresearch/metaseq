@@ -13,10 +13,10 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+import metaseq.distributed.utils as distributed_utils
+
 import numpy as np
 import torch
-
-import metaseq.distributed.utils as distributed_utils
 
 logger = logging.getLogger(__name__)
 

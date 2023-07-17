@@ -8,33 +8,33 @@ on-the-fly tokenization.
 """
 
 import logging
-import random
 import os
+import random
 import re
+import zipfile
+from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from collections import defaultdict
-import zipfile
-from metaseq.utils import print_r0
+
 import numpy as np
 import torch
-from omegaconf import II
 
 from metaseq.data import (
+    data_utils,
     Dictionary,
+    iterators,
     JsonlDataset,
     PartitionedStreamingDataset,
     ResamplingDataset,
     StreamingSrcTgtDataset,
-    data_utils,
-    iterators,
 )
-
-from metaseq.dataclass import MetaseqDataclass
-from metaseq.tasks import LegacyTask, register_task
-from metaseq.data.document_to_sequence import DocumentToSequenceDataset
 from metaseq.data.cm3_dataset import CausalMaskedDocumentToSequenceDataset
-from metaseq.dataclass import ChoiceEnum
+from metaseq.data.document_to_sequence import DocumentToSequenceDataset
+
+from metaseq.dataclass import ChoiceEnum, ChoiceEnum, MetaseqDataclass
+from metaseq.tasks import LegacyTask, register_task
+from metaseq.utils import print_r0
+from omegaconf import II
 
 try:
     from tokenizers import ByteLevelBPETokenizer, Tokenizer
@@ -51,9 +51,15 @@ DEFAULT_MULTICORPUS_MAX = -1
 LANGUAGE_MODELING_MODE = ChoiceEnum(["standard", "cm3", "racm3"])
 CM3_MODE = ChoiceEnum(["poisson", "fixed", "fim"])
 
+DatasetWithShardInformation = namedtuple(
+    "DatasetWithShardInformation", ["dataset", "is_sharded", "shard_id", "num_shards"]
+)
+
+IMAGE_PREFIX = "IMGIMG"
+
 
 def map_old_image_token_to_new_image_token(text):
-    text = text.replace("I", "IMGIMG")
+    text = text.replace("I", IMAGE_PREFIX)
     for i in range(10):
         text = text.replace(str(i), chr(ord("A") + i))
     return text.replace(" ", "Z")
@@ -63,7 +69,7 @@ def map_new_image_token_to_old_image_token(text):
     text = text.replace("Z", " ")
     for i in range(10):
         text = text.replace(chr(ord("A") + i), str(i))
-    return text.replace("IMGIMG", "I")
+    return text.replace(IMAGE_PREFIX, "I")
 
 
 def parse_doc(doc):
@@ -254,7 +260,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         self.has_retrieval = args.language_modeling_type == "racm3"
         if self.has_cm3:
             self._check_cm3_parameterization()
-            self._create_cm3_special_tokens()
+            self._build_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
         
         final_vocab_size = args.final_vocab_size
@@ -266,6 +272,36 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.dictionary.pad_to_multiple_(final_vocab_size)
         else:
             self.dictionary.pad_to_multiple_(8)
+
+        (
+            self.start_image_token_index,
+            self.end_image_token_index,
+        ) = self._find_image_token_bounds()
+
+        logger.info(
+            f"First Image Token and Index: {self.dictionary[self.start_image_token_index]} -- {self.start_image_token_index}"
+        )
+        logger.info(
+            f"Last Image Token and Index: {self.dictionary[self.end_image_token_index]} -- {self.end_image_token_index}"
+        )
+        assert (
+            self.args.data_subshard_count == 1
+        ), "We utilize subsharding as a way to do faster data processing therefore do not allow for another layer of subsharding."
+
+    def _find_image_token_bounds(self):
+        start = None
+        end = None
+        for i in range(len(self.dictionary)):
+            token: str = self.dictionary[i]
+            token_has_prefix = token.startswith(IMAGE_PREFIX)
+            if start is None and token_has_prefix:
+                start = i
+            elif token_has_prefix:
+                end = i
+
+        assert IMAGE_PREFIX in self.dictionary[start]
+        assert IMAGE_PREFIX in self.dictionary[end]
+        return start, end
 
     def _check_cm3_parameterization(self):
         assert (
@@ -286,18 +322,14 @@ class StreamingLanguageModelingTask(LegacyTask):
             ), "FIM requires cm3_lambda_sentinel_tokens to be 1"
             self.cm3_sentinel_type = "fixed"
 
-    def _create_cm3_special_tokens(self):
+    def _build_cm3_special_tokens(self):
         self.cm3_sentinel_end = "<eoss>"
         self.cm3_break = "<racm3:break>"
-        self.dictionary.add_symbol(self.cm3_break)
-        self.dictionary.add_symbol(self.cm3_sentinel_end)
-        # self.cm3_break_ind = self.dictionary.index(self.cm3_break)
         self.cm3_sentinel_tokens = [
             f"<sentinel:{i}>" for i in range(self.args.cm3_num_sentinel_tokens)
         ]
         self.cm3_sentinel_tokens_ind = []
         for token in self.cm3_sentinel_tokens:
-            self.dictionary.add_symbol(token)
             token_index = self.dictionary.index(token)
             assert token_index != self.dictionary.unk_index
             self.cm3_sentinel_tokens_ind.append(token_index)
@@ -308,21 +340,34 @@ class StreamingLanguageModelingTask(LegacyTask):
     def setup_task(cls, args, **kwargs):
         return cls(args)
 
-    def _tokenize_one_json(self, json):
-        text = json["text"]
+    def tokenize_cm3_v2(self, json):
+        if "dataset_name" not in json:
+            return self._tokenize_text_json(json)
+        else:
+            if json["dataset_name"] in ["m2c2v2.5", "m2c2v3"]:
+                return self._tokenize_m2c2_json(json)
+            elif json["dataset_name"] == "shutterstock":
+                return self._tokenize_ra_json(json)
+            elif json["dataset_name"] == "openflamingo":
+                return self._tokenize_interleaving_json(json)
+            elif json["dataset_name"] == "m2c2-cm3":
+                # TODO VALIDATE if m2c2-cm3 needs special handling
+                return self._tokenize_interleaving_json(json)
+            else:
+                raise ValueError(f"dataset not valid: {json['dataset_name']}")
+
+    def _tokenize_text_json(self, json):
+        if "text" in json:
+            text = json["text"]
+        elif "content" in json:
+            text = json["content"]
+        else:
+            text = str(json)
         return torch.LongTensor(
             # append an end-of-document symbol after each document
             self.tokenizer.encode(text.rstrip()).ids
             + [self.eod]
         ), None
-
-    def tokenize_cm3_v2(self, json):
-        if "text_list" in json:
-            return self._tokenize_interleaving_json(json)
-        elif "retrieved_docs_from_img" in json:
-            return self._tokenize_ra_json(json)
-        else:
-            return self._tokenize_m2c2_json(json)
 
     def _tokenize_image(self, image_str):
         image = map_old_image_token_to_new_image_token(image_str)
@@ -517,7 +562,20 @@ class StreamingLanguageModelingTask(LegacyTask):
         prev_shard_str = shards[shard_idx - 1] if shard_idx > 0 else None
         return prev_shard_str
 
-    def load_dataset(self, split: str, epoch=1, combine=False, **kwargs):
+    def load_dataset(
+        self,
+        split: str,
+        epoch=1,
+        combine=False,
+        num_shards=None,
+        shard_id=None,
+        **kwargs,
+    ):
+        is_sharded = True
+        if num_shards is None or shard_id is None:
+            num_shards = 1
+            shard_id = 1
+            is_sharded = False
         """Load a given dataset split.
 
         The folder structure is assumed to look like:
@@ -593,12 +651,9 @@ class StreamingLanguageModelingTask(LegacyTask):
             datasets.append(
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    # tokenizer=self._tokenize_one_json,
-                    tokenizer=self.tokenize_cm3_v2
-                    if self.has_retrieval
-                    else self._tokenize_one_json,
-                    epoch=epoch,
-                    data_subshard_count=data_subshard_count,
+                    tokenizer=self.tokenize_cm3_v2,
+                    epoch=shard_id,
+                    data_subshard_count=num_shards,
                 )
             )
             corpora.append(os.path.splitext(file)[0])
@@ -642,6 +697,13 @@ class StreamingLanguageModelingTask(LegacyTask):
                 padding_idx=self.source_dictionary.pad(),
                 seed=self.args.seed,
             )
+
+        self.datasets[split] = DatasetWithShardInformation(
+            self.datasets[split],
+            is_sharded=is_sharded,
+            shard_id=shard_id,
+            num_shards=num_shards,
+        )
 
     def _collate_fn(self, items: List[Dict[str, Any]]):
         # StreamingTokenBlockDataset returns None as filler
@@ -738,22 +800,39 @@ class StreamingLanguageModelingTask(LegacyTask):
         # thus increasing randomness. This assumes that no single document spans
         # 10 full batches, which is reasonable when batch sizes are in the
         # millions and documents are on average much smaller.
-        assert isinstance(dataset, DocumentToSequenceDataset) or isinstance(
+        assert isinstance(dataset, DatasetWithShardInformation)
+        if dataset.is_sharded:
+            # guarantee partitioning/shard consistency across load_dataset/get_iterator's.
+            assert num_shards == dataset.num_shards
+            assert shard_id == dataset.shard_id - 1
+
+        assert isinstance(dataset.dataset, DocumentToSequenceDataset) or isinstance(
             dataset, StreamingSrcTgtDataset
         )
         shuffle_buffer_size = 10 * max_sentences * num_shards
         logger.info(f"setting shuffle buffer size to {shuffle_buffer_size}")
-        dataset.set_shuffle_buffer_size(shuffle_buffer_size)
-        dataset.set_num_workers(num_workers)
+        dataset.dataset.set_shuffle_buffer_size(shuffle_buffer_size)
+        dataset.dataset.set_num_workers(num_workers)
 
-        # partition dataset across data parallel workers
-        dataset = PartitionedStreamingDataset(
-            dataset,
-            num_shards=num_shards,
-            shard_id=shard_id,
-            drop_last=skip_remainder_batch,
-        )
-
+        if not dataset.is_sharded:
+            # The dataset is not sharded, so we shard.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=num_shards,
+                shard_id=shard_id,
+                drop_last=skip_remainder_batch,
+            )
+        else:
+            # We don't need to partition by worker ID because partitioning already happens in JSONLDataset
+            # iterators.StreamingEpochBatchIterator expects and iterable dataset
+            # we can trivially achieve this by using PartitionedStreamingDataset with
+            # 0/1 shards.
+            dataset = PartitionedStreamingDataset(
+                dataset.dataset,
+                num_shards=1,
+                shard_id=0,
+                drop_last=skip_remainder_batch,
+            )
         # create a stateful/checkpointable iterator for the current data
         # parallel worker
         return iterators.StreamingEpochBatchIterator(

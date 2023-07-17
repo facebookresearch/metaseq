@@ -262,7 +262,7 @@ def do_setup():
             'dataclasses; python_version<"3.7"',
             # "editdistance",
             "fire",
-            "flask>=2.2.5",  # for api
+            # "flask>=2.2.5",  # for api
             "hydra-core>=1.1.0,<1.2",
             "ipdb",
             "ipython",
