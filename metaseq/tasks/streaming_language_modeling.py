@@ -205,10 +205,10 @@ class StreamingLanguageModelingTask(LegacyTask):
                 args.vocab_filename, args.merges_filename
             )
 
-        if max(args.update_freq) > 1:
-            raise NotImplementedError(
-                "--update-freq is not compatible with StreamingLanguageModelingTask"
-            )
+        # if max(args.update_freq) > 1:
+        #     raise NotImplementedError(
+        #         "--update-freq is not compatible with StreamingLanguageModelingTask"
+        #     )
 
         self.eod = self.tokenizer.token_to_id(args.end_of_document_symbol)
         if self.eod is None:

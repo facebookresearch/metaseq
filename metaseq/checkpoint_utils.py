@@ -20,6 +20,7 @@ from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -585,24 +586,79 @@ def load_model_ensemble_and_task(
     return ensemble, cfg, task
 
 
-def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
-    """Retrieves all checkpoints found in `path` directory.
+def load_model_ensemble_and_task_demo(
+    filenames,
+    arg_overrides: Optional[Dict[str, Any]] = None,
+    task=None,
+    strict=True,
+    suffix="",
+    num_shards=1,
+    state=None,
+    build_model_hook=None,
+):
+    assert state is None or len(filenames) == 1
 
-    Checkpoints are identified by matching filename to the specified pattern. If
-    the pattern contains groups, the result will be sorted by the first group in
-    descending order.
-    """
-    pt_regexp = re.compile(pattern)
-    files = os.listdir(path)
+    from metaseq import tasks
 
-    entries = []
-    for i, f in enumerate(files):
-        m = pt_regexp.fullmatch(f)
-        if m is not None:
-            idx = float(m.group(1)) if len(m.groups()) > 0 else i
-            entries.append((idx, m.group(0)))
-    return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
+    assert not (
+        strict and num_shards > 1
+    ), "Cannot load state dict with strict=True and checkpoint shards > 1"
+    ensemble = []
+    cfg = None
 
+    for filename in filenames:
+        orig_filename = filename
+        assert num_shards > 0
+        for shard_idx in range(num_shards):
+            if num_shards == 1:
+                filename = filename.replace(".pt", suffix + ".pt")
+            else:
+                filename = orig_filename[:-3] + f"_part{shard_idx}.pt"
+            if state is None:
+                state = load_checkpoint_to_cpu(filename, arg_overrides)
+            if "cfg" in state and state["cfg"] is not None:
+                cfg = state["cfg"]
+            else:
+                raise RuntimeError(
+                    f"!!! cfg does not exist in state keys = {state.keys()} !!!"
+                )
+
+            # Load 175B model trained on megatron (model parallel) branch
+            # "cfg.common.model_parallel_size == 1" checks if model parallel is
+            # enabled at load time. If it's not, fall back to non-MP
+            # transformer code path.
+            if (
+                getattr(cfg.model, "arch", None) == "transformer_lm_megatron"
+                and cfg.common.model_parallel_size == 1
+            ):
+                cfg.model.arch = "transformer_lm_gpt"
+                cfg.model._name = "transformer_lm_gpt"
+
+            # # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
+            # oproj_key = "decoder.output_projection.weight"
+            # emb_key = "decoder.embed_tokens.weight"
+            # if emb_key in state["model"] and oproj_key not in state["model"]:
+            #     state["model"][oproj_key] = state["model"][emb_key]
+
+            if task is None:
+                task = tasks.setup_task(cfg.task)
+
+            if "task_state" in state:
+                task.load_state_dict(state["task_state"])
+
+            if build_model_hook is not None:
+                model = build_model_hook(cfg, task)
+            else:
+                # build model for ensemble
+                model = task.build_model(cfg.model)
+
+            #model.load_state_dict(state["model"], strict=strict)
+            logger.info("Done loading state dict")
+            # reset state so it gets loaded for the next model in ensemble
+            state = None
+
+        ensemble.append(model)
+    return ensemble, cfg, task
 
 def _upgrade_state_dict(state):
     """Helper for upgrading old model checkpoints."""
@@ -645,6 +701,24 @@ def _upgrade_state_dict(state):
             "iterations_in_epoch": state["extra_state"].get("batch_offset", 0),
         }
     return state
+
+def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
+    """Retrieves all checkpoints found in `path` directory.
+
+    Checkpoints are identified by matching filename to the specified pattern. If
+    the pattern contains groups, the result will be sorted by the first group in
+    descending order.
+    """
+    pt_regexp = re.compile(pattern)
+    files = os.listdir(path)
+
+    entries = []
+    for i, f in enumerate(files):
+        m = pt_regexp.fullmatch(f)
+        if m is not None:
+            idx = float(m.group(1)) if len(m.groups()) > 0 else i
+            entries.append((idx, m.group(0)))
+    return [os.path.join(path, x[1]) for x in sorted(entries, reverse=True)]
 
 
 def verify_checkpoint_directory(save_dir: str) -> None:
