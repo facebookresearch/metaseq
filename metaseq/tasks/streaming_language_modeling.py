@@ -408,7 +408,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         image_spans = []
         for image in json["image_info"]:
             if "IMAGE_TOKENS" in image:
-                textid_2_image[image["matcno hed_text_index"]].append(
+                textid_2_image[image["matched_text_index"]].append(
                     image["IMAGE_TOKENS"]
                 )
         for text_idx, text in enumerate(all_texts):
