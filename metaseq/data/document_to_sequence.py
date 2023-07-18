@@ -542,6 +542,7 @@ def yield_token_blocks_no_image_break(iterable, block_size, drop_last) -> Iterab
     for idx, (tokens, document, image_spans) in enumerate(iterable):
         cur_block_ids.append(idx)
         item_offset = 0
+        last_image_span_start_idx = 0
         while tokens:
             num_to_take = min(tokens, cur_block_remain)
             cur_block.append((document, item_offset, num_to_take))
@@ -560,12 +561,15 @@ def yield_token_blocks_no_image_break(iterable, block_size, drop_last) -> Iterab
 
                 # remaining tokens go to the next example
                 if tokens > 0 and image_spans:
-                    for s, e in image_spans:
+                    temp_count = 0
+                    for s, e in image_spans[last_image_span_start_idx:]:
+                        temp_count += 1
                         if s < item_offset < e:
                             remaining = e - item_offset
                             item_offset = e
                             tokens -= remaining
-                            assert tokens >= 0
+                            last_image_span_start_idx += temp_count
+                            # assert tokens >= 0
                             break
 
     if not drop_last and len(cur_block):
