@@ -152,6 +152,25 @@ class StreamingCountingIterator(object):
         return bool(self._peekable_itr)  # whether peekable has items
 
 
+class StreamingShardedCountingIterator(StreamingCountingIterator):
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        worker_id, r = next(self._peekable_itr)
+        worker_id = (worker_id + self.worker_offset) % self.num_workers
+        self.sequences_consumed[worker_id] += self.batch_size
+        self.next_worker = (worker_id + 1) % self.num_workers
+        self.n += 1
+        return r
+
+    def __len__(self):
+        return 0
+
+    def has_next(self):
+        return bool(self._peekable_itr)  # whether peekable has items
+
+
 class EpochBatchIterating(object):
     def __len__(self) -> int:
         raise NotImplementedError
@@ -415,6 +434,28 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         )
 
         itr = StreamingCountingIterator(
+            itr, self.num_workers, self.batch_size, self.num_shards
+        )
+
+        return itr
+
+
+class StreamingShardedEpochBatchIterator(StreamingEpochBatchIterator):
+    def _get_iterator_for_epoch(self, epoch, offset=0):
+        if self.num_workers > 0:
+            os.environ["PYTHONWARNINGS"] = "ignore:semaphore_tracker:UserWarning"
+
+        itr = torch.utils.data.DataLoader(
+            dataset=self.dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=_CollateWithWorkerID(self.collate_fn),
+            pin_memory=True,
+            drop_last=self.drop_last,
+            worker_init_fn=getattr(self.dataset, "worker_init_fn", None),
+        )
+
+        itr = StreamingShardedCountingIterator(
             itr, self.num_workers, self.batch_size, self.num_shards
         )
 
