@@ -3,23 +3,22 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
-import math
 import logging
-from typing import Optional
+import math
+import os
+import time
+from contextlib import contextmanager
+from ctypes import addressof, c_int, memmove, sizeof
+
+from multiprocessing import Array, Lock
+
+from typing import Iterable, List, Literal, Optional, Tuple, TypedDict, Union
 
 import numpy as np
 import torch
 
 from metaseq.data import data_utils
 from metaseq.distributed import utils as distributed_utils
-import time
-
-from typing import Union, List, Iterable, Tuple, TypedDict, Literal
-
-from multiprocessing import Array, Lock
-from contextlib import contextmanager
-from ctypes import c_int, sizeof, memmove, addressof
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +211,9 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
         self.no_break_image = no_break_image
 
         if self.no_break_image:
-            assert break_mode == "none", "no_break_image is only compatible with pre-training break mode"
+            assert (
+                break_mode == "none"
+            ), "no_break_image is only compatible with pre-training break mode"
 
         if break_mode == "none":
             if self.no_break_image:
@@ -376,9 +377,14 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                 logger.info(
                     f"Begin filling streaming dataset buffer for each worker on rank {local_rank}"
                 )
+            index = 0
+            assert not self.source_target
             while True:
                 with self.len_cache.worker_locks[worker_id]:
                     elem = next(seq_it)
+                if to_skip > 0 and index == 0:
+                    logger.info(f"{index} Block After Skipping {elem} @ {worker_id}")
+                index += 1
                 # we know we are not skipping this sequence, so
                 # we perform any document loading that we deferred in the skipping process.
                 elem["ids"] = torch.LongTensor(elem["ids"])
@@ -417,8 +423,17 @@ class DocumentToSequenceDataset(torch.utils.data.IterableDataset):
                     elem["tgt_block"] = torch.cat(tuple(t for s, t in subsequences))
                 else:
                     elem["block"] = torch.cat(subsequences)
+                    if len(elem["block"]) == 0:
+                        logger.info(
+                            f"Hit {subsequences} -- {elem['block']} @ {worker_id}"
+                        )
                 elem["skip_time"] = skip_time
-                yield elem
+                if len(elem["block"]) > 0:
+                    yield elem
+                else:
+                    logger.warning(
+                        f"Index {index} @ Worker ID {worker_id} is empty for subsequences {subsequences}. Skipping. Likely data is empty."
+                    )
         except StopIteration:
             return
 
@@ -534,7 +549,9 @@ def yield_token_blocks(iterable, block_size, drop_last) -> Iterable[Sequence]:
         }
 
 
-def yield_token_blocks_no_image_break(iterable, block_size, drop_last) -> Iterable[Sequence]:
+def yield_token_blocks_no_image_break(
+    iterable, block_size, drop_last
+) -> Iterable[Sequence]:
     """Sample break mode = None. (Pre-Training default), while every sample is not starting with broken images."""
     cur_block = []
     cur_block_ids = []

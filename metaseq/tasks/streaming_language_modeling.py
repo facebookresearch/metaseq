@@ -366,7 +366,8 @@ class StreamingLanguageModelingTask(LegacyTask):
         return (
             torch.LongTensor(
                 # append an end-of-document symbol after each document
-                self.tokenizer.encode(text.rstrip()).ids
+                [self.eod]
+                + self.tokenizer.encode(text.rstrip()).ids
                 + [self.eod]
             ),
             None,

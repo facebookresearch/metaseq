@@ -276,6 +276,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
         else:
             return self.epoch
 
+    def bookkeep_sequences_consumed(self, bsz, num_shards):
+        return bsz * num_shards
+
     def next_epoch_itr(self, **kwargs):
         """
         Return a new iterator over the dataset.
@@ -385,7 +388,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
                 # Warning: this fix is not correct for the last ~1% of an epoch, but it only needs to be
                 # applied once earlier in the epoch to fix any data loaders with incorrect data.
                 num_workers = self._itr.num_workers
-                batch_size = self._itr.batch_size * self._itr.num_shards
+                batch_size = self.bookkeep_sequences_consumed(
+                    self._itr.batch_size, self._itr.num_shards
+                )
                 if sum(sequences_consumed) != n * batch_size:
                     logger.warning(
                         f"{distributed_utils.get_global_rank()}: Sequences appear corrupted: "
@@ -441,6 +446,9 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
 
 
 class StreamingShardedEpochBatchIterator(StreamingEpochBatchIterator):
+    def bookkeep_sequences_consumed(self, bsz, num_shards):
+        return bsz
+
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:
             os.environ["PYTHONWARNINGS"] = "ignore:semaphore_tracker:UserWarning"
@@ -460,6 +468,110 @@ class StreamingShardedEpochBatchIterator(StreamingEpochBatchIterator):
         )
 
         return itr
+
+    def state_dict(self):
+        """Returns a dictionary containing a whole state of the iterator."""
+        if self.end_of_epoch():
+            # small optimization: we advance the epoch before saving, so that
+            # when loading later we don't end up fast-forwarding the iterator
+            epoch = self.epoch + 1
+            sequences_consumed = [0 for _ in range(self.num_workers)]
+            n = 0
+            next_worker = 0
+        else:
+            epoch = self.epoch
+            sequences_consumed = self._itr.sequences_consumed
+            n = self._itr.n
+            next_worker = self._itr.next_worker
+
+        dataset = self.dataset
+        while not isinstance(dataset, DocumentToSequenceDataset):
+            dataset = dataset.dataset
+        logger.debug(
+            f"Saving state_dict so we can skip workers quickly: {len(dataset.len_cache.data)} "
+            f"entries in tokenization_cache, {sequences_consumed} sequences consumed per worker, iteration {n}"
+        )
+        return {
+            "epoch": epoch,
+            "sequences_consumed": sequences_consumed,
+            "tokenization_cache": dataset.len_cache,
+            "n": n,
+            "next_worker": next_worker,
+        }
+
+    def load_state_dict(self, state_dict):
+        """Copies the state of the iterator from the given *state_dict*."""
+        self.epoch = state_dict["epoch"]
+        if hasattr(self.dataset, "set_epoch"):
+            self.dataset.set_epoch(self.epoch)
+
+        # must be set before _get_iterator_for_epoch otherwise the datasets in the workers
+        # will not be copied with the right state
+        if (
+            "sequences_consumed" in state_dict
+            and max(state_dict["sequences_consumed"]) > 0
+        ):
+            sequences_consumed = state_dict["sequences_consumed"]
+            n = state_dict["n"]
+            next_worker = state_dict["next_worker"]
+
+            logger.info(f"Skipping {sequences_consumed} sequences in each worker...")
+            num_workers = 1 if self.num_workers == 0 else self.num_workers
+            assert (
+                len(sequences_consumed) == num_workers
+            ), "changing the number of workers in the middle of a shard changes the order the data will be loaded in"
+            dataset = self.dataset
+            while not isinstance(dataset, DocumentToSequenceDataset):
+                dataset = dataset.dataset
+            dataset.to_skip = sequences_consumed
+            dataset.worker_offset = next_worker
+            global_group = distributed_utils.get_global_group()
+            # TODO (armenag): After we fix poor state dict
+            # dataset.len_cache = state_dict["tokenization_cache"]
+
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            self._itr.n = n
+
+            if True:
+                # Epilogue bug fixup
+                # Warning: this fix is not correct for the last ~1% of an epoch, but it only needs to be
+                # applied once earlier in the epoch to fix any data loaders with incorrect data.
+                num_workers = self._itr.num_workers
+                batch_size = self.bookkeep_sequences_consumed(
+                    self._itr.batch_size, self._itr.num_shards
+                )
+                if sum(sequences_consumed) != n * batch_size:
+                    logger.warning(
+                        f"{distributed_utils.get_global_rank()}: Sequences appear corrupted: "
+                        f"{n}*{batch_size} != sum({sequences_consumed})"
+                    )
+                    each, left = divmod(n, num_workers)
+                    sequences_consumed = [
+                        batch_size * (each + (1 if i < left else 0))
+                        for i in range(num_workers)
+                    ]
+                assert sum(sequences_consumed) == n * batch_size
+
+            self._itr.sequences_consumed = sequences_consumed
+            self._itr.next_worker = next_worker
+            self._itr.worker_offset = next_worker
+        else:
+            self._itr = self._get_iterator_for_epoch(self.epoch)
+            # checkpoint from before sequences_consumed was added, slow fast forward...
+            if (
+                "iterations_in_epoch" in state_dict
+                and state_dict["iterations_in_epoch"] > 0
+            ):
+                # fast-forward epoch iterator
+                itr_pos = state_dict["iterations_in_epoch"]
+                logger.info(
+                    f"Fast-forwarding dataloader by {itr_pos} batches using slower logic because "
+                    "checkpoint does not have a tokenization_cache..."
+                )
+                t0 = time.time()
+                next(itertools.islice(self._itr, itr_pos, itr_pos), None)
+                t1 = time.time()
+                logger.info(f"done fast-forwarding dataloader in {t1 - t0:.1f} seconds")
 
 
 class EpochBatchIterator(EpochBatchIterating):

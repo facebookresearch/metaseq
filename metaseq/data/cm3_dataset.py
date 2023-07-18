@@ -3,11 +3,13 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import numpy as np
 import random
-import torch
 
 from typing import List, Optional, Tuple
+
+import numpy as np
+import torch
+
 from .document_to_sequence import DocumentToSequenceDataset
 
 
@@ -92,7 +94,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             to_skip,
             permute_documents,
             source_target,
-            no_break_image=no_break_image
+            no_break_image=no_break_image,
         )
         self.sentinel_token_expectation = sentinel_token_expectation
         self.sentinel_tokens = sentinel_tokens
@@ -163,7 +165,10 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         if len_sentinel_tokens == 0:
             return None
         if len_sentinel_tokens == 1:
-            if np.random.random() < self.percent_full_document_rotation and len(document_boundaries) > 0:
+            if (
+                np.random.random() < self.percent_full_document_rotation
+                and len(document_boundaries) > 0
+            ):
                 return [random.choice(document_boundaries)]
 
             start, end = np.random.uniform(size=2)
@@ -226,7 +231,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         return spans
 
     def cm3_shuffle(self, item):
-        assert len(item) > 0
+        assert len(item) > 0, item
         document_boundaries = self.get_document_boundaries(item)
         spans = self.get_spans_to_mask(len(item), document_boundaries)
         if not self.allow_rotation_across_eod and spans is not None:
