@@ -398,7 +398,7 @@ class StreamingLanguageModelingTask(LegacyTask):
     def _tokenize_m2c2_json(self, json):
         query_index, image_span = self.tokenize_single_html_doc(json["text"], add_eod=True)
         final_indexes = torch.LongTensor([self.eod] + query_index)
-        image_span = [(i+1, j+1) for i, j in image_span]
+        image_span = [(image_span[0]+1, image_span[1]+1)]
         return final_indexes, image_span
 
     def _tokenize_interleaving_json(self, json):
