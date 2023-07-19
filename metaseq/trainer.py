@@ -706,7 +706,6 @@ class Trainer(object):
             disable_iterator_cache=disable_iterator_cache,
             skip_remainder_batch=False,
         )
-        self.reset_dummy_batch(batch_iterator.first_batch)
         return batch_iterator
 
     def begin_epoch(self, epoch):
@@ -980,6 +979,9 @@ class Trainer(object):
     def valid_step(self, sample, num_step=0, raise_oom=False):
         """Do forward pass in evaluation mode."""
 
+
+        if self._dummy_batch == "DUMMY" and sample is not None:
+            self.reset_dummy_batch(sample)
         # If EMA is enabled through store_ema=True
         # and task.uses_ema is True, pass the EMA model as a keyword
         # argument to the task.
@@ -991,7 +993,6 @@ class Trainer(object):
             self.model.eval()
             self.criterion.eval()
             self.zero_grad()
-
             sample, is_dummy_batch = self._prepare_sample(sample)
 
             try:
