@@ -295,6 +295,7 @@ def train(
     trainer.begin_epoch(epoch_itr.epoch)
     valid_subsets = cfg.dataset.valid_subset.split(",")
     should_stop = False
+    end_of_epoch = False
     logger.info("Start iterating over samples")
 
     def train(
@@ -356,7 +357,7 @@ def train(
             log_output is not None,
         )
 
-        return valid_losses, should_stop
+        return valid_losses, should_stop, end_of_epoch
 
     skip_batches = None
     if len(cfg.dataset.skip_batches) > 0:
@@ -393,7 +394,7 @@ def train(
                 with profiler.profile(
                     profile_memory=True, with_stack=True, record_shapes=True
                 ) as prof:
-                    valid_losses, should_stop = train(samples)
+                    valid_losses, should_stop, end_of_epoch = train(samples)
                 torch.cuda.synchronize()
                 with open(
                     os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
@@ -408,8 +409,8 @@ def train(
                     os.path.join(cfg.checkpoint.save_dir, "profiler_trace.json")
                 )
             else:
-                valid_losses, should_stop = train(samples)
-            if should_stop:
+                valid_losses, should_stop, end_of_epoch = train(samples)
+            if should_stop or end_of_epoch:
                 break
 
             i += 1

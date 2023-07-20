@@ -449,6 +449,14 @@ class StreamingShardedEpochBatchIterator(StreamingEpochBatchIterator):
     def bookkeep_sequences_consumed(self, bsz, num_shards):
         return bsz
 
+    @property
+    def next_epoch_idx(self):
+        """Return the epoch index after *next_epoch_itr* is called."""
+        if self._itr is not None:
+            return self.epoch + 1
+        else:
+            return self.epoch
+
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:
             os.environ["PYTHONWARNINGS"] = "ignore:semaphore_tracker:UserWarning"
