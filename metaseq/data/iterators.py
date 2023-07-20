@@ -446,16 +446,28 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
 
 
 class StreamingShardedEpochBatchIterator(StreamingEpochBatchIterator):
+    def __init__(
+        self,
+        dataset: torch.utils.data.IterableDataset,
+        batch_size: int,
+        collate_fn: Callable,
+        drop_last: bool,
+        num_workers: int = 0,
+        epoch: int = 1,
+        num_shards: int = 1,
+    ):
+        super().__init__(dataset, batch_size, collate_fn, drop_last, num_workers, epoch, num_shards)
+        self.at_end_of_epoch = False
+
     def bookkeep_sequences_consumed(self, bsz, num_shards):
         return bsz
 
-    @property
-    def next_epoch_idx(self):
-        """Return the epoch index after *next_epoch_itr* is called."""
-        if self._itr is not None:
-            return self.epoch + 1
-        else:
-            return self.epoch
+    def set_end_of_epoch(self, value):
+        self.at_end_of_epoch = value
+
+    def end_of_epoch(self) -> bool:
+        """Returns whether the most recent epoch iterator has been exhausted"""
+        return not self._itr.has_next() or self.at_end_of_epoch
 
     def _get_iterator_for_epoch(self, epoch, offset=0):
         if self.num_workers > 0:

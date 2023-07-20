@@ -395,6 +395,7 @@ def train(
                     profile_memory=True, with_stack=True, record_shapes=True
                 ) as prof:
                     valid_losses, should_stop, end_of_epoch = train(samples)
+                    epoch_itr.set_end_of_epoch(end_of_epoch)
                 torch.cuda.synchronize()
                 with open(
                     os.path.join(cfg.checkpoint.save_dir, "memory_usage.txt"), "a"
@@ -410,6 +411,7 @@ def train(
                 )
             else:
                 valid_losses, should_stop, end_of_epoch = train(samples)
+                epoch_itr.set_end_of_epoch(end_of_epoch)
             if should_stop or end_of_epoch:
                 break
 
