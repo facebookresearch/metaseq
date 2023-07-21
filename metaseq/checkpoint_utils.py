@@ -643,21 +643,21 @@ def load_model_ensemble_and_task_demo(
             if task is None:
                 task = tasks.setup_task(cfg.task)
 
-            if "task_state" in state:
-                task.load_state_dict(state["task_state"])
+            #if "task_state" in state:
+            #    task.load_state_dict(state["task_state"])
 
-            if build_model_hook is not None:
-                model = build_model_hook(cfg, task)
-            else:
+           # if build_model_hook is not None:
+              #  model = build_model_hook(cfg, task)
+            #else:
                 # build model for ensemble
-                model = task.build_model(cfg.model)
+#                model = task.build_model(cfg.model)
 
             #model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble
             state = None
 
-        ensemble.append(model)
+        #ensemble.append(model)
     return ensemble, cfg, task
 
 def _upgrade_state_dict(state):

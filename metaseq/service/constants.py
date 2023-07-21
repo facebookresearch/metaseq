@@ -13,28 +13,30 @@ MODEL_PARALLEL = 8
 TOTAL_WORLD_SIZE = 8
 MAX_BEAM = 16
 
-try:
-    # internal logic denoting where checkpoints are in meta infrastructure
-    from metaseq_internal.constants import CHECKPOINT_FOLDER
-except ImportError:
-    # CHECKPOINT_FOLDER should point to a shared drive (e.g. NFS) where the
-    # checkpoints from S3 are stored. As an example:
-    # CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
-    # $ ls /example/175B/reshard_no_os
-    # reshard-model_part-0.pt
-    # reshard-model_part-1.pt
-    # reshard-model_part-2.pt
-    # reshard-model_part-3.pt
-    # reshard-model_part-4.pt
-    # reshard-model_part-5.pt
-    # reshard-model_part-6.pt
-    # reshard-model_part-7.pt
-    CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
+# try:
+#     # internal logic denoting where checkpoints are in meta infrastructure
+#     from metaseq_internal.constants import CHECKPOINT_FOLDER
+# except ImportError:
+#     # CHECKPOINT_FOLDER should point to a shared drive (e.g. NFS) where the
+#     # checkpoints from S3 are stored. As an example:
+#     # CHECKPOINT_FOLDER = "/example/175B/reshard_no_os"
+#     # $ ls /example/175B/reshard_no_os
+#     # reshard-model_part-0.pt
+#     # reshard-model_part-1.pt
+#     # reshard-model_part-2.pt
+#     # reshard-model_part-3.pt
+#     # reshard-model_part-4.pt
+#     # reshard-model_part-5.pt
+#     # reshard-model_part-6.pt
+#     # reshard-model_part-7.pt
+    
+    
+CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/joint/eval/"
 
 # tokenizer files
-BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
-BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "reshard.pt")
+#BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
+#BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "mp_1500.pt")
 
 
 LAUNCH_ARGS = [
@@ -44,12 +46,12 @@ LAUNCH_ARGS = [
     # If using FSDP shards, replace ddp-backend and add use-sharded-state
     # "--ddp-backend fully_sharded",
     # "--use-sharded-state",
-    "--task language_modeling",
-    f"--bpe-merges {BPE_MERGES}",
-    f"--bpe-vocab {BPE_VOCAB}",
+    "--task streaming_language_modeling",
+    #f"--bpe-merges {BPE_MERGES}",
+    #f"--bpe-vocab {BPE_VOCAB}",
     "--bpe hf_byte_bpe",
-    f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
-    f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    #f"--merges-filename {BPE_MERGES}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
+    #f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {MODEL_FILE}",
     "--beam 1",
     "--distributed-port 13000",
