@@ -213,6 +213,8 @@ class GeneratorInterface:
         alpha_presence_src: float = 0.0,
         alpha_frequency_src: float = 0.0,
         alpha_src_penalty_end_idx: int = -1,
+        seq_gen_cls=None,
+        extra_gen_cls_kwargs={},
     ):
         """
         Generate from sequences.
@@ -307,20 +309,23 @@ class GeneratorInterface:
 
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
-            extra_gen_cls_kwargs = {
-                "stop": stop,
-                "need_logprobs": need_logprobs,
-                "omega_bound": omega_bound,
-                "lambda_decay": lambda_decay,
-                "alpha_presence": alpha_presence,
-                "alpha_frequency": alpha_frequency,
-                "alpha_presence_src": alpha_presence_src,
-                "alpha_frequency_src": alpha_frequency_src,
-                "alpha_src_penalty_end_idx": alpha_src_penalty_end_idx,
-            }
+            extra_gen_cls_kwargs.update(
+                {
+                    "stop": stop,
+                    "need_logprobs": need_logprobs,
+                    "omega_bound": omega_bound,
+                    "lambda_decay": lambda_decay,
+                    "alpha_presence": alpha_presence,
+                    "alpha_frequency": alpha_frequency,
+                    "alpha_presence_src": alpha_presence_src,
+                    "alpha_frequency_src": alpha_frequency_src,
+                    "alpha_src_penalty_end_idx": alpha_src_penalty_end_idx,
+                }
+            )
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
+                seq_gen_cls,
                 extra_gen_cls_kwargs=extra_gen_cls_kwargs,
             )
 
