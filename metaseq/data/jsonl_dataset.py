@@ -10,6 +10,7 @@ import mmap
 import os
 import sys
 import threading
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -58,12 +59,12 @@ class JsonlDataset(torch.utils.data.Dataset):
         if distributed_utils.get_global_rank() != 0:
             distributed_utils.global_barrier()
         if self.cache.exists() and not recache:
+            distributed_utils.global_barrier()
             logger.info(f"Loading up cache: {self.cache}")
             self.offsets = np.load(self.cache, allow_pickle=True)
         elif distributed_utils.get_global_rank() == 0:
             self.offsets = self._build_index(path)
             np.save(self.cache, self.offsets, allow_pickle=False)
-        if distributed_utils.get_global_rank() == 0:
             distributed_utils.global_barrier()
 
         self.epoch = epoch
@@ -134,22 +135,17 @@ class JsonlDataset(torch.utils.data.Dataset):
         # and then wraps around if the epoch id goes beyond the data_subshard_count
         return (self.epoch - 1) % self.data_subshard_count
 
-    def _build_index(self, path: str):
+    def _build_index(self, file_path: str):
         """Build index of start positions of each line."""
-        logger.info(f"Building index for file: {path}")
-        f = self._get_mmap()
-        f.seek(0)
-        offsets = []
-        cur = 0
-        line_num = 0
-        while True:
-            line = f.readline()
-            if line == b"":
-                break
-            offsets.append(cur)
-            cur += len(line)
-            line_num += 1
-        return offsets
+        logger.info(f"Building index for file: {file_path}")
+        file: TextIOWrapper = self._get_mmap()
+
+        offsets = [0]
+        for _ in iter(file.readline, b""):
+            offsets.append(file.tell())
+
+        # return all offsets except the last one, which is the end of the file
+        return offsets[:-1]
 
     def __setstate__(self, state):
         self.__dict__ = state

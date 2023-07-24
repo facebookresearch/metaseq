@@ -364,7 +364,14 @@ def train(
         skip_batches = get_skip_batches(cfg.dataset.skip_batches)
 
     progress_iter = iter(progress)
+    burn_in = 25
+    logger.info(f"Burning in current epoch... Skipping {burn_in} batches")
     i = 0
+    while i < burn_in:
+        next(progress_iter)
+        logger.info(f"Burning in current epoch... Skipped {i+1} batches")
+        i += 1
+
     while True:
         try:
             with metrics.aggregate("train_inner"):

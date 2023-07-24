@@ -559,7 +559,7 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         shard_idx = ((epoch - 1) // data_subshard_count) % len(shards)
         cur_shard_str = shards[shard_idx]
-        return cur_shard_str
+        return cur_shard_str, shards
 
     def get_previous_shard_str(self, epoch, split):
         shards = {}
@@ -614,7 +614,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         # shuffles them, then chunks them into blocks of tokens (e.g., 2048).
 
         # determine number of shards for this split
-        cur_shard_str = self.get_shard_str(epoch, split)
+        cur_shard_str, all_shards = self.get_shard_str(epoch, split)
 
         # if torch.distributed.get_rank() == 0:
         #     from metaseq import pdb; pdb.set_trace()
@@ -658,20 +658,21 @@ class StreamingLanguageModelingTask(LegacyTask):
         # concatenate any jsonl files that are part of the shard
         datasets, corpora = [], []
         data_subshard_count = self.args.data_subshard_count if split == "train" else 1
-        for file in sorted(
-            os.listdir(os.path.join(self.args.data, split, cur_shard_str))
-        ):
-            if not file.endswith(".jsonl"):
-                continue
-            datasets.append(
-                JsonlDataset(
-                    path=os.path.join(self.args.data, split, cur_shard_str, file),
-                    tokenizer=self.tokenize_cm3_v2,
-                    epoch=shard_id,
-                    data_subshard_count=num_shards,
+        for key, cur_shard_str in all_shards.items():
+            for file in sorted(
+                os.listdir(os.path.join(self.args.data, split, cur_shard_str))
+            ):
+                if not file.endswith(".jsonl"):
+                    continue
+                datasets.append(
+                    JsonlDataset(
+                        path=os.path.join(self.args.data, split, cur_shard_str, file),
+                        tokenizer=self.tokenize_cm3_v2,
+                        epoch=shard_id,
+                        data_subshard_count=num_shards,
+                    )
                 )
-            )
-            corpora.append(os.path.splitext(file)[0])
+                corpora.append(os.path.splitext(file)[0])
         assert len(datasets) > 0
 
         if self.args.multicorpus_sampling_alpha != 1:
