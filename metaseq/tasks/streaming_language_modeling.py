@@ -256,7 +256,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             self._check_cm3_parameterization()
             self._create_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
-        
+
         final_vocab_size = args.final_vocab_size
         if final_vocab_size is not None:
             if final_vocab_size < tok_vocab_size:
@@ -308,21 +308,38 @@ class StreamingLanguageModelingTask(LegacyTask):
     def setup_task(cls, args, **kwargs):
         return cls(args)
 
-    def _tokenize_one_json(self, json):
-        text = json["text"]
-        return torch.LongTensor(
-            # append an end-of-document symbol after each document
-            self.tokenizer.encode(text.rstrip()).ids
-            + [self.eod]
-        ), None
-
-    def tokenize_cm3_v2(self, json):
-        if "text_list" in json:
-            return self._tokenize_interleaving_json(json)
-        elif "retrieved_docs_from_img" in json:
-            return self._tokenize_ra_json(json)
+def tokenize_cm3_v2(self, json):
+        if "dataset_name" not in json:
+            return self._tokenize_text_json(json)
         else:
-            return self._tokenize_m2c2_json(json)
+            if json["dataset_name"] in ["m2c2v2.5", "m2c2v3"]:
+                return self._tokenize_m2c2_json(json)
+            elif json["dataset_name"] == "shutterstock":
+                return self._tokenize_ra_json(json)
+            elif json["dataset_name"] == "openflamingo":
+                return self._tokenize_interleaving_json(json)
+            elif json["dataset_name"] == "m2c2-cm3":
+                # TODO VALIDATE if m2c2-cm3 needs special handling
+                return self._tokenize_interleaving_json(json)
+            else:
+                raise ValueError(f"dataset not valid: {json['dataset_name']}")
+
+    def _tokenize_text_json(self, json):
+        if "text" in json:
+            text = json["text"]
+        elif "content" in json:
+            text = json["content"]
+        else:
+            text = str(json)
+        return (
+            torch.LongTensor(
+                # append an end-of-document symbol after each document
+                [self.eod]
+                + self.tokenizer.encode(text.rstrip()).ids
+                + [self.eod]
+            ),
+            None,
+        )
 
     def _tokenize_image(self, image_str):
         image = map_old_image_token_to_new_image_token(image_str)
@@ -344,16 +361,19 @@ class StreamingLanguageModelingTask(LegacyTask):
         image = image.strip() + " "
         image_indexes = self._tokenize_image(image)
         indexes = text_indexes + [self.cm3_break_ind] + image_indexes
-        image_span = (len(text_indexes + [self.cm3_break_ind]), len(indexes)) # [)
+        image_span = (len(text_indexes + [self.cm3_break_ind]), len(indexes))  # [)
         if add_eod:
             indexes = indexes + [self.eod]
             image_span = (image_span[0], image_span[1] + 1)
         return indexes, image_span
 
     def _tokenize_m2c2_json(self, json):
-        query_index, image_span = self.tokenize_single_html_doc(json["text"], add_eod=True)
+        query_index, image_span = self.tokenize_single_html_doc(
+            json["text"], add_eod=True
+        )
         final_indexes = torch.LongTensor([self.eod] + query_index)
-        return final_indexes, [image_span]
+        image_span = [(image_span[0] + 1, image_span[1] + 1)]
+        return final_indexes, image_span
 
     def _tokenize_interleaving_json(self, json):
         all_tokens = [self.eod]
@@ -373,7 +393,9 @@ class StreamingLanguageModelingTask(LegacyTask):
                     image_indexes = self._tokenize_image(image)
                     all_tokens += [self.cm3_break_ind]
                     # there is always a special token after the image tokens, thus we +1 for the end of image
-                    image_spans.append((len(all_tokens), len(all_tokens) + len(image_indexes) + 1))
+                    image_spans.append(
+                        (len(all_tokens), len(all_tokens) + len(image_indexes) + 1)
+                    )
                     all_tokens += image_indexes
                 all_tokens += [self.cm3_break_ind]
 
@@ -384,14 +406,18 @@ class StreamingLanguageModelingTask(LegacyTask):
 
     def _tokenize_ra_json(self, json):
         image_spans = []
-        query_index, query_image_span = self.tokenize_single_html_doc(json["text"], add_eod=True)
+        query_index, query_image_span = self.tokenize_single_html_doc(
+            json["text"], add_eod=True
+        )
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
         random.shuffle(ra_docs)
 
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
-        cur_len = 1  # this accounts for the initial eod token at line of final_indexes below
+        cur_len = (
+            1  # this accounts for the initial eod token at line of final_indexes below
+        )
         for ra_doc in ra_docs:
             ra_index, image_span = self.tokenize_single_html_doc(ra_doc, add_eod=False)
             ra_index = torch.LongTensor(ra_index + [self.cm3_break_ind])
@@ -404,8 +430,11 @@ class StreamingLanguageModelingTask(LegacyTask):
         final_indexes = torch.cat(
             [torch.LongTensor([self.eod])] + ra_indexes + [query_index]
         )
-        image_spans.append((cur_len + query_image_span[0], cur_len + query_image_span[1]))
+        image_spans.append(
+            (cur_len + query_image_span[0], cur_len + query_image_span[1])
+        )
         return final_indexes, image_spans
+
 
     def _get_sample_prob(self, dataset_lens):
         """
@@ -594,9 +623,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                 JsonlDataset(
                     path=os.path.join(self.args.data, split, cur_shard_str, file),
                     # tokenizer=self._tokenize_one_json,
-                    tokenizer=self.tokenize_cm3_v2
-                    if self.has_retrieval
-                    else self._tokenize_one_json,
+                    tokenizer=self.tokenize_cm3_v2,
                     epoch=epoch,
                     data_subshard_count=data_subshard_count,
                 )
