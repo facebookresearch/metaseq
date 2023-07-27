@@ -36,10 +36,13 @@ __all__ = [
 ]
 
 
-def build_model(cfg: MetaseqDataclass, task):
+def build_model(cfg: MetaseqDataclass, task, is_joint=False, cm3=None, llm=None):
 
     model = None
-    model_type = getattr(cfg, "_name", None) or getattr(cfg, "arch", None)
+    if is_joint == False:
+        model_type = "transformer_lm_megatron" 
+    else: 
+        model_type = "transformer_lm_megatron_joint" #or getattr(cfg, "arch", None)
 
     if not model_type and len(cfg) == 1:
         # this is hit if config object is nested in directory that is named after model type
@@ -78,8 +81,11 @@ def build_model(cfg: MetaseqDataclass, task):
         + " Requested model type: "
         + model_type
     )
-
-    return model.build_model(cfg, task)
+    
+    if is_joint == True:
+        return model.build_model(cfg, task, cm3, llm) 
+    else:
+        return model.build_model(cfg, task)
 
 
 def register_model(name, dataclass=None):

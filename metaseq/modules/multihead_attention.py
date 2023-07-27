@@ -99,7 +99,10 @@ class ModelParallelMultiheadAttention(nn.Module):
         ), "Self-attention requires query, key and value to be of the same size"
 
         # TODO[Susan]: Remove the combine_qkv_proj conditional, given the below hard-coding.
-        self.combine_qkv_proj = True
+        if self.self_attention:
+            self.combine_qkv_proj = True
+        else:
+            self.combine_qkv_proj = False
         if self.combine_qkv_proj:
 
             def _init_method_weight_cpu(weight):
@@ -307,7 +310,9 @@ class ModelParallelMultiheadAttention(nn.Module):
         tgt_len, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
+        
         if key is not None:
+            #print(f"KEY SIZE:{key.size()}")
             src_len, key_bsz, _ = key.size()
             if not torch.jit.is_scripting():
                 assert key_bsz == bsz

@@ -516,7 +516,7 @@ class LegacyTask(BaseTask):
         """
         return cls(args, **kwargs)
 
-    def build_model(self, args: Namespace):
+    def build_model(self, args: Namespace, is_joint=False, cm3=None, llm=None):
         """
         Build the :class:`~metaseq.models.BaseModel` instance for this
         task.
@@ -529,7 +529,11 @@ class LegacyTask(BaseTask):
         """
         from metaseq import models
 
-        model = models.build_model(args, self)
+       
+        if cm3 is not None:
+            model = models.build_model(args, self, is_joint, cm3, llm)
+        else:
+            model = models.build_model(args, self, is_joint)
         return model
 
     def build_criterion(self, args: Namespace):

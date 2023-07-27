@@ -7,6 +7,7 @@ import metaseq.distributed.rendezvous  # noqa: F401
 from .fully_sharded_data_parallel import (
     fsdp_enable_wrap,
     fsdp_wrap,
+    fsdp_double_wrap,
     FullyShardedDataParallel,
 )
 from .module_proxy_wrapper import ModuleProxyWrapper
@@ -15,6 +16,7 @@ from .module_proxy_wrapper import ModuleProxyWrapper
 __all__ = [
     "fsdp_enable_wrap",
     "fsdp_wrap",
+    "fsdp_double_wrap"
     "FullyShardedDataParallel",
     "ModuleProxyWrapper",
 ]

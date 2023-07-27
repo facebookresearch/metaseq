@@ -20,6 +20,7 @@ from metaseq.modules import (
     LayerNorm,
     PositionalEmbedding,
     ModelParallelTransformerDecoderLayer,
+    ModelParallelGated_attn_layer,
     Linear,
 )
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
@@ -102,9 +103,9 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         self.self_attn_doc_sep: int = getattr(
             args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
         )
+        #min_params_to_wrap = 0
 
-        self.embed_positions = (
-            PositionalEmbedding(
+        self.embed_positions = PositionalEmbedding(
                 self.max_target_positions,
                 self.embed_dim,
                 self.padding_idx,
@@ -114,18 +115,18 @@ class ModelParallelTransformerDecoder(BaseDecoder):
                 pos_init_scalar=getattr(args, "pos_init_scalar", 1.0),
                 megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
                 truncate_init=getattr(args, "truncate_init", False),
-            )
-            if args.decoder_learned_pos and not self.use_alibi
-            else None
-        )
+                )
         self.embed_positions.to(device).to(dtype)
 
         self.layers = nn.ModuleList([])
         layers = []
         for i in range(args.decoder_layers):
             layers.append(self.build_decoder_layer(args))
+        
+       
 
         if getattr(self.args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
+            print("ENTERED THE IFFF ")
             assert (
                 len(layers) % self.args.fsdp_checkpoint_wrap_layer_frequency == 0
             ), "num layers should be divisible by checkpoint wrap frequency"
@@ -161,6 +162,7 @@ class ModelParallelTransformerDecoder(BaseDecoder):
                 self.layers.append(layer_block)
         else:
             self.layers = nn.ModuleList(layers)
+            #self.x_attn_layers = nn.ModuleList(x_attn_layers)
 
         log_weight_stats(self.embed_tokens.weight, "embed tokens")
 
@@ -171,7 +173,8 @@ class ModelParallelTransformerDecoder(BaseDecoder):
             elementwise_affine=not getattr(args, "disable_affine_ln", False),
         )
         self.layer_norm.to(device).to(dtype)
-
+        
+       
         self.output_projection = None
         if self.share_input_output_embed:
             self.output_projection = Linear(
@@ -232,9 +235,11 @@ class ModelParallelTransformerDecoder(BaseDecoder):
         ).unsqueeze(0).expand(n_attention_heads, -1, -1)
         alibi = alibi.view(n_attention_heads, 1, max_seq_len)
         return alibi
+    
+
 
     def build_decoder_layer(self, args):
-        layer = ModelParallelTransformerDecoderLayer(args)
+        layer = ModelParallelGated_attn_layer(args)
         for name, param in layer.named_parameters():
             log_weight_stats(param, name)
         if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:

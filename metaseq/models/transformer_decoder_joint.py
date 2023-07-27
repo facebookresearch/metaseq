@@ -21,6 +21,7 @@ from metaseq.modules import (
     LayerNorm,
     PositionalEmbedding,
     ModelParallelTransformerDecoderLayer,
+    ModelParallelGated_attn_layer,
     Linear,
 )
 from metaseq.modules.checkpoint_activations import checkpoint_wrapper
@@ -64,7 +65,8 @@ def log_weight_stats(tensor, name):
     )
 
 
-class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
+
+class ModelParallelTransformerDecoder_xattn(BaseDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`ModelParallelTransformerDecoderLayer`.
@@ -75,13 +77,309 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
         embed_tokens (torch.nn.Embedding): output embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens, embed_tokens2):
+    def __init__(self, args, dictionary, embed_tokens):
         self.args = args
-        super().__init__(args, dictionary, embed_tokens)
-        self.cm3 = ModelParallelTransformerDecoder()
-        self.llm = ModelParallelTransformerDecoder()
+        self.n_xattn = 16
+        super().__init__(dictionary)
+        self.register_buffer("version", torch.Tensor([3]))
+        self._future_mask = torch.empty(0)
         
+        self.dropout_module = Dropout(args.dropout, module_name=self.__class__.__name__)
+
+        if getattr(args, "no_emb_dropout", False):
+            self.dropout_module = None
+            
+    
+        self.share_input_output_embed = args.share_decoder_input_output_embed
+        self.embed_dim = args.decoder_embed_dim
+        self.padding_idx = embed_tokens.padding_idx
+        self.max_target_positions = args.max_target_positions
+        self.embed_tokens = embed_tokens
+        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(self.embed_dim)
         
+        initialize_params_on_gpu = getattr(
+            args, "tensor_parallel_init_model_on_gpu", False
+        )
+        device = torch.cuda.current_device() if initialize_params_on_gpu else None
+        dtype = utils.get_model_init_dtype(args)
+        #print("MODEL dtype")
+        self.use_alibi: bool = getattr(args, "alibi", False)
+        self.self_attn_doc_sep: int = getattr(
+            args, "self_attn_doc_sep", UNSPECIFIED_DOC_SEP
+        )
+        
+        self.embed_positions_cm3 = PositionalEmbedding(
+                self.max_target_positions,
+                self.embed_dim,
+                self.padding_idx,
+                learned=args.decoder_learned_pos,
+                learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
+                full_megatron_init=getattr(args, "full_megatron_init", False),
+                pos_init_scalar=getattr(args, "pos_init_scalar", 1.0),
+                megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+                truncate_init=getattr(args, "truncate_init", False),
+                )
+        self.embed_positions_cm3.to(device).to(dtype)
+        
+        # self.embed_positions_llm = PositionalEmbedding(
+        #         self.max_target_positions,
+        #         self.embed_dim,
+        #         self.padding_idx,
+        #         learned=args.decoder_learned_pos,
+        #         learned_sinusoidal=getattr(args, "decoder_learned_sinusoidal", False),
+        #         full_megatron_init=getattr(args, "full_megatron_init", False),
+        #         pos_init_scalar=getattr(args, "pos_init_scalar", 1.0),
+        #         megatron_init_sigma=getattr(args, "megatron_init_sigma", 0.006),
+        #         truncate_init=getattr(args, "truncate_init", False),
+        #         )
+        # self.embed_positions_llm.to(device).to(dtype)
+        #Build decoder layers for the two models
+        self.layers_cm3 = nn.ModuleList([])
+        self.layers_llm = nn.ModuleList([])
+        layers_cm3 = []
+        layers_llm = []
+        for i in range(args.decoder_layers):
+            layers_cm3.append(self.build_decoder_layer(args))
+            
+        for i in range(args.decoder_layers-1):
+            layers_llm.append(self.build_decoder_layer(args))
+        
+        self.layers_cm3 = nn.ModuleList(layers_cm3)
+        self.layers_llm= nn.ModuleList(layers_llm)
+        
+        #Build x_attn layers
+        self.x_attn_layers_cm3 = nn.ModuleList([])
+        self.x_attn_layers_llm = nn.ModuleList([])
+        layers = []
+        layers2 = []
+        for i in range((args.decoder_layers // 2)):
+            layers.append(self.build_decoder_layer_x_attn(args))
+        for i in range((args.decoder_layers // 2)-1):
+            layers2.append(self.build_decoder_layer_x_attn(args))
+        self.x_attn_layers_cm3 = nn.ModuleList(layers)
+        self.x_attn_layers_llm = nn.ModuleList(layers2)
+        
+        self.num_layers = len(self.layers_cm3)
+        
+        self.layer_norm = LayerNorm(
+            self.embed_dim,
+            elementwise_affine=not getattr(args, "disable_affine_ln", False),
+        )
+        self.layer_norm.to(device).to(dtype)
+        
+        self.output_projection = None
+        if self.share_input_output_embed:
+            self.output_projection = Linear(
+                self.embed_tokens.weight.shape[1],
+                self.embed_tokens.weight.shape[0],
+                bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=dtype,
+            )
+            self.output_projection.weight = self.embed_tokens.weight
+            #n = self.embed_tokens_cm3.weight.shape[1]
+            #self.output_projection.weight[:, :n] = self.embed_tokens_cm3.weight
+            #self.output_projection.weight[:, n:] = self.embed_tokens_llm.weight
+        else:
+            self.output_projection = Linear(
+                self.embed_dim,
+                len(dictionary),
+                bias=False,
+                initialize_params_on_gpu=initialize_params_on_gpu,
+                dtype=dtype,
+            )
+            nn.init.normal_(
+                self.output_projection.weight, mean=0, std=self.embed_dim**-0.5
+            )
+        
+        if self.use_alibi:
+            self.alibi = self._build_alibi_tensor(
+                self.max_positions(), args.decoder_attention_heads
+            ) 
+    
+    @staticmethod
+    def _build_alibi_tensor(max_seq_len: int, n_attention_heads: int):
+        """Returns tensor shaped (n_head, 1, max_seq_len)"""
+
+        def get_slopes(n):
+            # In the paper, we only train models that have 2^a heads for some a. This function has some good
+            # properties that only occur when the input is a power of 2. To maintain that even when the number of
+            # heads is not a power of 2, we use this workaround.
+            def get_slopes_power_of_2(n):
+                start = 2 ** (-(2 ** -(math.log2(n) - 3)))
+                ratio = start
+                return [start * ratio**i for i in range(n)]
+
+            if math.log2(n).is_integer():
+                return get_slopes_power_of_2(n)
+            else:
+                closest_power_of_2 = 2 ** math.floor(math.log2(n))
+                return (
+                    get_slopes_power_of_2(closest_power_of_2)
+                    + get_slopes(2 * closest_power_of_2)[0::2][: n - closest_power_of_2]
+                )
+
+        slopes = torch.Tensor(get_slopes(n_attention_heads))
+        # In the next line, the part after the * is what constructs the diagonal matrix (right matrix in Figure 3 in
+        # the paper).
+        # It doesn't exactly print out the same matrix as we have in Figure 3, but one where all rows are identical.
+        # This works because the softmax operation is invariant to translation, and our bias functions are always
+        # linear.
+        alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len).unsqueeze(
+            0
+        ).unsqueeze(0).expand(n_attention_heads, -1, -1)
+        alibi = alibi.view(n_attention_heads, 1, max_seq_len)
+        return alibi
+   
+    def build_decoder_layer_x_attn(self, args):
+        layer = ModelParallelGated_attn_layer(args)
+        for name, param in layer.named_parameters():
+            log_weight_stats(param, name)
+        if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
+            return layer
+        checkpoint = getattr(args, "checkpoint_activations", False)
+        if checkpoint:
+            offload_to_cpu = getattr(args, "offload_activations", False)
+            distribute_checkpointed_activations = getattr(
+                args, "distribute_checkpointed_activations", False
+            )
+            layer = checkpoint_wrapper(
+                layer,
+                offload_to_cpu=offload_to_cpu,
+                distribute_checkpointed_activations=distribute_checkpointed_activations,
+            )
+        # if we are checkpointing, enforce that FSDP always wraps the
+        # checkpointed layer, regardless of layer size
+        min_params_to_wrap = (
+            getattr(args, "min_params_to_wrap", DEFAULT_MIN_PARAMS_TO_WRAP)
+            if not checkpoint
+            else 0
+        )
+        layer = fsdp_wrap(
+            layer,
+            min_num_params=min_params_to_wrap,
+            process_group=distributed_utils.get_data_parallel_group(),
+        )
+        return layer
+    
+    def build_decoder_layer(self, args):
+        layer = ModelParallelTransformerDecoderLayer(args)
+        for name, param in layer.named_parameters():
+            log_weight_stats(param, name)
+        if getattr(args, "fsdp_checkpoint_wrap_layer_frequency", 1) > 1:
+            return layer
+        checkpoint = getattr(args, "checkpoint_activations", False)
+        if checkpoint:
+            offload_to_cpu = getattr(args, "offload_activations", False)
+            distribute_checkpointed_activations = getattr(
+                args, "distribute_checkpointed_activations", False
+            )
+            layer = checkpoint_wrapper(
+                layer,
+                offload_to_cpu=offload_to_cpu,
+                distribute_checkpointed_activations=distribute_checkpointed_activations,
+            )
+        # if we are checkpointing, enforce that FSDP always wraps the
+        # checkpointed layer, regardless of layer size
+        min_params_to_wrap = (
+            getattr(args, "min_params_to_wrap", DEFAULT_MIN_PARAMS_TO_WRAP)
+            if not checkpoint
+            else 0
+        )
+        layer = fsdp_wrap(
+            layer,
+            min_num_params=min_params_to_wrap,
+            process_group=distributed_utils.get_data_parallel_group(),
+        )
+        return layer
+    
+    def forward_embedding_cm3(
+        self,
+        tokens,
+        token_embedding: Optional[torch.Tensor] = None,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+    ):
+        # embed tokens and positions
+        if self.self_attn_doc_sep != UNSPECIFIED_DOC_SEP:
+            # create own positions when self_attn_doc_sep is set
+            # We are essentially resetting positions based on document separator tokens.
+            # For instance, if the doc separator is 2, and the tokens are
+            # 143 345 2 5435 2
+            # The default positions would be
+            # 2 3 4 5 6
+            # But with document level attention, we would like to reset positions
+            # as well on sentence boundaries. So, the positions become
+            # 2 3 4 2 3
+
+            mask = tokens.ne(self.padding_idx).int()
+            mask_with_reset = tokens.ne(self.padding_idx).int()
+            mask_with_reset[:, :] = 1
+            doc_id_indices = (tokens == self.self_attn_doc_sep).nonzero().tolist()
+
+            # Based on the location of document seperator token (batch_doc_indices), we would reset
+            # positional embeddings. The document seperator token marks the end of the preceding
+            # document.
+            for batch_idx in range(tokens.size(0)):
+                # The self_attn_doc_sep token marks the end of the previous document. Therefore,
+                # we need to add 1 to the indices to mark the start of documents.
+                batch_doc_indices = [
+                    index[1] + 1
+                    for index in doc_id_indices
+                    # index[1] + 1 < tokens.size(1) to prevent overflow
+                    if index[0] == batch_idx and index[1] + 1 < tokens.size(1)
+                ]
+                batch_doc_indices.sort()
+                for k, doc_sep_idx in enumerate(batch_doc_indices):
+                    if k == 0:
+                        mask_with_reset[batch_idx, doc_sep_idx] = -doc_sep_idx + 1
+                    else:
+                        mask_with_reset[batch_idx, doc_sep_idx] = (
+                            batch_doc_indices[k - 1] - doc_sep_idx + 1
+                        )
+            positions = (
+                torch.cumsum(mask_with_reset, dim=1).type_as(mask) * mask
+            ).long() + self.padding_idx
+
+            # Since positions are pre-computed, padding_idx should not be set.
+            # Ref metaseq/metaseq/modules/learned_positional_embedding.py
+            if self.embed_positions_cm3 is not None:
+                self.embed_positions_cm3.padding_idx = None
+        else:
+            positions = None
+
+        if self.embed_positions_cm3 is not None:
+            positions = self.embed_positions_cm3(
+                tokens, incremental_state=incremental_state, positions=positions
+            )
+
+        # see BaseDecoder for important information about
+        # incremental state
+        if incremental_state:
+            tokens = tokens[:, -1:]
+            if positions is not None:
+                positions = positions[:, -1:]
+
+        if token_embedding is None:
+            token_embedding = self.embed_tokens(tokens)
+
+        x = embed = self.embed_scale * token_embedding
+
+        if positions is not None:
+            x += positions
+
+        if self.dropout_module is not None:
+            x = self.dropout_module(x)
+
+        # Returning in T x B x C format as that makes integrating sequence parallelism easier.
+        x = x.transpose(0, 1).contiguous()
+
+        is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
+        if is_sequence_parallel:
+            x = mpu.scatter_to_sequence_parallel_region(x)
+        return x, embed, positions
+    
+    
+    
     def extract_features(
         self,
         prev_output_tokens,
@@ -99,14 +397,18 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
 
         # embed tokens and positions
         # x is T x B x C
-        x, tok, pos = self.forward_embedding(
+        x_cm3, tok_cm3, pos_cm3 = self.forward_embedding_cm3(
             prev_output_tokens, token_embeddings, incremental_state
         )
 
+        # x_llm, tok_llm, pos_llm = self.forward_embedding_cm3(
+        #     prev_output_tokens, token_embeddings, incremental_state
+        # )
+        x_llm = x_cm3.clone()
         # see BaseDecoder for important information about
         # incremental state. Note that it may be an empty dictionary.
         if not incremental_state:
-            self_attn_mask = self.buffered_future_mask(x, prev_output_tokens)
+            self_attn_mask = self.buffered_future_mask(x_cm3, prev_output_tokens)
         else:
             self_attn_mask = None
 
@@ -115,31 +417,82 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
         # Note: we are only storing the embeddings output and output of final transformer block
         # instead of all inner representations, as thats the only thing being logged and storing
         # all intermediate representation causes OOM for large models during validation.
-        inner_states: List[Optional[Tensor]] = [{"tok": tok, "pos": pos, "emb": x}]
-        for idx, layer in enumerate(self.layers):
-            x = layer(
-                x,
+        inner_states: List[Optional[Tensor]] = [{"tok": tok_cm3, "pos": pos_cm3, "emb": x_cm3}]
+        
+        idx_xattn = 0
+        for idx in range(self.num_layers - 1):
+            layer_cm3 = self.layers_cm3[idx]
+            layer_llm = self.layers_llm[idx]
+            x_cm3 = layer_cm3(
+                x_cm3,
                 incremental_state=incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
                 recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
             )
-        inner_states.append(x)
-
+            x_llm = layer_llm(
+                x_llm,
+                incremental_state=incremental_state,
+                self_attn_mask=self_attn_mask,
+                self_attn_padding_mask=self_attn_padding_mask,
+                recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
+            )
+            if idx % 2 == 0 and idx != (self.num_layers - 2):
+                x_attn_layer_cm3 = self.x_attn_layers_cm3[idx_xattn]
+                x_attn_layer_llm = self.x_attn_layers_llm[idx_xattn]
+                x_cm3_prev = x_cm3.clone()
+                #Need to concatenate because checkpoint_wrapper distributes only the first input to the function
+                x_qkv = torch.cat((x_cm3, x_llm, x_llm), dim=-1)
+                x_cm3 = x_attn_layer_cm3(
+                    x_qkv,
+                    incremental_state=incremental_state,
+                    self_attn_mask=self_attn_mask,
+                    self_attn_padding_mask=self_attn_padding_mask,
+                    recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
+                )
+                x_qkv = torch.cat((x_llm, x_cm3_prev, x_cm3_prev), dim=-1)
+                x_llm = x_attn_layer_llm(
+                    x_qkv,
+                    incremental_state=incremental_state,
+                    self_attn_mask=self_attn_mask,
+                    self_attn_padding_mask=self_attn_padding_mask,
+                    recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
+                )
+                idx_xattn += 1
+                
+        x_attn_layer_cm3 = self.x_attn_layers_cm3[-1]
+        x_qkv = torch.cat((x_cm3, x_llm, x_llm), dim=-1)
+        x_cm3 = x_attn_layer_cm3(
+            x_qkv,
+            incremental_state=incremental_state,
+            self_attn_mask=self_attn_mask,
+            self_attn_padding_mask=self_attn_padding_mask,
+            recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
+        )
+        
+        layer_cm3 = self.layers_cm3[-1]
+        
+        x_cm3 = layer_cm3(
+                x_cm3,
+                incremental_state=incremental_state,
+                self_attn_mask=self_attn_mask,
+                self_attn_padding_mask=self_attn_padding_mask,
+                recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
+            )
+                
+        
         if self.layer_norm is not None:
-            x = self.layer_norm(x)
-
+            x_cm3 = self.layer_norm(x_cm3)
+        #x = torch.cat((x_cm3, x_llm), dim=-1)
+        inner_states.append(x_cm3)
+                
         # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
-        return x, {"inner_states": inner_states}
-
+        return x_cm3, {"inner_states": inner_states}
+    
+        
     def output_layer(self, features, **kwargs):
         """Project features to the vocabulary size."""
-        if not self.share_input_output_embed:
-            # TODO[Susan]: Remove this & make compatible.
-            raise NotImplementedError(
-                "Model parallel training currently requires --share-decoder-input-output-embed"
-            )
-
+       
         is_sequence_parallel = getattr(self.args, "sequence_parallel", False)
         if is_sequence_parallel:
             input_parallel = features
@@ -163,12 +516,12 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
             x = gather_from_tensor_model_parallel_region(x).contiguous()
 
         return x
-
+    
     def max_positions(self):
         """Maximum output length supported by the decoder."""
-        if self.embed_positions is None:
+        if self.embed_positions_cm3 is None:
             return self.max_target_positions
-        return min(self.max_target_positions, self.embed_positions.max_positions)
+        return min(self.max_target_positions, self.embed_positions_cm3.max_positions)
 
     def buffered_future_mask(self, tensor, input_tokens=None):
         cur_seq_len, batch_size = tensor.size(0), tensor.size(1)
@@ -227,7 +580,7 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
     # This hook used as proxy for tracking state if model is in eval or generation mode.
     def make_generation_fast_(self, **unused):
         self.inference = True
-
+        
     def forward(
         self,
         prev_output_tokens,
@@ -238,9 +591,6 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
         self_attn_padding_mask: Optional[Tensor] = None,
     ):
         """
-        Includes several features from "Jointly Learning to Align and
-        Translate with Transformer Models" (Garg et al., EMNLP 2019).
-
         Args:
             prev_output_tokens (LongTensor): previous decoder outputs of shape
                 `(batch, tgt_len)`, for teacher forcing
@@ -266,7 +616,8 @@ class ModelParallelTransformerDecoder_xattn(ModelParallelTransformerDecoder):
             token_embeddings=token_embeddings,
             self_attn_padding_mask=self_attn_padding_mask,
         )
-        if not features_only:
+        
+        if not features_only:   
             x = self.output_layer(x)
 
         # Transposing back to B x T x C, so that the interface stays the same.

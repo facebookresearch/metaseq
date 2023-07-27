@@ -20,7 +20,6 @@ import re
 from typing import Dict, Optional, Any, List, Tuple, Callable
 import warnings
 
-#os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import numpy as np
 import torch
 import torch.profiler as profiler
@@ -35,7 +34,7 @@ from metaseq import (
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, fsdp_double_wrap, utils as distributed_utils
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
@@ -121,68 +120,21 @@ def main(cfg: DictConfig) -> None:
     assert cfg.criterion, "Please specify criterion to train a model"
 
     # Build model and criterion
-    # if cfg.distributed_training.ddp_backend == "fully_sharded":
-    #     extra = {
-    #         "use_sharded_state": cfg.distributed_training.use_sharded_state,
-    #     }
-
-    #     with fsdp_enable_wrap(cfg.distributed_training, **extra):
-    #         model = fsdp_wrap(
-    #             task.build_model(cfg.model),
-    #             process_group=distributed_utils.get_data_parallel_group(),
-    #         )
-    # else:
-    
-    
-    # TODO[Susan]: FSDP on criterion?
-    criterion = task.build_criterion(cfg.criterion)
-    
-    # cfg._name = 'transformer_lm_megatron'
-    # #load llm
-    # cfg.model.arch= "transformer_lm_megatron"
-    # if cfg.distributed_training.ddp_backend == "fully_sharded":
-    #     extra = {
-    #         "use_sharded_state": cfg.distributed_training.use_sharded_state,
-    #     }
-
-    #     with fsdp_enable_wrap(cfg.distributed_training, **extra):
-    #         model_llm = fsdp_wrap(
-    #             task.build_model(cfg.model, False),
-    #             process_group=distributed_utils.get_data_parallel_group(),
-    #         )
-    # else:
-    #     model_llm = task.build_model(cfg.model)
-    # #load cm3
-    # if cfg.distributed_training.ddp_backend == "fully_sharded":
-    #     extra = {
-    #         "use_sharded_state": cfg.distributed_training.use_sharded_state,
-    #     }
-
-    #     with fsdp_enable_wrap(cfg.distributed_training, **extra):
-    #         model_cm3 = fsdp_wrap(
-    #             task.build_model(cfg.model, False),
-    #             process_group=distributed_utils.get_data_parallel_group(),
-    #         )
-    # else:
-    #     model_cm3 = task.build_model(cfg.model)
-    
-   
     if cfg.distributed_training.ddp_backend == "fully_sharded":
         extra = {
             "use_sharded_state": cfg.distributed_training.use_sharded_state,
         }
+
         with fsdp_enable_wrap(cfg.distributed_training, **extra):
             model = fsdp_wrap(
-                task.build_model(cfg.model, True),
+                task.build_model(cfg.model),
                 process_group=distributed_utils.get_data_parallel_group(),
             )
-    # for param in model.cm3.parameters():
-    #     param.requires_grad = False
-        
-    # for param in model.llm.parameters():
-    #     param.requires_grad = False
-    
-    
+    else:
+        model = task.build_model(cfg.model)
+    # TODO[Susan]: FSDP on criterion?
+    criterion = task.build_criterion(cfg.criterion)
+
     logger.info(model)
     logger.info("task: {}".format(task.__class__.__name__))
     logger.info("model: {}".format(model.__class__.__name__))

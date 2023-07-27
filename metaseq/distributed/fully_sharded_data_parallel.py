@@ -150,3 +150,31 @@ def fsdp_wrap(module, min_num_params: Optional[int] = None, **kwargs):
             return wrap(module, **kwargs)
     except ImportError:
         return module
+
+
+def fsdp_double_wrap(module, min_num_params: Optional[int] = None, **kwargs):
+    """
+    Helper to wrap layers/modules in FSDP. This falls back to a no-op if
+    fairscale is not available.
+
+    Args:
+        module (nn.Module): module to (maybe) wrap
+        min_num_params (int, Optional): minimum number of layer params to wrap
+    """
+    try:
+        from fairscale.nn import wrap
+
+        if os.environ.get("RESHARD_OVERRIDE_PROCESS_GROUP", "False") == "True":
+            logger.info("Process group was None, overriding to DummyProcessGroup")
+            kwargs["process_group"] = DummyProcessGroup(rank=0, size=1)
+
+        if min_num_params is not None:
+            num_params = sum(p.numel() for p in module.parameters())
+            if num_params >= min_num_params:
+                return wrap(wrap(module, **kwargs))
+            else:
+                return module
+        else:
+            return wrap(wrap(module, **kwargs))
+    except ImportError:
+        return module

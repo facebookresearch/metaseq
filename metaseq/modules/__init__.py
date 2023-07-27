@@ -17,6 +17,7 @@ from .linear import Linear
 from .feedforward import FeedForward
 from .transformer_decoder_layer import (
     ModelParallelTransformerDecoderLayer,
+    ModelParallelGated_attn_layer
 )
 from .sequence_parallel_transformer_layer import SequeuceParallelTransformerBlock
 
@@ -35,5 +36,6 @@ __all__ = [
     "Linear",
     "FeedForward",
     "ModelParallelTransformerDecoderLayer",
+    "ModelParallelGated_attn_layer"
     "SequeuceParallelTransformerBlock",
 ]

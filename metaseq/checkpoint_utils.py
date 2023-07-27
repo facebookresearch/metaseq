@@ -21,6 +21,7 @@ from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
 
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -304,6 +305,189 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         epoch_itr = trainer.get_train_iterator(epoch=1, **passthrough_args)
     trainer.lr_step(epoch_itr.epoch)
     return extra_state, epoch_itr
+
+def load_checkpoint_from_pretrained(cfg: CheckpointConfig, model, restore_file, **passthrough_args):
+    """
+    Load a checkpoint and restore the training iterator.
+
+    *passthrough_args* will be passed through to
+    ``trainer.get_train_iterator``.
+    """
+
+    reset_optimizer = cfg.reset_optimizer
+    reset_lr_scheduler = cfg.reset_lr_scheduler
+    optimizer_overrides = ast.literal_eval(cfg.optimizer_overrides)
+    reset_meters = cfg.reset_meters
+    reset_dataloader = cfg.reset_dataloader
+    cfg.restore_file = restore_file
+    if cfg.finetune_from_model is not None and (
+        reset_optimizer or reset_lr_scheduler or reset_meters or reset_dataloader
+    ):
+        raise ValueError(
+            "--finetune-from-model can not be set together with either --reset-optimizer"
+            " or reset_lr_scheduler or reset_meters or reset_dataloader"
+        )
+
+    suffix = "-model_part-0"+ "-shard{0}".format(
+                distributed_utils.get_data_parallel_rank()
+            )
+    default_restore_file = "checkpoint_last.pt"
+    # default to loading from restore file.
+    if cfg.restore_file == default_restore_file:
+        checkpoint_path_to_load = os.path.join(
+            cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+        )
+        first_launch = not PathManager.exists(checkpoint_path_to_load)
+        if cfg.finetune_from_model is not None and first_launch:
+            # if there is no last checkpoint to restore, start the finetune from pretrained model
+            # else just use usual logic to load checkpoint, e.g. restart from last checkpoint and etc.
+            reset_optimizer = True
+            reset_lr_scheduler = True
+            reset_meters = True
+            reset_dataloader = True
+            checkpoint_path_to_load = None
+            if PathManager.exists(cfg.finetune_from_model):
+                checkpoint_path_to_load = cfg.finetune_from_model
+            elif suffix is not None:  # check for sharded version
+                sharded_path = cfg.finetune_from_model.replace(".pt", suffix + ".pt")
+                if PathManager.exists(sharded_path):
+                    checkpoint_path_to_load = sharded_path
+            if checkpoint_path_to_load is None:
+                raise ValueError(
+                    f"--finetune-from-model {cfg.finetune_from_model} does not exist either as is or sharded"
+                )
+
+            logger.info(
+                f"loading pretrained model from {checkpoint_path_to_load}: "
+                "optimizer, lr scheduler, meters, dataloader will be reset"
+            )
+    elif suffix is not None:
+        checkpoint_path_to_load = cfg.restore_file.replace(".pt", suffix + ".pt")
+    else:
+        checkpoint_path_to_load = cfg.restore_file
+
+    if cfg.restore_file != default_restore_file and cfg.finetune_from_model:
+        raise ValueError(
+            "--finetune-from-model and --restore-file (non-default value) "
+            "can not be specified together: " + str(cfg)
+        )
+
+    # Azure logic
+    try:
+        from metaseq_internal import azure_utils
+
+        has_metaseq_internal = True
+    except ImportError:
+        has_metaseq_internal = False
+        logger.warning(
+            "Proceeding without metaseq-internal installed! Please check if you need this!"
+        )
+
+    # TODO(susanz): fix all of this spagetti, split out logic by env
+    # Note that we compare by value since ComputeEnvs may be imported from metaseq_internal
+
+    if cfg.cloud_upload_path:
+        if cfg.cloud_upload_path.startswith("nfs:"):
+            checkpoint_path_to_load = os.path.join(
+                cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+            )
+            nfs_path = cfg.cloud_upload_path[4:]
+            filename = None
+            specific_restore_file_provided = cfg.restore_file != default_restore_file
+            slurm_was_restarted = int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            restart_from_latest = slurm_was_restarted or (
+                cfg.finetune_from_model is None and not specific_restore_file_provided
+            )
+            if restart_from_latest:
+                checkpoints = []
+                expected_file_count = distributed_utils.get_global_world_size()
+                for candidate in os.listdir(nfs_path):
+                    if candidate == "checkpoint_last":
+                        raise RuntimeError(
+                            "trying to restart a job that already wrote checkpoint_last"
+                        )
+                    m = re.match(r"checkpoint_(\d+)", candidate)
+                    if m:
+                        checkpoints.append((int(m[1]), candidate))
+                for _, candidate in sorted(checkpoints, reverse=True):
+                    present_files = len(
+                        [
+                            f
+                            for f in os.listdir(os.path.join(nfs_path, candidate))
+                            if not f.startswith("_")
+                        ]
+                    )
+                    if present_files == expected_file_count:
+                        filename = os.path.join(
+                            nfs_path, candidate, f"checkpoint{suffix}.pt"
+                        )
+                        break
+                    logger.info(
+                        f"skipping checkpoint {candidate} because it only has"
+                        f" {present_files} files (expected {expected_file_count})"
+                    )
+            else:
+                filename = cfg.restore_file.replace(".pt", suffix + ".pt")
+
+            checkpoint_path_to_load = filename
+
+        elif cfg.cluster_env == ComputeEnvs.AZURE.value and has_metaseq_internal:
+            if (
+                # --restore-file was not passed, always download latest checkpoint
+                (
+                    cfg.restore_file == default_restore_file
+                    and cfg.finetune_from_model is None
+                )
+                # --restore-file was passed, but we requeued, so download latest checkpoint
+                or int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+            ):
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_recent_ckpt(
+                    cfg.cloud_upload_path, checkpoint_path_to_load, suffix + ".pt"
+                )
+            elif (
+                # --restore-file was passed and is a blob URL, download that checkpoint
+                cfg.restore_file != default_restore_file
+                and "windows.net" in cfg.restore_file
+            ):
+                blob_url = cfg.restore_file.replace(".pt", suffix + ".pt")
+                # download checkpoint into local save_dir
+                checkpoint_path_to_load = os.path.join(
+                    cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+                )
+                azure_utils.download_specific_ckpt(blob_url, checkpoint_path_to_load)
+            else:
+                logger.info(
+                    f"Using checkpoint {checkpoint_path_to_load} even while on Azure"
+                )
+
+    # RSC logic: --restore-file was passed, and we requeued
+    elif (
+        cfg.restore_file != default_restore_file
+        and int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0
+    ):
+        # point checkpoint_path to the current checkpoint directory for loading, if it exists.
+        save_dir_last = os.path.join(
+            cfg.save_dir, "checkpoint_last{}.pt".format(suffix)
+        )
+        if PathManager.isfile(save_dir_last):
+            checkpoint_path_to_load = save_dir_last
+
+    logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
+
+    # make sure everyone is done downloading their checkpoints before we load
+    distributed_utils.global_barrier()
+
+    extra_state = None
+    if checkpoint_path_to_load is not None:
+        model = load_pretrained(
+            checkpoint_path_to_load
+        )
+
+    return model
 
 
 def _is_checkpoint_sharded(checkpoint_files) -> bool:
@@ -941,3 +1125,78 @@ def _split_flat_fsdp_opt_state(
                     )
                 splitted_opt_state["state"][k][k2] = splitted_value
     return splitted_opt_state
+
+def load_pretrained(
+        model,
+        filename,
+    ):
+        """
+        Load all training state from a checkpoint file.
+        rank = 0 will load the checkpoint, and then broadcast it to all
+        other ranks.
+        """
+        
+        is_distributed = True
+        bexists = False
+
+        logger.info(f"attempting to load checkpoint from: {filename}")
+
+        if PathManager.isfile(filename):
+            bexists = True
+        else:
+            # this is a big hacky as when we increase the world size, then filename doesn't really point
+            # to a real file, we convert it to multiple files to be loaded later.
+            # so here we just check if there are some files existing in the dir.
+            files_in_local_dir = os.listdir(os.path.dirname(filename))
+            filename_prefix = os.path.splitext(os.path.basename(filename))[0].replace(
+                "-model_part-0", ""
+            )
+            matched_files = [
+                f for f in files_in_local_dir if f.startswith(filename_prefix)
+            ]
+            bexists = len(matched_files) > 0
+
+        if bexists:
+            logger.info(f"Preparing to load checkpoint {filename}")
+            # FSDP requires loading checkpoint shards on all ranks
+            load_on_all_ranks = True
+
+            if load_on_all_ranks:
+                state = load_checkpoint_to_cpu(
+                    filename,
+                )
+                last_optim_state = state.get("last_optimizer_state", None)
+                if last_optim_state == -1:
+                    master_path = re.sub("shard[0-9]+", "shard0", filename)
+                    last_optim_state = torch.load(master_path, map_location="cpu")[
+                        "last_optimizer_state"
+                    ]
+
+                logger.info(f"Loaded state for {filename}")
+
+            else:
+                last_optim_state = None
+                state = None
+
+            
+            # load model parameters
+            try:
+                model.load_state_dict(state["model"]["decoder"], strict=True)
+                # save memory for later steps
+                del state["model"]
+               
+            except Exception:
+                raise Exception(
+                    "Cannot load model parameters from checkpoint {}; "
+                    "please ensure that the architectures match.".format(filename)
+                )
+            extra_state = state["extra_state"]
+            
+        
+            logger.info(
+                f"Loaded checkpoint {filename}"
+            )
+        else:
+            logger.info("No existing checkpoint found {}".format(filename))
+
+        return model
