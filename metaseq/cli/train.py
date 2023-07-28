@@ -136,36 +136,6 @@ def main(cfg: DictConfig) -> None:
     
     # TODO[Susan]: FSDP on criterion?
     criterion = task.build_criterion(cfg.criterion)
-    
-    # cfg._name = 'transformer_lm_megatron'
-    # #load llm
-    # cfg.model.arch= "transformer_lm_megatron"
-    # if cfg.distributed_training.ddp_backend == "fully_sharded":
-    #     extra = {
-    #         "use_sharded_state": cfg.distributed_training.use_sharded_state,
-    #     }
-
-    #     with fsdp_enable_wrap(cfg.distributed_training, **extra):
-    #         model_llm = fsdp_wrap(
-    #             task.build_model(cfg.model, False),
-    #             process_group=distributed_utils.get_data_parallel_group(),
-    #         )
-    # else:
-    #     model_llm = task.build_model(cfg.model)
-    # #load cm3
-    # if cfg.distributed_training.ddp_backend == "fully_sharded":
-    #     extra = {
-    #         "use_sharded_state": cfg.distributed_training.use_sharded_state,
-    #     }
-
-    #     with fsdp_enable_wrap(cfg.distributed_training, **extra):
-    #         model_cm3 = fsdp_wrap(
-    #             task.build_model(cfg.model, False),
-    #             process_group=distributed_utils.get_data_parallel_group(),
-    #         )
-    # else:
-    #     model_cm3 = task.build_model(cfg.model)
-    
    
     if cfg.distributed_training.ddp_backend == "fully_sharded":
         extra = {
@@ -176,13 +146,7 @@ def main(cfg: DictConfig) -> None:
                 task.build_model(cfg.model, True),
                 process_group=distributed_utils.get_data_parallel_group(),
             )
-    # for param in model.cm3.parameters():
-    #     param.requires_grad = False
-        
-    # for param in model.llm.parameters():
-    #     param.requires_grad = False
-    
-    
+                
     logger.info(model)
     logger.info("task: {}".format(task.__class__.__name__))
     logger.info("model: {}".format(model.__class__.__name__))
