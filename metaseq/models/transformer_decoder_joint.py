@@ -141,7 +141,7 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
         for i in range(args.decoder_layers):
             layers_cm3.append(self.build_decoder_layer(args))
             
-        for i in range(args.decoder_layers-1):
+        for i in range(args.decoder_layers):
             layers_llm.append(self.build_decoder_layer(args))
         
         self.layers_cm3 = nn.ModuleList(layers_cm3)
@@ -152,9 +152,9 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
         self.x_attn_layers_llm = nn.ModuleList([])
         layers = []
         layers2 = []
-        for i in range((args.decoder_layers // 2)):
+        for i in range((args.decoder_layers // 2)+1):
             layers.append(self.build_decoder_layer_x_attn(args))
-        for i in range((args.decoder_layers // 2)-1):
+        for i in range((args.decoder_layers // 2)):
             layers2.append(self.build_decoder_layer_x_attn(args))
         self.x_attn_layers_cm3 = nn.ModuleList(layers)
         self.x_attn_layers_llm = nn.ModuleList(layers2)
@@ -420,7 +420,7 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
         inner_states: List[Optional[Tensor]] = [{"tok": tok_cm3, "pos": pos_cm3, "emb": x_cm3}]
         
         idx_xattn = 0
-        for idx in range(self.num_layers - 1):
+        for idx in range(self.num_layers):
             layer_cm3 = self.layers_cm3[idx]
             layer_llm = self.layers_llm[idx]
             x_cm3 = layer_cm3(
@@ -437,7 +437,7 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
                 self_attn_padding_mask=self_attn_padding_mask,
                 recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
             )
-            if idx % 2 == 0 and idx != (self.num_layers - 2):
+            if idx % 2 == 0:
                 x_attn_layer_cm3 = self.x_attn_layers_cm3[idx_xattn]
                 x_attn_layer_llm = self.x_attn_layers_llm[idx_xattn]
                 x_cm3_prev = x_cm3.clone()
@@ -468,18 +468,7 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
             self_attn_mask=self_attn_mask,
             self_attn_padding_mask=self_attn_padding_mask,
             recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
-        )
-        
-        layer_cm3 = self.layers_cm3[-1]
-        
-        x_cm3 = layer_cm3(
-                x_cm3,
-                incremental_state=incremental_state,
-                self_attn_mask=self_attn_mask,
-                self_attn_padding_mask=self_attn_padding_mask,
-                recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
-            )
-                
+        )                             
         
         if self.layer_norm is not None:
             x_cm3 = self.layer_norm(x_cm3)
