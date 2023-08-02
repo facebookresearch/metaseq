@@ -201,3 +201,8 @@ for file in os.listdir(models_dir):
             group_args = parser.add_argument_group("Additional command-line arguments")
             MODEL_REGISTRY[model_name].add_args(group_args)
             globals()[model_name + "_parser"] = parser
+
+try:
+    import metaseq_internal.models
+except ImportError:
+    pass
