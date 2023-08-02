@@ -340,15 +340,15 @@ class ModelParallelGated_attn_layer(nn.Module):
         self.self_attn = self.build_cross_attention(self.embed_dim, args)
         self.head_dim = int(self.embed_dim / args.decoder_attention_heads)
         affine_ln = not getattr(args, "disable_affine_ln", False)
-        # self.self_attn_layer_norm = LayerNorm(
-        #     self.embed_dim, elementwise_affine=affine_ln
-        # )
-        # self.self_attn_layer_norm.to(device).to(dtype)
+        self.self_attn_layer_norm = LayerNorm(
+            self.embed_dim, elementwise_affine=affine_ln
+        )
+        self.self_attn_layer_norm.to(device).to(dtype)
 
         self.activation_fn_name = getattr(args, "activation_fn", "relu") or "relu"
         self.skip_bias_add = (self.activation_fn_name == "gelu") and has_fused_bias_gelu
         
-        self.attn_gate = nn.Parameter(torch.tensor([0.0])).to(device).to(dtype)
+        #self.attn_gate = nn.Parameter(torch.tensor([0.0])).to(device).to(dtype)
         #print(f"MODEL: {dtype}")
         # TODO[Susan]: Clean up these kwargs when unifying method signatures between model & non-model parallel.
         fc1_kwargs = {
@@ -387,9 +387,9 @@ class ModelParallelGated_attn_layer(nn.Module):
             truncate_init=getattr(args, "truncate_init", False),
         )
 
-        # self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
-        # self.final_layer_norm.to(device).to(dtype)
-        self.ff_gate = nn.Parameter(torch.tensor([0.0])).to(device).to(dtype)
+        self.final_layer_norm = LayerNorm(self.embed_dim, elementwise_affine=affine_ln)
+        self.final_layer_norm.to(device).to(dtype)
+        #self.ff_gate = nn.Parameter(torch.tensor([0.0])).to(device).to(dtype)
         
 
     def build_fc1(
@@ -556,52 +556,80 @@ class ModelParallelGated_attn_layer(nn.Module):
         n = x.size(-1) // 3
         x, k, v = torch.split(x, n, dim=-1)
         
-        # if getattr(self.args, "sequence_parallel", False):
-        #     from metaseq.modules import SequeuceParallelTransformerBlock
-
-        #     x = SequeuceParallelTransformerBlock.apply(
-        #         x,
-        #         self.self_attn.qkv_proj.weight,
-        #         self.self_attn.out_proj.weight,
-        #         self.fc1.weight,
-        #         self.fc2.weight,
-        #         self.self_attn.head_dim,
-        #         recompute_fc1,
-        #         self.activation_fn_name,
-        #     )
-        #     return x
-        #print(f"INITIAL{x.shape}")
         residual = x
-        #x = self.self_attn_layer_norm(x)
-        x = ( 
-                self.forward_attention(
-                query=x,
-                key=k,
-                value=v,
-                residual=residual,
-                key_padding_mask=self_attn_padding_mask,
-                incremental_state=incremental_state,
-                attn_mask=self_attn_mask,
-                ) * self.attn_gate.tanh()
-                
+        x = self.self_attn_layer_norm(x)
+        x = self.forward_attention(
+            query=x,
+            key=k,
+            value=v,
+            residual=residual,
+            key_padding_mask=self_attn_padding_mask,
+            incremental_state=incremental_state,
+            attn_mask=self_attn_mask,
         )
-        #print(f"AFTER ATTN{x.shape}")
-        x = x + residual
-        
-        #x = x.to(torch.bfloat16)
-        
-        x = (
-                FeedForward(
-                x,
-                fc1=self.fc1,
-                activation_fn=self.activation_fn,
-                fc2=self.fc2,
-                dropout_module=self.dropout_module,
-                ) * self.ff_gate.tanh()
-                + x
+        residual = x
+        x = self.final_layer_norm(x)
+        #print(f"INPUT NORMAL ATTN:{x.dtype}")
+        x = FeedForward(
+            x,
+            fc1=self.fc1,
+            activation_fn=self.activation_fn,
+            fc2=self.fc2,
+            dropout_module=self.dropout_module,
         )
-        #print(f"AFTER FFWD{x.shape}")
+        x = residual + x
+        
         return x
+        # # if getattr(self.args, "sequence_parallel", False):
+        # #     from metaseq.modules import SequeuceParallelTransformerBlock
+
+        # #     x = SequeuceParallelTransformerBlock.apply(
+        # #         x,
+        # #         self.self_attn.qkv_proj.weight,
+        # #         self.self_attn.out_proj.weight,
+        # #         self.fc1.weight,
+        # #         self.fc2.weight,
+        # #         self.self_attn.head_dim,
+        # #         recompute_fc1,
+        # #         self.activation_fn_name,
+        # #     )
+        # #     return x
+        # #print(f"INITIAL{x.shape}")
+        # residual = x
+        # #x = self.self_attn_layer_norm(x)
+        # x = ( 
+        #         self.forward_attention(
+        #         query=x,
+        #         key=k,
+        #         value=v,
+        #         residual=residual,
+        #         key_padding_mask=self_attn_padding_mask,
+        #         incremental_state=incremental_state,
+        #         attn_mask=self_attn_mask,
+        #         ) * self.attn_gate # * self.attn_gate.tanh()
+                
+        # )
+        # #print(f"AFTER ATTN{x.shape}")
+        # x = x + residual
+        
+        # #x = x.to(torch.bfloat16)
+        
+        # x = (
+        #         FeedForward(
+        #         x,
+        #         fc1=self.fc1,
+        #         activation_fn=self.activation_fn,
+        #         fc2=self.fc2,
+        #         dropout_module=self.dropout_module,
+        #         ) * self.ff_gate
+        #         + x
+        # )
+        
+        # print(self.attn_gate)
+        # print(self.ff_gate)
+        
+        # #print(f"AFTER FFWD{x.shape}")
+        #return x
 
     def make_generation_fast_(self, **kwargs):
         pass

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 from torch import Tensor
 from metaseq.dataclass.constants import UNSPECIFIED_DOC_SEP
 
@@ -152,7 +153,7 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
         self.x_attn_layers_llm = nn.ModuleList([])
         layers = []
         layers2 = []
-        for i in range((args.decoder_layers // 2)+1):
+        for i in range((args.decoder_layers // 2)):
             layers.append(self.build_decoder_layer_x_attn(args))
         for i in range((args.decoder_layers // 2)):
             layers2.append(self.build_decoder_layer_x_attn(args))
@@ -166,6 +167,11 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
             elementwise_affine=not getattr(args, "disable_affine_ln", False),
         )
         self.layer_norm.to(device).to(dtype)
+        
+        self.feature_projection = nn.Linear(in_features = self.embed_dim*2, out_features = self.embed_dim, bias = False)
+        init.normal_(self.feature_projection.weight, mean=0, std=self.embed_dim**-0.5)
+        self.feature_projection.to(device).to(dtype)
+        
         
         self.output_projection = None
         if self.share_input_output_embed:
@@ -379,7 +385,6 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
         return x, embed, positions
     
     
-    
     def extract_features(
         self,
         prev_output_tokens,
@@ -460,23 +465,16 @@ class ModelParallelTransformerDecoder_xattn(BaseDecoder):
                 )
                 idx_xattn += 1
                 
-        x_attn_layer_cm3 = self.x_attn_layers_cm3[-1]
-        x_qkv = torch.cat((x_cm3, x_llm, x_llm), dim=-1)
-        x_cm3 = x_attn_layer_cm3(
-            x_qkv,
-            incremental_state=incremental_state,
-            self_attn_mask=self_attn_mask,
-            self_attn_padding_mask=self_attn_padding_mask,
-            recompute_fc1=(idx < getattr(self.args, "recompute_fc1_num_layers", 0)),
-        )                             
-        
+        x_final = torch.cat([x_cm3, x_llm], dim=-1)
+        x_final = self.feature_projection(x_final)
+         
         if self.layer_norm is not None:
-            x_cm3 = self.layer_norm(x_cm3)
+            x_final = self.layer_norm(x_final)
         #x = torch.cat((x_cm3, x_llm), dim=-1)
-        inner_states.append(x_cm3)
+        inner_states.append(x_final)
                 
         # Returned x is T x B x C here, as sequence_parallel requires T to be first dim
-        return x_cm3, {"inner_states": inner_states}
+        return x_final, {"inner_states": inner_states}
     
         
     def output_layer(self, features, **kwargs):

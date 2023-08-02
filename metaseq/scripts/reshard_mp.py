@@ -43,7 +43,7 @@ def reshard_model_parallel_parts(
     dim0_shard_regex = re.compile("embed_tokens|ffn_layernorm|fc1|(k|q|v)_proj")
     dim1_shard_regex = re.compile("(fc2|out_proj).weight")
     shared_regex = re.compile(
-        "embed_positions|layer_norm|(fc2|out_proj).bias|output_projection|version"
+        "embed_positions|layer_norm|feature_projection|(fc2|out_proj).bias|output_projection|version"
     )
 
     unsharded_dict = {}
