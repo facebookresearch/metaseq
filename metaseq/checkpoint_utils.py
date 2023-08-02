@@ -722,7 +722,10 @@ def _merge_flat_fsdp_shards(shards_to_load: List[Dict], unpad=False) -> Dict:
         dtype = shards_to_load[0]["model"][k].dtype
         if "flat_param" in k:
             pad_info_k = pad_info[k]
-            catted = torch.cat([x["model"][k] for x in shards_to_load])
+            if torch.cuda.is_available():
+                catted = torch.cat([x["model"][k].cuda() for x in shards_to_load])
+            else:
+                catted = torch.cat([x["model"][k] for x in shards_to_load])
             if world_size == 1 and pad_info_k > 0:
                 catted = catted[:-pad_info_k]
             elif world_size > 1 and pad_info_k > 0 and not unpad:
