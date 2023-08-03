@@ -375,6 +375,9 @@ class DatasetConfig(MetaseqDataclass):
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
     )
+    validate_on_first_step: int = field(
+        default=-1, metadata={"help": "validate on first step. default not to validate."}
+    )
     validate_after_updates: int = field(
         default=0, metadata={"help": "dont validate until reaching this many updates"}
     )

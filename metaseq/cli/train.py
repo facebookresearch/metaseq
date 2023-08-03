@@ -485,6 +485,10 @@ def validate_and_save(
             and num_updates % cfg.dataset.validate_interval_updates == 0
             and was_successful_step
         )
+        or (
+                num_updates == cfg.dataset.validate_on_first_step
+                and was_successful_step
+        )
     ) and not cfg.dataset.disable_validation
 
     # Save checkpoint before validating.
