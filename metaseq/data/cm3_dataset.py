@@ -3,8 +3,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import random
-
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -169,7 +167,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
                 np.random.random() < self.percent_full_document_rotation
                 and len(document_boundaries) > 0
             ):
-                return [random.choice(document_boundaries)]
+                return [document_boundaries[np.random.choice(len(document_boundaries))]]
 
             start, end = np.random.uniform(size=2)
             if end < start:
@@ -187,7 +185,8 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             len_sentinel_tokens < len(document_boundaries)
             and np.random.random() < self.percent_full_document_rotation
         ):
-            return random.sample(document_boundaries, len_sentinel_tokens)
+            indices = np.random.choice(len(document_boundaries), size=len_sentinel_tokens, replace=False)
+            return [document_boundaries[i] for i in indices]
 
         # Let's implement the general case. We will create len(self.sentinel_tokens) ** 2 possible candidates
         # And we will filter one by one to insure no intersections. If we can't find anything then so be it.

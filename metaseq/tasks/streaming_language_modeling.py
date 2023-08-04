@@ -9,7 +9,6 @@ on-the-fly tokenization.
 
 import logging
 import os
-import random
 import re
 import zipfile
 from collections import defaultdict, namedtuple
@@ -443,7 +442,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         )
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
-        random.shuffle(ra_docs)
+        np.random.shuffle(ra_docs)
 
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
