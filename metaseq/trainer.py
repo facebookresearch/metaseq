@@ -907,10 +907,10 @@ class Trainer(object):
             )
             grad_norm = torch.tensor(0.0).cuda()
             self.zero_grad()
-        except SpikeError as e:
-            overflow = True
-            logger.info(str(e))
-            self.zero_grad()
+        # except SpikeError as e:
+            # overflow = True
+            # logger.info(str(e))
+            # self.zero_grad()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 self._log_oom(e)
@@ -1132,13 +1132,13 @@ class Trainer(object):
 
         if ewm_ratio > ewm_ratio_to_skip_batch:
             self._skipped_loss_spikes += 1
-            raise SpikeError(
-                f"Skip batch as we encountered a loss spike. In "
-                f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
-                f"The ewm for the loss was only at {ewm_t_1:.2f} . "
-                f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
-                f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
-            )
+            # raise SpikeError(
+                # f"Skip batch as we encountered a loss spike. In "
+                # f"num_update: {self.get_num_updates()} the loss is {loss_t:.2f}. "
+                # f"The ewm for the loss was only at {ewm_t_1:.2f} . "
+                # f"The loss to ewm loss ratio is {ewm_ratio:.2f}, which is higher than "
+                # f"ewm_ratio_to_skip_batch of {ewm_ratio_to_skip_batch} ."
+            # )
         else:
             # update the moving average only if we are not loss spiking
             alpha = 2 / (span + 1)
