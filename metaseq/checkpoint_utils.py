@@ -323,7 +323,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     logger.info(f"attempting to load checkpoint from: {checkpoint_path_to_load}")
 
     # make sure everyone is done downloading their checkpoints before we load
-    distributed_utils.global_barrier()
+    # distributed_utils.global_barrier()
 
     extra_state = None
     if checkpoint_path_to_load is not None:
