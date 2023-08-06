@@ -5,7 +5,7 @@
 
 import os
 
-MAX_SEQ_LEN = 2048
+MAX_SEQ_LEN = 4096
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 3072
 DEFAULT_PORT = 6010
@@ -31,12 +31,12 @@ MAX_BEAM = 16
 #     # reshard-model_part-7.pt
     
     
-CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/joint/eval/"
+CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval/"
 
 # tokenizer files
 #BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 #BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "mp_1500.pt")
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "mp_5960.pt")
 
 
 LAUNCH_ARGS = [

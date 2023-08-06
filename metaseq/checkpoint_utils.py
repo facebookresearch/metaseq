@@ -19,6 +19,7 @@ from metaseq.dataclass.utils import overwrite_args_by_name, overwrite_keys_not_p
 from metaseq.distributed import utils as distributed_utils
 from metaseq.file_io import PathManager, torch_load_cpu
 from metaseq.launcher.opt_job_constants import ComputeEnvs
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 
 
 
@@ -745,11 +746,13 @@ def load_model_ensemble_and_task(
                 cfg.model._name = "transformer_lm_gpt"
 
             # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
-            oproj_key = "decoder.output_projection.weight"
-            emb_key = "decoder.embed_tokens.weight"
-            if emb_key in state["model"] and oproj_key not in state["model"]:
-                state["model"][oproj_key] = state["model"][emb_key]
-
+            # oproj_key = "decoder.output_projection.weight"
+            # emb_key = "decoder.embed_tokens.weight"
+            # if emb_key in state["model"]: #and oproj_key not in state["model"]:
+            #     state["model"][oproj_key] = state["model"][emb_key]
+            del state["model"]["decoder.output_projection.weight"]
+            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+            
             if task is None:
                 task = tasks.setup_task(cfg.task)
 
@@ -761,7 +764,10 @@ def load_model_ensemble_and_task(
             else:
                 # build model for ensemble
                 model = task.build_model(cfg.model, is_joint=joint)
-
+                
+            del state["model"]["decoder.output_projection.weight"]
+            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+            
             model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble
@@ -769,7 +775,6 @@ def load_model_ensemble_and_task(
 
         ensemble.append(model)
     return ensemble, cfg, task
-
 
 def load_model_ensemble_and_task_demo(
     filenames,
@@ -780,7 +785,7 @@ def load_model_ensemble_and_task_demo(
     num_shards=1,
     state=None,
     build_model_hook=None,
-    joint=True
+    joint=False,
 ):
     assert state is None or len(filenames) == 1
 
@@ -820,31 +825,42 @@ def load_model_ensemble_and_task_demo(
                 cfg.model.arch = "transformer_lm_gpt"
                 cfg.model._name = "transformer_lm_gpt"
 
-            # # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
+            # We now copy embed_tokens over to output_proj (if its missing) for all arches (only OPT here so far).
             # oproj_key = "decoder.output_projection.weight"
             # emb_key = "decoder.embed_tokens.weight"
-            # if emb_key in state["model"] and oproj_key not in state["model"]:
+            # if emb_key in state["model"]: #and oproj_key not in state["model"]:
             #     state["model"][oproj_key] = state["model"][emb_key]
-
+            del state["model"]["decoder.output_projection.weight"]
+            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+            
             if task is None:
                 task = tasks.setup_task(cfg.task)
 
-            #if "task_state" in state:
-            #    task.load_state_dict(state["task_state"])
+            if "task_state" in state:
+                task.load_state_dict(state["task_state"])
+                
+            def _build_model(cfg, task):
+                model = task.build_model(cfg.model, True).cuda()
+                model.make_generation_fast_()
+                return fsdp_wrap(model)
 
-           # if build_model_hook is not None:
-              #  model = build_model_hook(cfg, task)
-            #else:
-                # build model for ensemble
-#                model = task.build_model(cfg.model)
 
-            #model.load_state_dict(state["model"], strict=strict)
+            
+            model = _build_model(cfg, task)
+
+                
+            del state["model"]["decoder.output_projection.weight"]
+            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+            
+            model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble
             state = None
 
-        #ensemble.append(model)
+        ensemble.append(model)
     return ensemble, cfg, task
+
+
 
 def _upgrade_state_dict(state):
     """Helper for upgrading old model checkpoints."""

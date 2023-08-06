@@ -197,13 +197,13 @@ class StreamingLanguageModelingTask(LegacyTask):
         if not has_hf_tokenizers:
             raise ImportError("Please install tokenizers with: pip install tokenizers")
 
-        if args.hf_tokenizer:
+        #if args.hf_tokenizer:
             #self.tokenizer = Tokenizer.from_file(args.hf_tokenizer)
-            self.tokenizer = Tokenizer.from_file("/data/home/rpasunuru/tokenizers/racm3/gpt2-unified-image-racm3-patch.json")
-        else:
-            self.tokenizer = ByteLevelBPETokenizer.from_file(
-                args.vocab_filename, args.merges_filename
-            )
+        self.tokenizer = Tokenizer.from_file("/data/home/rpasunuru/tokenizers/racm3/gpt2-unified-image-racm3-patch.json")
+        # else:
+        #     self.tokenizer = ByteLevelBPETokenizer.from_file(
+        #         args.vocab_filename, args.merges_filename
+        #     )
 
         # if max(args.update_freq) > 1:
         #     raise NotImplementedError(

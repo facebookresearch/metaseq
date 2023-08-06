@@ -195,16 +195,9 @@ def load_model(cfg):
         models, _model_args, task = _load_checkpoint()
     
     
-#ra_cm3_model = models[0].eval()
-#print(f"racm3_evalf{ra_cm3_model}")
-#print(f"models[0]:{models[0]}") 
-#print(f"type{type(models[0])}")
-    ra_cm3_model = models[0] 
-    #print(f"racm3:{ra_cm3_model}")
-    
-    #return ra_cm3_model 
-    #print(ra_cm3_model)
-  
+
+    ra_cm3_model = models[0]
+   
 
     
 def parse_doc(doc):
@@ -333,6 +326,7 @@ def generate_image(
     set_seed(42)
       
     image_type = "path"
+    global decoder
 
     logger.info(f"Query: {query} ---- Support 1 {query1}, Support 2 {query2}")
     decoder = ImageSequenceGenerator(
@@ -343,7 +337,7 @@ def generate_image(
         temperature=temp,
         topp=topp,
         cfg_weight=cfg_weight,
-    ).cuda()
+    )
 
     text_unconditional = torch.tensor(
         [
