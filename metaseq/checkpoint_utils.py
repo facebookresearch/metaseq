@@ -704,6 +704,7 @@ def load_model_ensemble_and_task(
     num_shards=1,
     state=None,
     build_model_hook=None,
+    joint=False,
 ):
     assert state is None or len(filenames) == 1
 
@@ -759,7 +760,7 @@ def load_model_ensemble_and_task(
                 model = build_model_hook(cfg, task)
             else:
                 # build model for ensemble
-                model = task.build_model(cfg.model)
+                model = task.build_model(cfg.model, is_joint=joint)
 
             model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
@@ -779,6 +780,7 @@ def load_model_ensemble_and_task_demo(
     num_shards=1,
     state=None,
     build_model_hook=None,
+    joint=True
 ):
     assert state is None or len(filenames) == 1
 

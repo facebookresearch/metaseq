@@ -82,10 +82,10 @@ def build_model(cfg: MetaseqDataclass, task, is_joint=False, cm3=None, llm=None)
         + model_type
     )
     
-    if is_joint == True:
-        return model.build_model(cfg, task, cm3, llm) 
-    else:
-        return model.build_model(cfg, task)
+    # if is_joint == True:
+    #     return model.build_model(cfg, task) 
+    # else:
+    return model.build_model(cfg, task)
 
 
 def register_model(name, dataclass=None):

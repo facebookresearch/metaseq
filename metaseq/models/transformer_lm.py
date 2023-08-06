@@ -305,7 +305,7 @@ class ModelParallelTransformerLanguageModel(BaseModel):
 @register_model("model_parallel_transformer_joint")
 class ModelParallelTransformerJointModel(BaseModel):
     @classmethod
-    def build_model(cls, args, task, cm3, llm):
+    def build_model(cls, args, task):
         """Build a new model instance."""
         if not has_megatron_submodule:
             raise ImportError(
@@ -331,9 +331,9 @@ class ModelParallelTransformerJointModel(BaseModel):
         embed_tokens_cm3 = cls.build_embedding(
             args, task.source_dictionary, args.decoder_embed_dim
         )
-        embed_tokens_llm = cls.build_embedding(
-            args, task.source_dictionary, args.decoder_embed_dim
-        )
+        # embed_tokens_llm = cls.build_embedding(
+        #     args, task.source_dictionary, args.decoder_embed_dim
+        # )
         
         assert getattr(
             args, "use_sharded_state", False
