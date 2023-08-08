@@ -27,7 +27,7 @@ import torch
 from flask import Flask, request, jsonify
 
 import torch.distributed as dist
-from metaseq import options
+from metaseq import options, checkpoint_utils, tasks
 from metaseq.dataclass.configs import MetaseqConfig
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
 from metaseq.distributed import utils as distributed_utils
@@ -202,7 +202,7 @@ def generate(args, rank, nshard):
     # )
 
     print(f"Loading VQ-GAN")
-    #image_model = VqganTokenizer()
+    image_model = VqganTokenizer()
 
     lines = [json.loads(line) for line in open(args.jsonl)]
     if args.n_examples > 0:
@@ -220,17 +220,18 @@ def generate(args, rank, nshard):
         ]
         # if sum(exists) == len(exists):
         if os.path.exists(f"{args.output_dir}/0/{line_index}.jpg"):
-            print(f"line {line_index} already genrated")
+            print(f"line {line_index} already generated")
             line_indexes.remove(line_index)
             lines.remove(line)
         else:
             print(f"line {line_index} need to be generated")
-    print(f"total number of geneation is {len(line_indexes)}")
+    print(f"total number of generation is {len(line_indexes)}")
     print(line_indexes)
 
     beam_size_per_shard = (
         args.beam_size + args.nshard_per_beam - 1
     ) // args.nshard_per_beam
+    args.temperature = 1.0
 
     if args.contrastive:
         decoder = SelfContrastiveImageSequenceGenerator(
@@ -335,9 +336,9 @@ def compute_fid(path1, path2, output_fn):
     fid = float(lns[-1].strip().split(":")[-1])
     return fid
 
-def worker_main(cfg: MetaseqConfig, namespace_args=None):
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    torch.set_num_threads(1)
+def worker_main(cfg: MetaseqConfig, args=None):
+    #os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    torch.set_num_threads(8)
     global model
     # make sure generations are stochastic since we have many workers
     torch.manual_seed(random.randint(1, 20000))
@@ -351,101 +352,23 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
         )
     
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        pass
-    else:
-        logger.info(f"Looping engaged!")
-        while True:
-            try:
-                request_object = distributed_utils.broadcast_object(
-                    None, src_rank=0, group=distributed_utils.get_global_group()
-                )
-                _ = generate_image(**request_object)
-            except Exception:
-                # continue looping for the next generation so we don't lock up
-                pass
-    
+        model_short_name = (
+            args.ckpt if args.ckpt in model_factory else args.ckpt.split("/")[-1]
+        )
+        args.output_dir = f"{args.output_dir}model-{model_short_name}_cfg{args.cfg_weight}_t{args.temperature}_b{args.beam_size}_clip{args.clip_rerank}_r{args.retrieve_source}"
+        if args.contrastive:
+            args.output_dir += f"_st{args.temp_student}_alpha{args.alpha}"
+        if args.n_examples > 0:
+            args.output_dir += f"_n{args.n_examples}"
 
-
-def main(rank, world_size):
-   
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="generation", formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        default="/data/cm3z/armenag/code/ra_cm3/models/760m/maiden_760_v0/checkpoint_70000_consolidated.pt",
-        help="consolidated checkpoint",
-    )
-    parser.add_argument(
-        "--jsonl",
-        type=str,
-        default="/data/cm3z/armenag/datasets/ra_cm3/fsdp-format/valid/shutterstock/00/00.jsonl",
-        help="valid jsonl path",
-    )
-    parser.add_argument("--temperature", type=float, default=0.8, help="temperature")
-    parser.add_argument(
-        "--contrastive", action="store_true", help="contrastive decoding"
-    )
-    parser.add_argument("--temp_student", type=float, default=0.5, help="temperature")
-    parser.add_argument("--alpha", type=float, default=0.5, help="temperature")
-    parser.add_argument("--beam-size", type=int, default=32, help="beam size")
-    parser.add_argument(
-        "--cfg-weight", type=float, default=5, help="classifier-free-guidance weight"
-    )
-    parser.add_argument(
-        "--num-retrieved-doc", type=int, default=2, help="number of retrieved documents"
-    )
-    parser.add_argument("--output-dir", type=str, default=None, help="output directory")
-    parser.add_argument("--nshard", type=int, default=100, help="number of shards")
-    parser.add_argument("--slurm", action="store_true", help="running on slurm")
-    parser.add_argument("--partition", type=str, default="cm3z", help="slurm partition")
-    parser.add_argument(
-        "--mscoco-val",
-        type=str,
-        default="/data/cm3z/bshi/datasets/ra_cm3/mscoco/gt_images/michi-tokenize-valid/",
-        help="mscoco ground-truth dir",
-    )
-    parser.add_argument("--clip-rerank", action="store_true", help="reranking")
-    parser.add_argument(
-        "--nshard-per-beam", type=int, default=1, help="number of shards per beam"
-    )
-    parser.add_argument(
-        "--retrieve-source",
-        type=str,
-        default="text",
-        help="define if we retrieve using text or text+image",
-    )
-    parser.add_argument(
-        "--n_examples",
-        type=int,
-        default=-1,
-        help="number of examples, set it smaller for faster compute",
-    )
-    parser.add_argument("--dtype", type=str, default="fp32")
-
-    args = parser.parse_args()
-
-    model_short_name = (
-        args.ckpt if args.ckpt in model_factory else args.ckpt.split("/")[-1]
-    )
-    args.output_dir = f"{args.output_dir}model-{model_short_name}_cfg{args.cfg_weight}_t{args.temperature}_b{args.beam_size}_clip{args.clip_rerank}_r{args.retrieve_source}"
-    if args.contrastive:
-        args.output_dir += f"_st{args.temp_student}_alpha{args.alpha}"
-    if args.n_examples > 0:
-        args.output_dir += f"_n{args.n_examples}"
-
-    # if args.ckpt in model_factory:
-    #     args.ckpt = model_factory[args.ckpt]
-    args.ckpt = "/fsx-llm/aiema/checkpoints/cross/consolidated/consolidated_5960_demo.pt"
-    os.makedirs(args.output_dir, exist_ok=True)
-    gen_dirs = [f"{args.output_dir}/{beam}" for beam in range(args.beam_size)]
-    gt_dirs = [args.mscoco_val for _ in range(args.beam_size)]
-    result_fns = [f"{args.output_dir}/fid-{beam}.txt" for beam in range(args.beam_size)]
-
-    if not args.slurm:
+        # if args.ckpt in model_factory:
+        #     args.ckpt = model_factory[args.ckpt]
+        args.ckpt = "/fsx-llm/aiema/checkpoints/cross/consolidated/consolidated_5960_demo.pt"
+        os.makedirs(args.output_dir, exist_ok=True)
+        gen_dirs = [f"{args.output_dir}/{beam}" for beam in range(args.beam_size)]
+        gt_dirs = [args.mscoco_val for _ in range(args.beam_size)]
+        result_fns = [f"{args.output_dir}/fid-{beam}.txt" for beam in range(args.beam_size)]
+        
         logger.info(f"Generate locally")
         generate(args, rank=0, nshard=1)
         logger.info(f"Computing FID")
@@ -453,36 +376,12 @@ def main(rank, world_size):
         for gen_dir, gt_dir, result_fn in zip(gen_dirs, gt_dirs, result_fns):
             fid = compute_fid(gen_dir, gt_dir, result_fn)
             fids.append(fid)
+      
     else:
-        logger.info(f"Generate remotely")
-        executor = submitit.AutoExecutor(folder="submitit")
-        executor.update_parameters(
-            slurm_partition=args.partition,
-            slurm_array_parallelism=1000,
-            gpus_per_node=1,
-            cpus_per_task=6,
-        )
-        executor.update_parameters(timeout_min=60 * 48)
-        jobs = executor.map_array(
-            generate,
-            [args for _ in range(args.nshard)],
-            list(range(0, args.nshard)),
-            [args.nshard for _ in range(args.nshard)],
-        )
-        # [job.result() for job in jobs]
-        with open(f"{args.output_dir}/clip_socore.jsonl", "w") as outfile:
-            for job in jobs:
-                for outdict in job.result():
-                    json.dump(outdict, outfile)
-                    outfile.write("\n")
-        logger.info(f"Computing FID")
-        jobs = executor.map_array(compute_fid, gen_dirs, gt_dirs, result_fns)
-        fids = [job.result() for job in jobs]
-    for i in range(args.beam_size):
-        print(f"rank-{i} FID: {fids[i]}")
-        
-    dist.destroy_process_group()
-    return
+        args.ckpt = "/fsx-llm/aiema/checkpoints/cross/consolidated/consolidated_5960_demo.pt"
+        logger.info(f"Looping engaged!")
+        generate(args, rank=0, nshard=1)        
+
 
 
 def cli_main():
@@ -504,10 +403,10 @@ def cli_main():
     parser.add_argument(
         "--jsonl",
         type=str,
-        default="/data/cm3z/armenag/datasets/ra_cm3/fsdp-format/valid/shutterstock/00/00.jsonl",
+        default="/fsx-onellm/mingdachen/from-lili/mscoco_racm3_data/text-mscoco-i30000-c1.jsonl",
         help="valid jsonl path",
     )
-    parser.add_argument("--temperature", type=float, default=0.8, help="temperature")
+    #parser.add_argument("--temperature", type=float, default=1, help="temperature")
     parser.add_argument(
         "--contrastive", action="store_true", help="contrastive decoding"
     )
@@ -515,24 +414,24 @@ def cli_main():
     parser.add_argument("--alpha", type=float, default=0.5, help="temperature")
     parser.add_argument("--beam-size", type=int, default=32, help="beam size")
     parser.add_argument(
-        "--cfg-weight", type=float, default=5, help="classifier-free-guidance weight"
+        "--cfg-weight", type=float, default=4, help="classifier-free-guidance weight"
     )
     parser.add_argument(
         "--num-retrieved-doc", type=int, default=2, help="number of retrieved documents"
     )
-    parser.add_argument("--output-dir", type=str, default=None, help="output directory")
-    parser.add_argument("--nshard", type=int, default=100, help="number of shards")
+    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/output_FID/", help="output directory")
+    parser.add_argument("--nshard", type=int, default=8, help="number of shards")
     parser.add_argument("--slurm", action="store_true", help="running on slurm")
     parser.add_argument("--partition", type=str, default="cm3z", help="slurm partition")
     parser.add_argument(
         "--mscoco-val",
         type=str,
-        default="/data/cm3z/bshi/datasets/ra_cm3/mscoco/gt_images/michi-tokenize-valid/",
+        default="fsx-onellm/mingdachen/from-lili/mscoco_racm3_data/tokenizer-exp/multigen-256x256-N30k-raw/",
         help="mscoco ground-truth dir",
     )
-    parser.add_argument("--clip-rerank", action="store_true", help="reranking")
+    parser.add_argument("--clip-rerank", action="store_false", help="reranking")
     parser.add_argument(
-        "--nshard-per-beam", type=int, default=1, help="number of shards per beam"
+        "--nshard-per-beam", type=int, default=4, help="number of shards per beam"
     )
     parser.add_argument(
         "--retrieve-source",
@@ -543,12 +442,12 @@ def cli_main():
     parser.add_argument(
         "--n_examples",
         type=int,
-        default=-1,
+        default=100,
         help="number of examples, set it smaller for faster compute",
     )
     parser.add_argument("--dtype", type=str, default="fp32")
 
-    args = parser.parse_args()
+    #args = parser.parse_args()
 
     args = options.parse_args_and_arch(parser, input_args=flat_launch_args)
     args.data = os.path.dirname(args.path)  # hardcode the data arg
@@ -559,7 +458,7 @@ def cli_main():
     model_overrides.update(INFERENCE_ARG_OVERRIDES)
     cfg.common_eval.model_overrides = str(model_overrides)
 
-    distributed_utils.call_main(cfg, worker_main, namespace_args=args)
+    distributed_utils.call_main(cfg, worker_main, args=args)
 
 
 if __name__ == "__main__":
@@ -569,7 +468,7 @@ if __name__ == "__main__":
         )
         os.environ["SLURM_NODEID"] = "0"
         os.environ["SLURM_NNODES"] = "1"
-        os.environ["SLURM_NTASKS"] = "1"
+        os.environ["SLURM_NTASKS"] = "8"
         import socket
 
         os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()

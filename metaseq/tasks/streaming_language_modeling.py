@@ -8,7 +8,6 @@ on-the-fly tokenization.
 """
 
 import logging
-import random
 import os
 import re
 from dataclasses import dataclass, field
@@ -240,6 +239,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         assert self.tokenizer.id_to_token(3) in {"<UNK>", "<unk>"}
 
         self.has_cm3 = args.language_modeling_type in ["cm3", "racm3"]
+        self.has_cm3 = True #hardcoded for efficient gen
         self.has_retrieval = args.language_modeling_type == "racm3"
         if self.has_cm3:
             self._check_cm3_parameterization()
@@ -305,6 +305,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             + [self.eod]
         )
         return line
+    
 
     def _read_textimg(self, json):
         line = torch.LongTensor(
@@ -317,6 +318,55 @@ class StreamingLanguageModelingTask(LegacyTask):
             + [self.eod]
         )
         return line
+    
+    def _read_interleaved(self, json):
+        max_images = 4
+        elements = []
+        # Start with EOD token
+        elements.append(self.eod)
+        # some images may be missing so text gets concatenated
+        concatenated_text = ""
+        i = 1
+        image_count = 0  # Counter for the number of images
+        while True:
+            text_key = f"text{i}"
+            image_key = f"image{i}"
+            
+            added_something = False  # flag to track if we added text or image in the current loop iteration
+            
+            # if text exists, concatenate it
+            if text_key in json:
+                concatenated_text += json[text_key].rstrip()
+                added_something = True
+
+            # if the corresponding image exists, add it
+            if image_key in json and image_count < max_images:  # ensure we only add up to 3 images
+                if concatenated_text:  # add the concatenated text if present
+                    elements += self.tokenizer.encode(concatenated_text).ids
+                    elements.append(self.cm3_break_ind)
+                    concatenated_text = ""
+                elements += self.tokenizer.encode(
+                    map_old_image_token_to_new_image_token(json[image_key]).rstrip()
+                ).ids
+                elements.append(self.cm3_break_ind)
+                image_count += 1
+                added_something = True
+
+            # if neither text nor image exists or we didn't add anything in the current loop, break
+            if not added_something:
+                break
+
+            i += 1
+
+        if concatenated_text:
+            elements += self.tokenizer.encode(concatenated_text).ids
+
+        elements.append(self.eod)
+
+        line = torch.LongTensor(elements)
+        assert line.numel() > 1023
+        return line
+
 
     def tokenize_single_doc(self, doc, add_eod=False):
         doc = parse_doc(doc)
@@ -326,6 +376,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             self.tokenizer.encode(text.rstrip()).ids,
             self.tokenizer.encode(image.rstrip()).ids,
         )
+        image_indexes = image_indexes[0:1024]
         assert (
             len(image_indexes) == 1024
         ), f"Each image must be 1024 tokens, instead we got {len(image_indexes)}"
@@ -341,7 +392,7 @@ class StreamingLanguageModelingTask(LegacyTask):
         query_index = self.tokenize_single_doc(json["text"], add_eod=True)
         query_index = torch.LongTensor(query_index)
         ra_docs = json["retrieved_docs_from_img"] + json["retrieved_docs_from_txt"]
-        random.shuffle(ra_docs)
+        np.random.shuffle(ra_docs)
 
         ra_docs = ra_docs[: self.args.num_retrieved_doc]
         ra_indexes = []
@@ -553,6 +604,17 @@ class StreamingLanguageModelingTask(LegacyTask):
                     )
                 )
                 #print("found cm3 format json file!")
+                
+            elif "obelisc" in file:  #Apply interleaved image-text tokenization only for interleaved datasets
+                datasets.append(
+                    JsonlDataset(
+                        path=os.path.join(self.args.data, split, cur_shard_str, file),
+                        #tokenizer=self._tokenize_one_json,
+                        tokenizer=self._read_interleaved,
+                        epoch=epoch,
+                        data_subshard_count=data_subshard_count,
+                    )
+                )
                 
             else:
                 datasets.append(
