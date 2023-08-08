@@ -419,7 +419,7 @@ def cli_main():
     parser.add_argument(
         "--num-retrieved-doc", type=int, default=2, help="number of retrieved documents"
     )
-    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/output_FID/", help="output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/output_FID_2/", help="output directory")
     parser.add_argument("--nshard", type=int, default=8, help="number of shards")
     parser.add_argument("--slurm", action="store_true", help="running on slurm")
     parser.add_argument("--partition", type=str, default="cm3z", help="slurm partition")
