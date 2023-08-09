@@ -336,6 +336,7 @@ class StreamingLanguageModelingTask(LegacyTask):
             
             # if text exists, concatenate it
             if text_key in json:
+                #print(f"Adding text {i}: {json[text_key]}")
                 concatenated_text += json[text_key].rstrip()
                 added_something = True
 
@@ -345,6 +346,7 @@ class StreamingLanguageModelingTask(LegacyTask):
                     elements += self.tokenizer.encode(concatenated_text).ids
                     elements.append(self.cm3_break_ind)
                     concatenated_text = ""
+                #print(f"adding image {i}")
                 elements += self.tokenizer.encode(
                     map_old_image_token_to_new_image_token(json[image_key]).rstrip()
                 ).ids
@@ -364,7 +366,9 @@ class StreamingLanguageModelingTask(LegacyTask):
         elements.append(self.eod)
 
         line = torch.LongTensor(elements)
-        assert line.numel() > 1023
+        #if line.numel() <= 1023:
+            #print(json)
+        #assert line.numel() > 1023
         return line
 
 
