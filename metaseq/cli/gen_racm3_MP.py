@@ -412,14 +412,14 @@ def cli_main():
     )
     parser.add_argument("--temp_student", type=float, default=0.5, help="temperature")
     parser.add_argument("--alpha", type=float, default=0.5, help="temperature")
-    parser.add_argument("--beam-size", type=int, default=32, help="beam size")
+    parser.add_argument("--beam-size", type=int, default=2, help="beam size")
     parser.add_argument(
         "--cfg-weight", type=float, default=4, help="classifier-free-guidance weight"
     )
     parser.add_argument(
         "--num-retrieved-doc", type=int, default=2, help="number of retrieved documents"
     )
-    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/output_FID_2/", help="output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/test_FID/", help="output directory")
     parser.add_argument("--nshard", type=int, default=8, help="number of shards")
     parser.add_argument("--slurm", action="store_true", help="running on slurm")
     parser.add_argument("--partition", type=str, default="cm3z", help="slurm partition")
@@ -442,7 +442,7 @@ def cli_main():
     parser.add_argument(
         "--n_examples",
         type=int,
-        default=100,
+        default=10,
         help="number of examples, set it smaller for faster compute",
     )
     parser.add_argument("--dtype", type=str, default="fp32")
