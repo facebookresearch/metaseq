@@ -59,16 +59,16 @@ sys.path.append('/data/home/aiema/metaseq-internal/demo/')
 from image_tokenizer import VqganTokenizer
 from sequence_generators import (
     ImageSequenceGenerator,
-    TextSequenceGenerator,
+    MixedSequenceGenerator,
     extract_image_tokens,
     map_old_image_token_to_new_image_token,
 )
+
 #from demo_utils import model_factory
 
 #from retrieval import Retriever
 
 app = Flask(__name__)
-
 
 if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
     constants_module = importlib.import_module("metaseq.service.constants")
@@ -79,6 +79,7 @@ else:
 TOTAL_WORLD_SIZE = constants_module.TOTAL_WORLD_SIZE
 LAUNCH_ARGS = constants_module.LAUNCH_ARGS
 INFERENCE_ARG_OVERRIDES = constants_module.INFERENCE_ARG_OVERRIDES
+SEED = 42
 
 logger = build_logger()
 
@@ -97,18 +98,6 @@ shutterstock_ret_kwargs = {
     # "faiss_index": "/fsx-cm3/liliyu/data/mscoco_racm3_data/sst_retrieval/collate_0_0/reclip_text_index/text.index",
     "preprocess_text_type": "mscoco",
 }
-
-# task_instruction = {
-#     "pix2pix": "Edit first image following the instruction",
-#     "canny": "Make high quality image from canny edge features",
-#     "uniformer": "Make high quality image from uniformer segementation features",
-#     "hed": "Make high quality image from hed features",
-#     "openpose": "Make high quality image from openpose features",
-#     "mlsd": "Make high quality image from mlsd lines",
-#     "depth": "Make high quality image from midas depth features",
-#     "norm": "Make high quality image from midas norm features",
-#     "scribble": "Make high quality image from scribble"
-# }
 
 #retriever = Retriever(**shutterstock_ret_kwargs)
 
@@ -190,10 +179,8 @@ def load_model(cfg):
             models, _model_args, task = _load_checkpoint()
     else:
         models, _model_args, task = _load_checkpoint()
-
-    ra_cm3_model = models[0]
-   
-
+    ra_cm3_model = models[0] 
+    
     
 def parse_doc(doc):
     obj = re.match(r'<img alt="(.*?)" src="(I\d.*?)">', doc)
@@ -221,33 +208,6 @@ def tokenize_image(image):
     return image_indexes
 
 
-def form_prompt(query, query1, query2, image1, image2, image_type="path", dropquery=False):
-    if image_type == "path":
-        tokenize_func = lambda x: " ".join(image_model.encode(x).ids)
-    elif image_type == "token":
-        tokenize_func = lambda x: x
-    all_tokens, doc1, doc2 = [], [], []
-    if query1 is not None:
-        doc1 = (
-            tokenize_text(query1)
-        )
-    if image1 is not None:
-        image1 = tokenize_func(image1)
-        doc1.extend([task.cm3_break_ind] + tokenize_image(image1) + [task.cm3_break_ind])
-    if image2 is not None and query2 is not None:
-        image2 = tokenize_func(image2)
-        doc2 = (
-            tokenize_text(query2)
-            + [task.cm3_break_ind]
-            + tokenize_image(image2)
-            + [task.cm3_break_ind]
-        )
-    if not dropquery:
-        query_token = tokenize_text(query) + [task.cm3_break_ind]
-        all_tokens = [task.eod] + doc1 + doc2 + query_token
-    else:
-        all_tokens = [task.eod] + doc1 + doc2
-    return all_tokens
 
 def add_sr(image_full, text):
     with torch.inference_mode():
@@ -265,75 +225,35 @@ def batchfy(inputs: List, batch_size: int):
     return batches
 
 
-def get_sr_list(lowr_image, image_sr_processor, image_sr_model):
-    max_batch = 16
-    all_images = []
-    for batch in batchfy(lowr_image, max_batch):
-        inputs = image_sr_processor(batch, return_tensors="pt")
-        # forward pass
-        with torch.inference_mode():
-            outputs = image_sr_model(pixel_values=inputs["pixel_values"].cuda())
-
-        outputs = outputs.reconstruction.data.float().cpu().clamp_(0, 1).numpy()
-        outputs = np.moveaxis(outputs, source=1, destination=-1)
-        outputs = (outputs * 255.0).round().astype(np.uint8)  # float32 t
-
-        for i in range(outputs.shape[0]):
-            image = Image.fromarray(outputs[i])
-            all_images.append(image)
-    return all_images
-
-
-
 @app.route('/', methods=['GET', 'POST'])
-def handle_request():
+def handle_request_image():
     request_params = {
         'query': request.args.get('query'),
-        'query1': request.args.get('query1'),
-        'query2': request.args.get('query2'),
-        'image1': request.args.get('image1'),
-        'image2': request.args.get('image2'),
-        'num_sample': int(request.args.get('num_sample')),
+        'num_samples': int(request.args.get('num_samples')),
         'temp': float(request.args.get('temp')),
         'topp': float(request.args.get('topp')),
         'cfg_weight': float(request.args.get('cfg_weight')),
     }
-    
     if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
         distributed_utils.broadcast_object(request_params, src_rank=0, group=distributed_utils.get_global_group())
+   
+    return generate_mixed(**request_params)
 
     
-    return generate_image(**request_params)
-    
-
-def generate_image(
+def generate_mixed(
     query,
-    query1,
-    query2,
-    image1,
-    image2,
-    num_sample,
+    num_samples,
     temp,
     topp,
     cfg_weight,
-    progress=gr.Progress()):
+    progress=None,
+):
+    set_seed(SEED)
+    min_tokens = 1
+    max_tokens = 256
     
-    set_seed(42)
-      
-    image_type = "path"
-    global decoder
-
-    logger.info(f"Query: {query} ---- Support 1 {query1}, Support 2 {query2}")
-    decoder = ImageSequenceGenerator(
-        ra_cm3_model,
-        task.source_dictionary,
-        progress,
-        beam_size=num_sample,
-        temperature=temp,
-        topp=topp,
-        cfg_weight=cfg_weight,
-    )
-
+    
+    text_conditional = torch.tensor(form_prompt_text_only(query), dtype=torch.long).unsqueeze(0).to("cuda")
     text_unconditional = torch.tensor(
         [
             task.eod,
@@ -341,45 +261,103 @@ def generate_image(
             task.cm3_break_ind,
         ],
         dtype=torch.long,
-    )
-    text_conditional = torch.tensor(
-        form_prompt(
-            query, query1, query2, image1, image2, image_type=image_type
+    ).unsqueeze(0).to("cuda")
+    
+    total_max_tokens = text_conditional.size(-1) + max_tokens
+    total_min_tokens = text_conditional.size(-1) + min_tokens
+    
+
+    # 1. Initialize the MixedSequenceGenerator
+    mixed_generator = MixedSequenceGenerator(
+        model=ra_cm3_model,
+        tgt_dict=task.source_dictionary,
+        progress=progress,
+        beam_size=num_samples,
+        temperature=temp,
+        topp=topp,
+        cfg_weight=cfg_weight,
+        eod = task.eod,
+        max_len_b=total_max_tokens,
+        min_len=total_min_tokens,
+        mask_tokens=torch.tensor(
+            [ind for x, ind in task.source_dictionary.indices.items() if "IMGIMG" in x]
         ),
-        dtype=torch.long,
+        racm3_break=task.cm3_break_ind,
+        cm3_sentinel = task.cm3_sentinel_tokens_ind[0]
+        
+    ).cuda()
+    
+  
+    
+    # 3. Generate using the combined_generate method
+    generated_tokens = mixed_generator.combined_generate(
+        {"net_input": {"src_tokens": text_conditional}},
+        text_unconditional
     )
-    tokens = decoder(text_conditional.unsqueeze(0), text_unconditional.unsqueeze(0))[
-        "tokens"
-    ]
-    tokens = tokens.view(-1, tokens.size(2))
+    print(f"generated_tokens: {generated_tokens}")
+    #print(f"shape tokens {generated_tokens.shape}")
+    # 4. Process the generated tokens
+    all_captions = []
+    all_images_base64 = []
+    current_tokens = []
 
-    all_images = []
-    images = []
-    for image in tokens.cpu().numpy().tolist():
-        image = image[:1024]
-        image = task.tokenizer.decode(image, skip_special_tokens=False)
-        image = extract_image_tokens(image)
-        image_full = image_model.decode(image)
-        images.append(image_full)
-
-    all_images = [add_sr(image, query) for image in images]
-    all_images_base64 = [image_to_base64(image) for image in all_images]
-
-    # Return the images as a JSON response
-    return jsonify({'all_images': all_images_base64})
+    is_image_modality = False
+    last_text = ""
+    image_delimiter = 99999
+    
+    flat_generated_tokens = [item for sublist in generated_tokens for item in (sublist if isinstance(sublist, (list, tuple)) else [sublist])]
 
 
+    print(f"flattened:{flat_generated_tokens}")
+    for token in flat_generated_tokens:
+        if token == image_delimiter:
+            if len(current_tokens) > 0:
+                if not is_image_modality:
+                    caption = task.tokenizer.decode(current_tokens, skip_special_tokens=False).split("<eoss>")[0].strip()
+                    print(caption)
+                    all_captions.append(caption)
+                    last_text = caption
+                    current_tokens = []
+                else:
+                    image = current_tokens[:1024]  # Take only first 1024 tokens
+                    image = task.tokenizer.decode(image, skip_special_tokens=False)
+                    image = extract_image_tokens(image)
+                    image_full = image_model.decode(image)
+                    #all_images_base64.append(image_to_base64(add_sr(image_full, last_text)))
+                    all_images_base64.append(image_to_base64(image_full))
+                    current_tokens = []
+                    
+            is_image_modality = not is_image_modality  # Flip modality
+        else:
+            current_tokens.append(token)
+            
+    print(all_captions)
+
+    return {
+        'all_captions': all_captions,
+        'all_images': all_images_base64
+    }
+
+def form_prompt_text_only(text):
+    all_tokens = []
+    text_tokenized = task.tokenizer.encode(text).ids
+    all_tokens.extend(
+        [task.eod]
+        + text_tokenized
+        +[task.cm3_sentinel_tokens_ind[0]]
+    )
+    all_tokens = torch.tensor(all_tokens, dtype=torch.long)
+    return all_tokens
 
 
 def worker_main(cfg: MetaseqConfig, namespace_args=None):
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    torch.set_num_threads(1)
+    #os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    #torch.set_num_threads(1)
     global model
     # make sure generations are stochastic since we have many workers
     torch.manual_seed(random.randint(1, 20000))
     torch.cuda.manual_seed(random.randint(1, 20000))
     model = load_model(cfg)
-    
     
     if torch.distributed.is_initialized():
         request_object = distributed_utils.broadcast_object(
@@ -395,14 +373,11 @@ def worker_main(cfg: MetaseqConfig, namespace_args=None):
                 request_object = distributed_utils.broadcast_object(
                     None, src_rank=0, group=distributed_utils.get_global_group()
                 )
-                _ = generate_image(**request_object)
+                _ = generate_mixed(**request_object)
             except Exception:
                 # continue looping for the next generation so we don't lock up
                 pass
     
-
-  
-
 def cli_main():
     """
     Command line interactive.
@@ -421,7 +396,6 @@ def cli_main():
     model_overrides = ast.literal_eval(cfg.common_eval.model_overrides)
     model_overrides.update(INFERENCE_ARG_OVERRIDES)
     cfg.common_eval.model_overrides = str(model_overrides)
-
     distributed_utils.call_main(cfg, worker_main, namespace_args=args)
 
 
@@ -434,6 +408,5 @@ if __name__ == "__main__":
         os.environ["SLURM_NNODES"] = "1"
         os.environ["SLURM_NTASKS"] = "1"
         import socket
-
         os.environ["SLURM_STEP_NODELIST"] = socket.gethostname()
     cli_main()

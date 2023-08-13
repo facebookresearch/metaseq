@@ -5,9 +5,9 @@
 
 import os
 
-MAX_SEQ_LEN = 4096
+MAX_SEQ_LEN = 8192
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
-MAX_BATCH_TOKENS = 3072
+MAX_BATCH_TOKENS = 8192
 DEFAULT_PORT = 6010
 MODEL_PARALLEL = 8
 TOTAL_WORLD_SIZE = 8
@@ -31,12 +31,12 @@ MAX_BEAM = 16
 #     # reshard-model_part-7.pt
     
     
-CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval/"
+CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval"
 
 # tokenizer files
 #BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 #BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "mp_5960.pt")
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "wiki_5960.pt" )  #mp_5960 "wiki_5960.pt"
 
 
 LAUNCH_ARGS = [
@@ -54,7 +54,7 @@ LAUNCH_ARGS = [
     #f"--vocab-filename {BPE_VOCAB}",  # TODO(susanz): hack for getting interactive_hosted working on public repo
     f"--path {MODEL_FILE}",
     "--beam 1",
-    "--distributed-port 13000",
+    "--distributed-port 13040",
     "--checkpoint-shard-count 1",
     f"--batch-size {BATCH_SIZE}",
     f"--buffer-size {BATCH_SIZE * MAX_SEQ_LEN}",
