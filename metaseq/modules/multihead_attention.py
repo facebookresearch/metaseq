@@ -14,17 +14,17 @@ from metaseq import utils
 from metaseq.dataclass.constants import AttentionVariants
 from metaseq.incremental_decoding_utils import with_incremental_state
 from metaseq.modules.dropout import Dropout
-from metaseq.modules.megatron.model import (
-    ScaledUpperTriangMaskedSoftmax,
-    ScaledMaskedSoftmax,
-)
-from metaseq.modules.megatron.mpu import (
-    ColumnParallelLinear,
-    RowParallelLinear,
-    get_cuda_rng_tracker,
-    get_tensor_model_parallel_world_size,
-    split_tensor_along_last_dim,
-)
+#from metaseq.modules.megatron.model import (
+#    ScaledUpperTriangMaskedSoftmax,
+#    ScaledMaskedSoftmax,
+#)
+#from metaseq.modules.megatron.mpu import (
+#    ColumnParallelLinear,
+#    RowParallelLinear,
+#    get_cuda_rng_tracker,
+#    get_tensor_model_parallel_world_size,
+#    split_tensor_along_last_dim,
+#)
 
 try:
     import xformers.ops as xops
