@@ -206,6 +206,8 @@ class GeneratorInterface:
         stop: Optional[List[int]] = None,
         seed: Optional[int] = None,
         use_cuda: bool = True,
+        seq_gen_cls = None,
+        extra_gen_cls_kwargs = {}
     ):
         """
         Generate from sequences.
@@ -281,12 +283,16 @@ class GeneratorInterface:
             self.cfg.generation.max_len_b = total_max_tokens
             self.cfg.generation.max_len_a = 0
 
+            gen_kwargs = {"stop": stop, "need_logprobs": need_logprobs}
+            gen_kwargs.update(extra_gen_cls_kwargs)
+            
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
-                extra_gen_cls_kwargs={"stop": stop, "need_logprobs": need_logprobs},
+                seq_gen_cls,
+                extra_gen_cls_kwargs=gen_kwargs,
             )
 
             # okay actually generate
