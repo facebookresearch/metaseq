@@ -5,7 +5,7 @@
 
 import os
 
-MAX_SEQ_LEN = 8192
+MAX_SEQ_LEN = 4096
 BATCH_SIZE = 2048  # silly high bc we dynamically batch by MAX_BATCH_TOKENS
 MAX_BATCH_TOKENS = 8192
 DEFAULT_PORT = 6010
@@ -36,7 +36,7 @@ CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval"
 # tokenizer files
 #BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 #BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "wiki_5960.pt" )  #mp_5960 "wiki_5960.pt"
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "wiki_7_long.pt" )  #mp_5960 "wiki_5960.pt"
 
 
 LAUNCH_ARGS = [
