@@ -36,7 +36,7 @@ CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval"
 # tokenizer files
 #BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 #BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "obelisc.pt" )  #mp_5960 "wiki_5960.pt" #wiki_7_long.pt
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "wiki_5960.pt" )  #mp_5960 "wiki_5960.pt" #wiki_7_long.pt
 
 
 LAUNCH_ARGS = [

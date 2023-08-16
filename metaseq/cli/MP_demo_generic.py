@@ -249,8 +249,8 @@ def generate_mixed(
     progress=None,
 ):
     set_seed(SEED)
-    min_tokens = 1
-    max_tokens = 256
+    min_tokens = 64
+    max_tokens = 512
     
     
     text_conditional = torch.tensor(form_prompt_text_only(query), dtype=torch.long).unsqueeze(0).to("cuda")
@@ -323,8 +323,8 @@ def generate_mixed(
                     image = task.tokenizer.decode(image, skip_special_tokens=False)
                     image = extract_image_tokens(image)
                     image_full = image_model.decode(image)
-                    #all_images_base64.append(image_to_base64(add_sr(image_full, last_text)))
-                    all_images_base64.append(image_to_base64(image_full))
+                    all_images_base64.append(image_to_base64(add_sr(image_full, last_text)))
+                    #all_images_base64.append(image_to_base64(image_full))
                     current_tokens = []
                     
             is_image_modality = not is_image_modality  # Flip modality
