@@ -346,6 +346,7 @@ def form_prompt_text_only(text):
         [task.eod]
         + text_tokenized
         +[task.cm3_sentinel_tokens_ind[0]]
+        +[task.eod]
     )
     all_tokens = torch.tensor(all_tokens, dtype=torch.long)
     return all_tokens
