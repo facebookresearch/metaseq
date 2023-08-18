@@ -231,7 +231,7 @@ def generate(args, rank, nshard):
     beam_size_per_shard = (
         args.beam_size + args.nshard_per_beam - 1
     ) // args.nshard_per_beam
-    args.temperature = 1.3
+    args.temperature = 1.0
 
     if args.contrastive:
         decoder = SelfContrastiveImageSequenceGenerator(
@@ -419,7 +419,7 @@ def cli_main():
     parser.add_argument(
         "--num-retrieved-doc", type=int, default=2, help="number of retrieved documents"
     )
-    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/test_FID_1.3/", help="output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/home/aiema/test_FID_1/", help="output directory")
     parser.add_argument("--nshard", type=int, default=8, help="number of shards")
     parser.add_argument("--slurm", action="store_true", help="running on slurm")
     parser.add_argument("--partition", type=str, default="cm3z", help="slurm partition")
@@ -442,7 +442,7 @@ def cli_main():
     parser.add_argument(
         "--n_examples",
         type=int,
-        default=1000,
+        default=500,
         help="number of examples, set it smaller for faster compute",
     )
     parser.add_argument("--dtype", type=str, default="fp32")

@@ -283,7 +283,8 @@ def generate_mixed(
             [ind for x, ind in task.source_dictionary.indices.items() if "IMGIMG" in x]
         ),
         racm3_break=task.cm3_break_ind,
-        cm3_sentinel = task.cm3_sentinel_tokens_ind[0]
+        cm3_sentinel = task.cm3_sentinel_tokens_ind[0], 
+        tokenizer = task.tokenizer
         
     ).cuda()
     
