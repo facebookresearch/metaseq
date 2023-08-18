@@ -750,9 +750,10 @@ def load_model_ensemble_and_task(
             # emb_key = "decoder.embed_tokens.weight"
             # if emb_key in state["model"]: #and oproj_key not in state["model"]:
             #     state["model"][oproj_key] = state["model"][emb_key]
-            del state["model"]["decoder.output_projection.weight"]
-            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
-            
+            if "decoder.output_projection.weight" in state["model"]:
+                del state["model"]["decoder.output_projection.weight"]
+                state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+                
             if task is None:
                 task = tasks.setup_task(cfg.task)
 
@@ -765,9 +766,10 @@ def load_model_ensemble_and_task(
                 # build model for ensemble
                 model = task.build_model(cfg.model, is_joint=joint)
                 
-            del state["model"]["decoder.output_projection.weight"]
-            state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
-            
+            if "decoder.output_projection.weight" in state["model"]:    
+                del state["model"]["decoder.output_projection.weight"]
+                state["model"]["decoder.output_projection.weight"] = state["model"]["decoder.embed_tokens.weight"]
+                
             model.load_state_dict(state["model"], strict=strict)
             logger.info("Done loading state dict")
             # reset state so it gets loaded for the next model in ensemble
