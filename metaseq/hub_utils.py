@@ -283,11 +283,12 @@ class GeneratorInterface:
             self.cfg.generation.max_len_b = total_max_tokens
             self.cfg.generation.max_len_a = 0
 
-            gen_kwargs = {"stop": stop, "need_logprobs": need_logprobs}
-            gen_kwargs.update(extra_gen_cls_kwargs)
             
             logger.info(f"Preparing generator with settings {self.cfg.generation}")
             need_logprobs = True if logprobs > 0 else False
+            gen_kwargs = {"stop": stop, "need_logprobs": need_logprobs}
+            gen_kwargs.update(extra_gen_cls_kwargs)
+            
             generator = self.task.build_generator(
                 self.models,
                 self.cfg.generation,
