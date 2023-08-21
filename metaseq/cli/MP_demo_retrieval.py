@@ -249,8 +249,8 @@ def generate_mixed(
     progress=None,
 ):
     set_seed(SEED)
-    min_tokens = 64
-    max_tokens = 512
+    min_tokens = 128
+    max_tokens = 1024
     
     
     text_conditional = torch.tensor(form_prompt_text_only(query), dtype=torch.long).unsqueeze(0).to("cuda")
