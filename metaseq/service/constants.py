@@ -31,12 +31,12 @@ MAX_BEAM = 16
 #     # reshard-model_part-7.pt
     
     
-CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/empty"
+CHECKPOINT_FOLDER = "/fsx-llm/aiema/checkpoints/cross/eval"
 
 # tokenizer files
 #BPE_MERGES = os.path.join(CHECKPOINT_FOLDER, "gpt2-merges.txt")
 #BPE_VOCAB = os.path.join(CHECKPOINT_FOLDER, "gpt2-vocab.json")
-MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "consolidated.pt" )  #mp_5960 "wiki_5960.pt" #wiki_7_long.pt #obelisc
+MODEL_FILE = os.path.join(CHECKPOINT_FOLDER, "pretrain_1200.pt" )  #mp_5960 "wiki_5960.pt" #wiki_7_long.pt #obelisc
 
 
 LAUNCH_ARGS = [
