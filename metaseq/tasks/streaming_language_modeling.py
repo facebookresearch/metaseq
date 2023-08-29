@@ -257,9 +257,9 @@ class StreamingLanguageModelingTask(LegacyTask):
 
         self.has_cm3 = args.language_modeling_type in ["cm3", "racm3"]
         self.has_retrieval = args.language_modeling_type == "racm3"
+        self._build_cm3_special_tokens()
         if self.has_cm3:
             self._check_cm3_parameterization()
-            self._build_cm3_special_tokens()
             self.cm3_sentinel_type = self.args.cm3_mode
 
         final_vocab_size = args.final_vocab_size
