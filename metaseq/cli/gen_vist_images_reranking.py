@@ -40,8 +40,6 @@ from metaseq import checkpoint_utils, file_utils
 from metaseq.service.utils import build_logger
 from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap
 
-from itertools import islice
-
 import importlib
 
 import re
@@ -218,7 +216,7 @@ def generate(args):
         vist_data = json.load(f)
         story_ids = list(vist_data['annotations'].keys())
 
-    for story_idx, (story_id, story_data) in tqdm(enumerate(islice(vist_data['annotations'].items(), 2000, 2500)), total=len(vist_data['annotations'])):
+    for story_idx, (story_id, story_data) in tqdm(enumerate(vist_data['annotations'].items()), total=len(vist_data['annotations'])):
         # Load all images except the last (we're generating the last one)
         image_paths = [os.path.join(vist_image_dir, s['image_id'] + '.png') for s in story_data][:-1]
         gt_image_id = story_data[-1]['image_id']
@@ -265,7 +263,8 @@ def generate(args):
                 -1, scores.size(2)
             )
             
-          
+            if(story_idx==2):
+                break
         # if args.clip_rerank:
         #     tmp_dir = tempfile.mkdtemp()
         #     output_fns = [f"{tmp_dir}/{x}.jpg" for x in range(args.beam_size)]
@@ -273,17 +272,17 @@ def generate(args):
         #     output_fns = [
         #         f"{args.output_dir}/{x}/{line_index}.jpg" for x in range(args.beam_size)
         #     ]
-            if  torch.distributed.get_rank() == 0:
-                for i, image_beam in enumerate(tokens.cpu().numpy().tolist()):
-                    image = task.tokenizer.decode(image_beam, skip_special_tokens=False)
-                    image = extract_image_tokens(image)
-                    image = image[:1024]
-                    # output_fn = f"{args.output_dir}/{i}/{line_index}.jpg"
-                    with open(os.path.join(output_dir, f'{gt_image_id}.png'), 'wb') as f:
-                        image_model.decode(image).save(f)
-                        print("Saving to", os.path.join(output_dir, f'{gt_image_id}.png'))
 
-            dist.barrier()
+            for i, image_beam in enumerate(tokens.cpu().numpy().tolist()):
+                image = task.tokenizer.decode(image_beam, skip_special_tokens=False)
+                image = extract_image_tokens(image)
+                image = image[:1024]
+                # output_fn = f"{args.output_dir}/{i}/{line_index}.jpg"
+                with open(os.path.join(output_dir, f'{gt_image_id}.png'), 'wb') as f:
+                    image_model.decode(image).save(f)
+                    print("Saving to", os.path.join(output_dir, f'{gt_image_id}.png'))
+
+            
         # if args.clip_rerank:
         #     scores = clip_scorer.get_scores(output_fns, [text])
         #     prev_indexes = np.argsort(scores.reshape(-1)).tolist()[::-1]

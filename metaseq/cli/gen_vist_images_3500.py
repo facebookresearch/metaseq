@@ -218,7 +218,7 @@ def generate(args):
         vist_data = json.load(f)
         story_ids = list(vist_data['annotations'].keys())
 
-    for story_idx, (story_id, story_data) in tqdm(enumerate(islice(vist_data['annotations'].items(), 2000, 2500)), total=len(vist_data['annotations'])):
+    for story_idx, (story_id, story_data) in tqdm(enumerate(islice(vist_data['annotations'].items(), 3500, 4000)), total=len(vist_data['annotations'])):
         # Load all images except the last (we're generating the last one)
         image_paths = [os.path.join(vist_image_dir, s['image_id'] + '.png') for s in story_data][:-1]
         gt_image_id = story_data[-1]['image_id']
@@ -273,7 +273,8 @@ def generate(args):
         #     output_fns = [
         #         f"{args.output_dir}/{x}/{line_index}.jpg" for x in range(args.beam_size)
         #     ]
-            if  torch.distributed.get_rank() == 0:
+
+            if torch.distributed.get_rank() == 0:
                 for i, image_beam in enumerate(tokens.cpu().numpy().tolist()):
                     image = task.tokenizer.decode(image_beam, skip_special_tokens=False)
                     image = extract_image_tokens(image)
