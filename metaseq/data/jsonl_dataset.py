@@ -56,11 +56,12 @@ class JsonlDataset(torch.utils.data.Dataset):
         # TODO(susan): Fix this fairseq reference. _build_index fails otherwise.
         self.cache = Path(f"{resolved_path}.fairseq.idx.npy")
         # only build the cache in on the primary worker to prevent overloading nfs
-        if distributed_utils.get_global_rank() != 0:
-            distributed_utils.global_barrier()
         if self.cache.exists() and not recache:
             logger.info(f"Loading up cache: {self.cache}")
-            self.offsets = np.load(self.cache, allow_pickle=True)
+            # Loading on rank 0 and distributing, for speed. Reading the same file on all ranks causes significant slowdown
+            if distributed_utils.get_global_rank() == 0:
+                self.offsets = torch.from_numpy(np.load(self.cache, allow_pickle=True))
+            self.offsets = distributed_utils.broadcast_tensors([self.offsets] if distributed_utils.get_global_rank() == 0 else None, src_rank=0, group=distributed_utils.get_global_group())[0]
         elif distributed_utils.get_global_rank() == 0:
             self.offsets = self._build_index(path)
             np.save(self.cache, self.offsets, allow_pickle=False)
