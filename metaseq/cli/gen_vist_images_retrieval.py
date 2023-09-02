@@ -184,6 +184,15 @@ def generate(args):
     rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
     world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
     
+    total_stories = len(vist_data['annotations'])
+    stories_per_rank = total_stories // world_size
+    
+    print(f"total_stories {total_stories}")
+    print(f"stories per rank{stories_per_rank}")
+    # Calculate the start and end index for each rank
+    start_idx = rank * stories_per_rank
+    end_idx = start_idx + stories_per_rank if rank != world_size - 1 else None
+
     decoder = ImageSequenceGenerator(
         ra_cm3_models[0],
         task.source_dictionary,
@@ -199,17 +208,6 @@ def generate(args):
     with open(vist_data_path, 'r') as f:
         vist_data = json.load(f)
         story_ids = list(vist_data['annotations'].keys())
-        
-    
-    total_stories = len(vist_data['annotations'])
-    stories_per_rank = total_stories // world_size
-    
-    print(f"total_stories {total_stories}")
-    print(f"stories per rank{stories_per_rank}")
-    # Calculate the start and end index for each rank
-    start_idx = rank * stories_per_rank
-    end_idx = start_idx + stories_per_rank if rank != world_size - 1 else None
-
 
     for story_idx, (story_id, story_data) in tqdm(enumerate(islice(vist_data['annotations'].items(), start_idx, end_idx)), total=len(vist_data['annotations'])):
         # Load all images except the last (we're generating the last one)
@@ -273,7 +271,7 @@ def generate(args):
 
 def worker_main(cfg: MetaseqConfig, args=None):
     #os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    #torch.set_num_threads(8)
+    torch.set_num_threads(8)
     global model
     # make sure generations are stochastic since we have many workers
     torch.manual_seed(random.randint(1, 20000))
