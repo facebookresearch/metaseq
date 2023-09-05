@@ -62,6 +62,7 @@ from sequence_generators import (
 )
 
 
+from retrieval import Retriever
 
 if "METASEQ_SERVICE_CONSTANTS_MODULE" not in os.environ:
     constants_module = importlib.import_module("metaseq.service.constants")
@@ -81,13 +82,75 @@ model_factory = {
     "760m_178k": "/data/cm3z/liliyu/data/trained_models/ra_cm3/760m/ckpt-178000/checkpoint_178000_consolidated.pt",
 }
 
+shutterstock_ret_kwargs = {
+    "retrieve_meta": "/fsx-onellm/olggol/data/mscoco_racm3_data/sst_retrieval/collate_0_0/reclip_text_jsonl/final.jsonl",
+    "faiss_index": "/fsx-onellm/olggol/data/mscoco_racm3_data/sst_retrieval/collate_0_0/reclip_text_index/text.index",
+    # "retrieve_meta": "/fsx-cm3/liliyu/data/mscoco_racm3_data/sst_retrieval/collate_0_0/reclip_text_jsonl/final.jsonl",
+    # "faiss_index": "/fsx-cm3/liliyu/data/mscoco_racm3_data/sst_retrieval/collate_0_0/reclip_text_index/text.index",
+    "preprocess_text_type": "mscoco",
+}
+
+retriever = Retriever(**shutterstock_ret_kwargs)
+image_model = VqganTokenizer()
+
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
+        
+        
+def parse_doc(doc):
+    obj = re.match(r'<img alt="(.*?)" src="(I\d.*?)">', doc)
+    text, image = obj.group(1), obj.group(2)
+    return text, image
 
+
+def tokenizer_encode(text: str, add_cm3_break_ind=True, add_eod=True):
+    to_add = [task.cm3_break_ind] if add_cm3_break_ind else []
+    to_prepend = [task.eod] if add_eod else []
+    text_encoded = [] if len(text) == 0 else task.tokenizer.encode(text).ids
+
+    return torch.tensor(to_prepend + text_encoded + to_add, dtype=torch.long)
+
+
+def tokenize_text(text):
+    text_indexes = task.tokenizer.encode(text.rstrip()).ids
+    return text_indexes
+
+
+def tokenize_image(image):
+    image = image.rstrip() + " "
+    image = map_old_image_token_to_new_image_token(image)
+    image_indexes = task.tokenizer.encode(image.rstrip()).ids
+    return image_indexes
+
+def form_prompt(decoder, query, query1, query2, image1, image2, image_type="path"):
+    if image_type == "path":
+        tokenize_func = lambda x: " ".join(image_model.encode(x).ids)
+    elif image_type == "token":
+        tokenize_func = lambda x: x
+    all_tokens, doc1, doc2 = [], [], []
+    if image1 is not None and query1 is not None:
+        image1 = tokenize_func(image1)
+        doc1 = (
+            tokenize_text(query1)
+            + [task.cm3_break_ind]
+            + tokenize_image(image1)
+            + [task.cm3_break_ind]
+        )
+    if image2 is not None and query2 is not None:
+        image2 = tokenize_func(image2)
+        doc2 = (
+            tokenize_text(query2)
+            + [task.cm3_break_ind]
+            + tokenize_image(image2)
+            + [task.cm3_break_ind]
+        )
+    query_token = tokenize_text(query) + [task.cm3_break_ind]
+    all_tokens = [task.eod] + doc1 + doc2 + query_token
+    return all_tokens
 
 def load_model(cfg):
     #global models
@@ -160,29 +223,27 @@ def load_model(cfg):
     
     
 
-def form_prompts(text, task, args):
-    # np.random.shuffle(ra_docs)
-    text_encoded = torch.cat(
-        [torch.LongTensor([task.eod])]
-        + [torch.LongTensor(task.tokenizer.encode(text).ids + [task.cm3_break_ind])]
-    )
+# def form_prompts(text, task, args):
+#     # np.random.shuffle(ra_docs)
+#     text_encoded = torch.cat(
+#         [torch.LongTensor([task.eod])]
+#         + [torch.LongTensor(task.tokenizer.encode(text).ids + [task.cm3_break_ind])]
+#     )
     
-    text_unconditional = torch.LongTensor(
-        [task.eod, task.cm3_sentinel_tokens_ind[0], task.cm3_break_ind]
-    )
-    return text_encoded, text_unconditional
+#     text_unconditional = torch.LongTensor(
+#         [task.eod, task.cm3_sentinel_tokens_ind[0], task.cm3_break_ind]
+#     )
+#     return text_encoded, text_unconditional
 
 
 def generate(args):
 
     print(f"Loading VQ-GAN")
-    image_model = VqganTokenizer()
+    #image_model = VqganTokenizer()
     output_dir = "/data/home/aiema/gill/evals/gill_vist_outputs_test_2"
    
     vist_image_dir = '/data/home/aiema/gill/evals/sis/val_images/'
     vist_data_path = '/data/home/aiema/gill/evals/sis/val_formatted.json'
-    rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
-    world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
     
     decoder = ImageSequenceGenerator(
         ra_cm3_models[0],
@@ -190,7 +251,7 @@ def generate(args):
         None,
         1,
         temperature=1.0,
-        cfg_weight=3.5,
+        cfg_weight=4,
         dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
     )
 
@@ -200,18 +261,17 @@ def generate(args):
         vist_data = json.load(f)
         story_ids = list(vist_data['annotations'].keys())
         
-    
-    total_stories = len(vist_data['annotations'])
-    stories_per_rank = total_stories // world_size
-    
-    print(f"total_stories {total_stories}")
-    print(f"stories per rank{stories_per_rank}")
+    text_unconditional = torch.tensor(
+        [
+            task.eod,
+            task.cm3_sentinel_tokens_ind[0],
+            task.cm3_break_ind,
+        ],
+        dtype=torch.long,
+    )
     # Calculate the start and end index for each rank
-    start_idx = rank * stories_per_rank
-    end_idx = start_idx + stories_per_rank if rank != world_size - 1 else None
-
-
-    for story_idx, (story_id, story_data) in tqdm(enumerate(islice(vist_data['annotations'].items(), start_idx, end_idx)), total=len(vist_data['annotations'])):
+    
+    for story_idx, (story_id, story_data) in enumerate(islice(vist_data['annotations'].items(), 0, 500)):
         # Load all images except the last (we're generating the last one)
         image_paths = [os.path.join(vist_image_dir, s['image_id'] + '.png') for s in story_data][:-1]
         gt_image_id = story_data[-1]['image_id']
@@ -243,8 +303,20 @@ def generate(args):
                 print(input_data)
 
             result_dicts = []
+            #ret_query = input_data[:77]
             
-            text_encoded, text_unconditional = form_prompts(input_data, task, args)
+            ret_docs = retriever.search(input_data)
+            query1, image1 = parse_doc(ret_docs[0])
+            query2, image2 = parse_doc(ret_docs[1])
+            image_type = "token"
+            
+                
+            text_encoded = torch.tensor(
+                form_prompt(
+                    decoder, input_data, query1, query2, image1, image2, image_type=image_type
+                ),
+                dtype=torch.long,
+            )
             result_dict = decoder(
                 text_encoded.unsqueeze(0), text_unconditional.unsqueeze(0)
             )
@@ -256,18 +328,14 @@ def generate(args):
             tokens, scores = tokens.view(-1, tokens.size(2)), scores.view(
                 -1, scores.size(2)
             )
-            
-            
-            for i, image_beam in enumerate(tokens.cpu().numpy().tolist()):
-                image = task.tokenizer.decode(image_beam, skip_special_tokens=False)
-                image = extract_image_tokens(image)
-                image = image[:1024]
-                # output_fn = f"{args.output_dir}/{i}/{line_index}.jpg"
-                with open(os.path.join(output_dir, f'{gt_image_id}.png'), 'wb') as f:
-                    image_model.decode(image).save(f)
-                    print("Saving to", os.path.join(output_dir, f'{gt_image_id}.png'))
+                
+        for i, image_beam in enumerate(tokens.cpu().numpy().tolist()):
+            image = task.tokenizer.decode(image_beam, skip_special_tokens=False)
+            image = extract_image_tokens(image)
+            image = image[:1024]
+            os.makedirs(os.path.dirname(os.path.join(output_dir, f'{gt_image_id}.png')), exist_ok=True)
+            image_model.decode(image).save(os.path.join(output_dir, f'{gt_image_id}.png'))
 
-           
     return 
 
 
@@ -279,20 +347,8 @@ def worker_main(cfg: MetaseqConfig, args=None):
     torch.manual_seed(random.randint(1, 20000))
     torch.cuda.manual_seed(random.randint(1, 20000))
     model = load_model(cfg)
-    
-    
-    if torch.distributed.is_initialized():
-        request_object = distributed_utils.broadcast_object(
-            None, src_rank=0, group=distributed_utils.get_global_group()
-        )
-    
-    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        logger.info(f"Generate locally")
-        generate(args)
-    else:
-        logger.info(f"Looping engaged!")
-        generate(args)
-        
+    generate(args)
+   
     
 
 def cli_main():
