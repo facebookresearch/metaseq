@@ -341,16 +341,27 @@ def generate(args):
 
 def worker_main(cfg: MetaseqConfig, args=None):
     #os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    #torch.set_num_threads(8)
+    torch.set_num_threads(8)
     global model
     # make sure generations are stochastic since we have many workers
-    torch.manual_seed(random.randint(1, 20000))
-    torch.cuda.manual_seed(random.randint(1, 20000))
+    torch.manual_seed(31)
+    torch.cuda.manual_seed(31)
     model = load_model(cfg)
-    generate(args)
-   
+     
+    if torch.distributed.is_initialized():
+        request_object = distributed_utils.broadcast_object(
+            None, src_rank=0, group=distributed_utils.get_global_group()
+        )
     
-
+    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
+        logger.info(f"Generate locally")
+        generate(args)
+    else:
+        logger.info(f"Looping engaged!")
+        generate(args)
+        
+        
+        
 def cli_main():
     """
     Command line interactive.
