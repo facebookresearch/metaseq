@@ -11,6 +11,9 @@ from torch.nn.parallel import DistributedDataParallel
 from metaseq.distributed import (
     ModuleProxyWrapper,
 )
+from metaseq.distributed.legacy_distributed_data_parallel import (
+    LegacyDistributedDataParallel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,14 @@ def DistributedModel(args, model, process_group, device):
             bucket_cap_mb=args.bucket_cap_mb,
             process_group=process_group,
             find_unused_parameters=args.find_unused_parameters,
+        )
+        # forward missing getattr and state_dict/load_state_dict to orig model
+        wrapped_model = ModuleProxyWrapper(wrapped_model)
+    elif args.ddp_backend in {"no_c10d", "legacy_ddp"}:
+        wrapped_model = LegacyDistributedDataParallel(
+            module=model.to(device),
+            buffer_size=2**28,
+            process_group=process_group,
         )
         # forward missing getattr and state_dict/load_state_dict to orig model
         wrapped_model = ModuleProxyWrapper(wrapped_model)
