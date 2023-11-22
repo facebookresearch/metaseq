@@ -2,6 +2,7 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
+from pathlib import Path
 
 try:
     from collections.abc import Iterable
@@ -278,6 +279,8 @@ def _find_extra_valid_paths(dataset_path: str) -> set:
     all_valid_paths = set()
     for sub_dir in paths:
         if "://" in sub_dir:
+            continue
+        if not Path(sub_dir).is_dir():
             continue
         contents = PathManager.ls(sub_dir)
         valid_paths = [c for c in contents if re.match("valid*[0-9].*", c) is not None]
