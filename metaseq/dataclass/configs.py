@@ -253,6 +253,10 @@ class DistributedTrainingConfig(MetaseqDataclass):
         default="none",
         metadata={"help": "If set to fully_sharded, will fsdp wrap task."},
     )
+    criterion_ddp_backend: TASK_DDP_BACKEND_CHOICES = field(
+        default="none",
+        metadata={"help": "If set to fully_sharded, will fsdp wrap task."},
+    )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}
     )
@@ -374,6 +378,9 @@ class DatasetConfig(MetaseqDataclass):
     )
     validate_interval_updates: int = field(
         default=0, metadata={"help": "validate every N updates"}
+    )
+    validate_on_first_step: int = field(
+        default=-1, metadata={"help": "validate on first step. default not to validate."}
     )
     validate_after_updates: int = field(
         default=0, metadata={"help": "dont validate until reaching this many updates"}

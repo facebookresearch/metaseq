@@ -87,6 +87,8 @@ def fsdp_enable_wrap(
     cfg: DistributedTrainingConfig, use_sharded_state: bool = False, **kwargs
 ):
     try:
+        # from torch.distributed.fsdp.wrap import enable_wrap
+        # from torch.distributed.fsdp import MixedPrecision
         from fairscale.nn import enable_wrap
     except ImportError:
         raise ImportError(

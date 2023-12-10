@@ -113,7 +113,7 @@ def delete_old_checkpoint_files(cfg: CheckpointConfig, end_of_epoch: bool, suffi
     if not end_of_epoch and cfg.keep_last_updates > 0:
         # remove old checkpoints; checkpoints are sorted in descending order
         checkpoints = checkpoint_paths(
-            cfg.save_dir, pattern=r"checkpoint_\d+_(\d+){}\.pt".format(suffix)
+            cfg.save_dir, pattern=r"checkpoint_(\d+){}\.pt".format(suffix)
         )
         for old_chk in checkpoints[cfg.keep_last_updates :]:
             if os.path.lexists(old_chk):

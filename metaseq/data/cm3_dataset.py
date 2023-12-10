@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import numpy as np
+import random
 import torch
 
 from typing import List, Optional, Tuple
@@ -76,6 +77,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         to_skip=0,
         permute_documents=True,
         source_target=False,
+        percent_full_document_rotation: float = 0.0
     ):
         super().__init__(
             dataset,
@@ -106,6 +108,7 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         self.sentinel_fixed = self.sentinel_method == "fixed"
         self.allow_rotation_across_eod = allow_rotation_across_eod
         self.eod = eod
+        self.percent_full_document_rotation = percent_full_document_rotation
 
     def get_sentinel(self, i):
         return self.sentinel_tokens[i]
@@ -139,7 +142,8 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             index = index + size + 1
         return target
 
-    def get_spans_to_mask(self, document_length: int) -> List[Tuple[int, int]]:
+    def get_spans_to_mask(self, document_length: int, document_boundaries: List[Tuple[int, int]]) -> List[
+        Tuple[int, int]]:
         # Ok, we do not use a budget here but instead
         # our goal is to sample from ~ U[0,1] in the case of len(sentinel_tokens) = 1
         # If len(sentinel_tokens) > 1 we try to find len(sentinel_tokens) non intersecting spans
@@ -156,11 +160,14 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
         if len_sentinel_tokens == 0:
             return None
         if len_sentinel_tokens == 1:
+            if np.random.random() < self.percent_full_document_rotation:
+                return [random.choice(document_boundaries)]
+
             start, end = np.random.uniform(size=2)
             if end < start:
                 start, end = end, start
             # round down
-            start = int(start * document_length)
+            start = max(1, int(start * document_length))
             # round up
             end = int(end * document_length + 0.5)
             if start == end:
@@ -168,6 +175,8 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             else:
                 assert start < end
                 return [(start, end)]
+        if len_sentinel_tokens < len(document_boundaries) and np.random.random() < self.percent_full_document_rotation:
+            return random.sample(document_boundaries, len_sentinel_tokens)
 
         # Let's implement the general case. We will create len(self.sentinel_tokens) ** 2 possible candidates
         # And we will filter one by one to insure no intersections. If we can't find anything then so be it.
@@ -200,24 +209,31 @@ class CausalMaskedDocumentToSequenceDataset(DocumentToSequenceDataset):
             boundaries = boundaries + [item.size(0)]
         spans = []
         for i in range(1, len(boundaries)):
-            spans.append((boundaries[i - 1], boundaries[i]))
+            spans.append((boundaries[i - 1] + 1, boundaries[i]))
         return spans
+
+    def cm3_shuffle(self, item):
+        assert len(item) > 0
+        document_boundaries = self.get_document_boundaries(item)
+        spans = self.get_spans_to_mask(len(item), document_boundaries)
+        if not self.allow_rotation_across_eod and spans is not None:
+            spans = adjust_spans(spans, document_boundaries)
+        if spans is None:
+            return item
+        else:
+            spans = self.get_ordered_spans(spans)
+            causal_source = self.sentinel_masking(item, spans)
+            causal_masked = self.sentinel_targets(item, spans)
+
+            total_count = len(causal_source) + len(causal_masked)
+            total_diff = total_count - self.tokens_per_sample
+            total_causal_length = len(causal_source) - total_diff
+            return torch.cat([
+                causal_source[:total_causal_length],
+                causal_masked
+            ])[: self.tokens_per_sample]  # EOSS tokens can add just enough tokens to get off by 1-2.
 
     def __iter__(self):
         for packed_item in super().__iter__():
-            item = packed_item["block"]
-            assert len(item) > 0
-            spans = self.get_spans_to_mask(len(item))
-            if not self.allow_rotation_across_eod:
-                document_boundaries = self.get_document_boundaries(item)
-                spans = adjust_spans(spans, document_boundaries)
-            if spans is None:
-                yield packed_item
-            else:
-                spans = self.get_ordered_spans(spans)
-                causal_source = self.sentinel_masking(item, spans)
-                causal_masked = self.sentinel_targets(item, spans)
-                packed_item["block"] = torch.cat([causal_source, causal_masked])[
-                    : self.tokens_per_sample
-                ]  # EOSS tokens can add just enough tokens to get off by 1-2.
-                yield packed_item
+            packed_item["block"] = self.cm3_shuffle(packed_item["block"])
+            yield packed_item

@@ -36,7 +36,7 @@ from metaseq import (
 from metaseq.data import iterators, data_utils
 from metaseq.data.plasma_utils import PlasmaStore
 from metaseq.dataclass.utils import convert_namespace_to_omegaconf
-from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, utils as distributed_utils
+from metaseq.distributed import fsdp_enable_wrap, fsdp_wrap, FullyShardedDataParallel, utils as distributed_utils
 from metaseq.file_io import PathManager
 from metaseq.logging import meters, metrics, progress_bar
 from metaseq.trainer import Trainer
@@ -144,15 +144,36 @@ def main(cfg: DictConfig) -> None:
             cfg.distributed_training,
             use_sharded_state=cfg.distributed_training.use_sharded_state,
         ):
-            model = fsdp_wrap(
-                task.build_model(cfg.model),
-                process_group=distributed_utils.get_data_parallel_group(),
-            )
+            model = task.build_model(cfg.model)
+            if not isinstance(model, FullyShardedDataParallel):
+                model = fsdp_wrap(
+                    model,
+                    process_group=distributed_utils.get_data_parallel_group(),
+                )
     else:
         model = task.build_model(cfg.model)
 
-    # TODO[Susan]: FSDP on criterion?
-    criterion = task.build_criterion(cfg.criterion)
+    if cfg.distributed_training.criterion_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
+        orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # Clobber memory_efficient_fp16 and fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
+
+        with fsdp_enable_wrap(
+                cfg.distributed_training,
+                use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
+            criterion = task.build_criterion(cfg.criterion)
+
+        # Reset memory_efficient_fp16 and fp32_reduce_scatter values.
+        cfg.distributed_training.memory_efficient_fp16 = orig_memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = orig_fp32_reduce_scatter
+    else:
+        criterion = task.build_criterion(cfg.criterion)
+
 
     logger.info(model)
     logger.info("task: {}".format(task.__class__.__name__))
@@ -482,6 +503,10 @@ def validate_and_save(
             and num_updates > 0
             and num_updates % cfg.dataset.validate_interval_updates == 0
             and was_successful_step
+        )
+        or (
+                num_updates == cfg.dataset.validate_on_first_step
+                and was_successful_step
         )
     ) and not cfg.dataset.disable_validation
 
