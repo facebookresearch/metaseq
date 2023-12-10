@@ -153,8 +153,27 @@ def main(cfg: DictConfig) -> None:
     else:
         model = task.build_model(cfg.model)
 
-    # TODO[Susan]: FSDP on criterion?
-    criterion = task.build_criterion(cfg.criterion)
+    if cfg.distributed_training.criterion_ddp_backend == "fully_sharded":
+        # As the task is non-trainable, we switch flags to more optimized ones.
+        # See https://github.com/facebookresearch/metaseq/pull/668 for when/why this was added.
+        orig_memory_efficient_fp16 = cfg.distributed_training.memory_efficient_fp16
+        orig_fp32_reduce_scatter = cfg.distributed_training.fp32_reduce_scatter
+        # Clobber memory_efficient_fp16 and fp32_reduce_scatter
+        cfg.distributed_training.memory_efficient_fp16 = cfg.distributed_training.fp16
+        cfg.distributed_training.fp32_reduce_scatter = not cfg.distributed_training.fp16
+
+        with fsdp_enable_wrap(
+                cfg.distributed_training,
+                use_sharded_state=cfg.distributed_training.use_sharded_state,
+        ):
+            criterion = task.build_criterion(cfg.criterion)
+
+        # Reset memory_efficient_fp16 and fp32_reduce_scatter values.
+        cfg.distributed_training.memory_efficient_fp16 = orig_memory_efficient_fp16
+        cfg.distributed_training.fp32_reduce_scatter = orig_fp32_reduce_scatter
+    else:
+        criterion = task.build_criterion(cfg.criterion)
+
 
     logger.info(model)
     logger.info("task: {}".format(task.__class__.__name__))

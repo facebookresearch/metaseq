@@ -253,6 +253,10 @@ class DistributedTrainingConfig(MetaseqDataclass):
         default="none",
         metadata={"help": "If set to fully_sharded, will fsdp wrap task."},
     )
+    criterion_ddp_backend: TASK_DDP_BACKEND_CHOICES = field(
+        default="none",
+        metadata={"help": "If set to fully_sharded, will fsdp wrap task."},
+    )
     bucket_cap_mb: int = field(
         default=25, metadata={"help": "bucket size for reduction"}
     )
