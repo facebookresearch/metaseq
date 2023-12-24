@@ -459,8 +459,8 @@ class Trainer(object):
             )
             state_dict["extra_state"].update(extra_state)
             if self.should_save_checkpoint_on_current_rank:
-                if not hasattr(self, "async_checkpoint"):
-                    self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
+                # if not hasattr(self, "async_checkpoint"):
+                #     self.async_checkpoint = ThreadPoolExecutor(max_workers=1)
 
                 def perform_save():
                     try:
@@ -471,8 +471,9 @@ class Trainer(object):
                         logger.exception(f"Asynchronous save failed: {e}")
 
                 torch.save(state_dict, filename)
-                if async_callback_fn is not None:
-                    self.async_checkpoint.submit(perform_save)
+                perform_save()
+                # if async_callback_fn is not None:
+                #     self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
 
     def load_checkpoint(
