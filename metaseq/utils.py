@@ -355,6 +355,12 @@ def has_parameters(module):
     except StopIteration:
         return False
 
+def has_trainable_parameters(module):
+    try:
+        if next(module.parameters()).requires_grad:
+            return True
+    except StopIteration:
+        return False
 
 def get_rng_state():
     state = {"torch_rng_state": torch.get_rng_state()}

@@ -11,6 +11,7 @@ import contextlib
 import functools
 import logging
 import math
+import numpy as np
 import os
 import re
 import sys
@@ -205,7 +206,7 @@ class Trainer(object):
     @property
     def criterion(self):
         if self._wrapped_criterion is None:
-            if utils.has_parameters(self._criterion) and self.use_distributed_wrapper:
+            if utils.has_trainable_parameters(self._criterion) and self.use_distributed_wrapper:
                 self._wrapped_criterion = models.DistributedModel(
                     self.cfg.distributed_training,
                     self._criterion,
@@ -270,64 +271,88 @@ class Trainer(object):
     def optimizer(self):
         if self._optimizer is None:
             self._build_optimizer()
-        return self._optimizer
+        return self._optimizer[self.get_num_updates() % len(self._optimizer)]
 
     @property
     def lr_scheduler(self):
         if self._lr_scheduler is None:
             self._build_optimizer()  # this will initialize self._lr_scheduler
-        return self._lr_scheduler
+        return self._lr_scheduler[self.get_num_updates() % len(self._optimizer)]
 
     def _build_optimizer(self):
-        params = list(
-            filter(
-                lambda p: p.requires_grad,
-                chain(self.model.parameters(), self.criterion.parameters()),
-            )
-        )
+        params = []
+        lr_factor = []
+        order = []
+        groups = set([p.param_group for p in self.model.parameters() if hasattr(p, "param_group") and p.requires_grad])
+        for group in groups:
+            group_params = [p for p in self.model.parameters() if hasattr(p, "param_group") and p.param_group == group and p.requires_grad]
+            params.append(group_params)
+            lr_factor.append(float(group[group.index('_')+1:]))
+            order.append(int(group[group.index('group')+5:group.index('_')]))
+        no_group_params = [p for p in self.model.parameters() if not hasattr(p, "param_group") and p.requires_grad]
+        if len(no_group_params) > 0:
+            params.append(no_group_params)
+            lr_factor.append(1)
+            order.append(max(order)+1 if len(order) > 0 else 1)
 
-        if self.is_fsdp and self.cfg.common.fp16:
-            # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
-            # mostly for the grad scaling. But if we don't have the
-            # --memory-efficient-fp16 flag set, then we're effectively doing
-            # regular --fp16 and can allow the use of optimizers that would
-            # otherwise be unsupported by MemoryEfficientFP16Optimizer.
-            allow_unsupported = not self.cfg.common.memory_efficient_fp16
-            self._optimizer = optim.MemoryEfficientFP16Optimizer.build_optimizer(
-                self.cfg, params, allow_unsupported=allow_unsupported
-            )
-        elif self.cfg.common.fp16:
-            if self.cuda and torch.cuda.get_device_capability(0)[0] < 7:
-                logger.info(
-                    "NOTE: your device does NOT support faster training with --fp16, "
-                    "please switch to FP32 which is likely to be faster"
+        params = [params[idx] for idx in np.argsort(order)]
+        lr_factor = [lr_factor[idx] for idx in np.argsort(order)]
+
+        self._optimizer = []
+        self._lr_scheduler = []
+        for cur_params, cur_lr_factor in zip(params, lr_factor):
+            self.cfg.optimizer.lr[0] *= cur_lr_factor
+            self.cfg.lr_scheduler.lr[0] *= cur_lr_factor
+            self.cfg.lr_scheduler.min_lr *= cur_lr_factor
+            if self.is_fsdp and self.cfg.common.fp16:
+                # FullyShardedDataParallel always uses MemoryEfficientFP16 wrapper,
+                # mostly for the grad scaling. But if we don't have the
+                # --memory-efficient-fp16 flag set, then we're effectively doing
+                # regular --fp16 and can allow the use of optimizers that would
+                # otherwise be unsupported by MemoryEfficientFP16Optimizer.
+                allow_unsupported = not self.cfg.common.memory_efficient_fp16
+                cur_optimizer = optim.MemoryEfficientFP16Optimizer.build_optimizer(
+                    self.cfg, cur_params, allow_unsupported=allow_unsupported
                 )
-            if self.cfg.common.memory_efficient_fp16:
-                self._optimizer = optim.MemoryEfficientFP16Optimizer.build_optimizer(
-                    self.cfg, params
-                )
+            elif self.cfg.common.fp16:
+                if self.cuda and torch.cuda.get_device_capability(0)[0] < 7:
+                    logger.info(
+                        "NOTE: your device does NOT support faster training with --fp16, "
+                        "please switch to FP32 which is likely to be faster"
+                    )
+                if self.cfg.common.memory_efficient_fp16:
+                    cur_optimizer = optim.MemoryEfficientFP16Optimizer.build_optimizer(
+                        self.cfg, cur_params
+                    )
+                else:
+                    cur_optimizer = optim.FP16Optimizer.build_optimizer(self.cfg, cur_params)
             else:
-                self._optimizer = optim.FP16Optimizer.build_optimizer(self.cfg, params)
-        else:
-            if self.cuda and torch.cuda.get_device_capability(0)[0] >= 7:
-                logger.info("NOTE: your device may support faster training with --fp16")
-            self._optimizer = optim.build_optimizer(self.cfg.optimizer, params)
+                if self.cuda and torch.cuda.get_device_capability(0)[0] >= 7:
+                    logger.info("NOTE: your device may support faster training with --fp16")
+                cur_optimizer = optim.build_optimizer(cur_optimizer, cur_params)
 
-        if self.is_fsdp:
-            assert self._optimizer.supports_flat_params, (
-                "--ddp-backend=fully_sharded is only compatible with pointwise "
-                "optimizers (e.g., Adam, AdamW, Adadelta, Adamax, SGD, etc.). "
-                "However, the sharding will result in slightly different results when "
-                "using non-pointwise optimizers (e.g., Adagrad, Adafactor, LAMB)"
+            if self.is_fsdp:
+                assert cur_optimizer.supports_flat_params, (
+                    "--ddp-backend=fully_sharded is only compatible with pointwise "
+                    "optimizers (e.g., Adam, AdamW, Adadelta, Adamax, SGD, etc.). "
+                    "However, the sharding will result in slightly different results when "
+                    "using non-pointwise optimizers (e.g., Adagrad, Adafactor, LAMB)"
+                )
+
+            # We should initialize the learning rate scheduler immediately after
+            # building the optimizer, so that the initial learning rate is set.
+            cur_lr_scheduler = lr_scheduler.build_lr_scheduler(
+                self.cfg.lr_scheduler,
+                cur_optimizer,
             )
+            cur_lr_scheduler.step_update(0)
 
-        # We should initialize the learning rate scheduler immediately after
-        # building the optimizer, so that the initial learning rate is set.
-        self._lr_scheduler = lr_scheduler.build_lr_scheduler(
-            self.cfg.lr_scheduler,
-            self.optimizer,
-        )
-        self._lr_scheduler.step_update(0)
+            self._optimizer.append(cur_optimizer)
+            self._lr_scheduler.append(cur_lr_scheduler)
+
+            self.cfg.optimizer.lr[0] /= cur_lr_factor
+            self.cfg.lr_scheduler.lr[0] /= cur_lr_factor
+            self.cfg.lr_scheduler.min_lr /= cur_lr_factor
 
     @property
     def is_fsdp(self):
@@ -339,31 +364,32 @@ class Trainer(object):
 
     def consolidate_optimizer(self):
         """For OSS, we need to consolidate the state dict."""
-        self._gathered_optim_state = None
-        if hasattr(self.optimizer.optimizer, "consolidate_state_dict"):
-            self.optimizer.optimizer.consolidate_state_dict()
-        elif self.is_fsdp and not self.use_sharded_state:
-            st = self.model.gather_full_optim_state_dict(
-                self.optimizer
-            )  # only returns on rank 0
-            if st is None:
-                st = -1  # sentinel so that workers do not save optimizer.state_dict()
-            self._gathered_optim_state = st
-            assert self._gathered_optim_state is not None
+        self._gathered_optim_state = []
+        for i in range(len(self._optimizer)):
+            if hasattr(self._optimizer[i].optimizer, "consolidate_state_dict"):
+                    self._optimizer[i].optimizer.consolidate_state_dict()
+            elif self.is_fsdp and not self.use_sharded_state:
+                st = self.model.gather_full_optim_state_dict(
+                    self._optimizer[i]
+                )  # only returns on rank 0
+                if st is None:
+                    st = -1  # sentinel so that workers do not save optimizer.state_dict()
+                self._gathered_optim_state.append(st)
+                assert self._gathered_optim_state is not None
+            else:
+                self._gathered_optim_state.append(None)
 
     def state_dict(self, filename, training_finished=False) -> Dict[str, Dict]:
         model_state_dict = self.model.state_dict()
-        optim_state = self._gathered_optim_state or self.optimizer.state_dict()
         model_save_list = [
             (
                 filename,
                 model_state_dict,
-                optim_state,
             )
         ]
         state_dicts = {}
         # This is what gets saved to checkpoints.
-        for filename, model_state_dict, optimizer_state_dict in model_save_list:
+        for filename, model_state_dict in model_save_list:
             state_dict = {
                 "cfg": OmegaConf.to_container(self.cfg)
                 if OmegaConf.is_config(self.cfg)
@@ -371,18 +397,18 @@ class Trainer(object):
                 "model": model_state_dict,
                 "criterion": (
                     self.criterion.state_dict()
-                    if utils.has_parameters(self.criterion)
+                    if utils.has_trainable_parameters(self.criterion)
                     else None
                 ),
-                "optimizer_history": (self._optim_history or [])
+                "optimizer_history": [(self._optim_history or [])
                 + [
                     {
                         "criterion_name": self.get_criterion().__class__.__name__,
-                        "optimizer_name": self.optimizer.__class__.__name__,
-                        "lr_scheduler_state": self.lr_scheduler.state_dict(),
+                        "optimizer_name": self._optimizer[i].__class__.__name__,
+                        "lr_scheduler_state": self._lr_scheduler[i].state_dict(),
                         "num_updates": self.get_num_updates(),
                     }
-                ],
+                ] for i in range(len(self._optimizer))],
                 "task_state": self.task.state_dict() if self.task is not None else {},
                 "extra_state": {
                     "metrics": metrics.state_dict(),
@@ -391,7 +417,7 @@ class Trainer(object):
                 },
             }
 
-            state_dict["last_optimizer_state"] = optimizer_state_dict
+            state_dict["last_optimizer_state"] = [self._gathered_optim_state[i] or self._optimizer[i].state_dict() for i in range(len(self._optimizer))]
 
             if self.cfg.ema.store_ema:
                 # Save EMA model state as extra state
@@ -521,7 +547,7 @@ class Trainer(object):
                 self.model.load_state_dict(state["model"], strict=True)
                 # save memory for later steps
                 del state["model"]
-                if utils.has_parameters(self.get_criterion()):
+                if utils.has_trainable_parameters(self.get_criterion()):
                     self.get_criterion().load_state_dict(
                         state["criterion"], strict=True
                     )
@@ -539,35 +565,37 @@ class Trainer(object):
             # rebuild optimizer after loading model, since params may have changed
             self._build_optimizer()
 
-            # only reload optimizer and lr_scheduler if they match
-            last_optim = self._optim_history[-1]
-            assert (
-                last_optim["criterion_name"] == self.get_criterion().__class__.__name__
-            ), (
-                f"Criterion does not match; please reset the optimizer "
-                f"(--reset-optimizer). {last_optim['criterion_name']} vs "
-                f"{self.get_criterion().__class__.__name__}"
-            )
-            assert last_optim["optimizer_name"] == self.optimizer.__class__.__name__, (
-                f"Optimizer does not match; please reset the optimizer "
-                f"(--reset-optimizer). {last_optim['optimizer_name']} vs "
-                f"{self.optimizer.__class__.__name__}"
-            )
-
-            if not reset_lr_scheduler:
-                self.lr_scheduler.load_state_dict(last_optim["lr_scheduler_state"])
-
-            if not load_on_all_ranks and is_distributed:
-                last_optim_state = self.optimizer.broadcast_global_state_dict(
-                    last_optim_state
+            for i in range(len(self._optimizer)):
+                cur_last_optim_state = last_optim_state[i]
+                # only reload optimizer and lr_scheduler if they match
+                last_optim = self._optim_history[i][-1]
+                assert (
+                    last_optim["criterion_name"] == self.get_criterion().__class__.__name__
+                ), (
+                    f"Criterion does not match; please reset the optimizer "
+                    f"(--reset-optimizer). {last_optim['criterion_name']} vs "
+                    f"{self.get_criterion().__class__.__name__}"
                 )
-            elif self.is_fsdp and not self.use_sharded_state:
-                last_optim_state = self.model.get_shard_from_optim_state_dict(
-                    last_optim_state
+                assert last_optim["optimizer_name"] == self._optimizer[i].__class__.__name__, (
+                    f"Optimizer does not match; please reset the optimizer "
+                    f"(--reset-optimizer). {last_optim['optimizer_name']} vs "
+                    f"{self._optimizer[i].__class__.__name__}"
                 )
-                logger.info(f"FSDP got shard from optim_state for {filename}")
 
-            self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
+                if not reset_lr_scheduler:
+                    self._lr_scheduler[i].load_state_dict(last_optim["lr_scheduler_state"])
+
+                if not load_on_all_ranks and is_distributed:
+                    cur_last_optim_state = self.optimizer.broadcast_global_state_dict(
+                        cur_last_optim_state
+                    )
+                elif self.is_fsdp and not self.use_sharded_state:
+                    cur_last_optim_state = self.model.get_shard_from_optim_state_dict(
+                        cur_last_optim_state
+                    )
+                    logger.info(f"FSDP got shard from optim_state for {filename}")
+
+                self._optimizer[i].load_state_dict(cur_last_optim_state, optimizer_overrides)
             logger.info(f"Loaded optim_state for {filename}")
             self.set_num_updates(last_optim["num_updates"])
 
@@ -826,7 +854,7 @@ class Trainer(object):
         try:
             # reduce gradients across workers
             self.optimizer.all_reduce_grads(self.model)
-            if utils.has_parameters(self.criterion):
+            if utils.has_trainable_parameters(self.criterion):
                 self.optimizer.all_reduce_grads(self.criterion)
 
             # multiply gradients by (data_parallel_size / sample_size) since

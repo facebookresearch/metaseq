@@ -643,6 +643,10 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 
 def _upgrade_state_dict(state):
     """Helper for upgrading old model checkpoints."""
+    # convert to multiple optimizers format
+    if not isinstance(state['last_optimizer_state'], list):
+        state['last_optimizer_state'] = [state['last_optimizer_state']]
+        state['optimizer_history'] = [state['optimizer_history']]
     # add optimizer_history
     if "optimizer_history" not in state:
         state["optimizer_history"] = [
@@ -661,20 +665,23 @@ def _upgrade_state_dict(state):
         del state["epoch"]
         del state["batch_offset"]
         del state["val_loss"]
-    # reduce optimizer history's memory usage (only keep the last state)
-    if "optimizer" in state["optimizer_history"][-1]:
-        state["last_optimizer_state"] = state["optimizer_history"][-1]["optimizer"]
-        for optim_hist in state["optimizer_history"]:
-            del optim_hist["optimizer"]
-    # move best_loss into lr_scheduler_state
-    if "lr_scheduler_state" not in state["optimizer_history"][-1]:
-        state["optimizer_history"][-1]["lr_scheduler_state"] = {
-            "best": state["optimizer_history"][-1]["best_loss"]
-        }
-        del state["optimizer_history"][-1]["best_loss"]
-    # keep track of number of updates
-    if "num_updates" not in state["optimizer_history"][-1]:
-        state["optimizer_history"][-1]["num_updates"] = 0
+
+    for i in range(len(state["optimizer_history"])):
+        # reduce optimizer history's memory usage (only keep the last state)
+        if "optimizer" in state["optimizer_history"][i][-1]:
+            state["last_optimizer_state"][i] = state["optimizer_history"][i][-1]["optimizer"]
+            for optim_hist in state["optimizer_history"][i]:
+                del optim_hist["optimizer"]
+        # move best_loss into lr_scheduler_state
+        if "lr_scheduler_state" not in state["optimizer_history"][i][-1]:
+            state["optimizer_history"][i][-1]["lr_scheduler_state"] = {
+                "best": state["optimizer_history"][i][-1]["best_loss"]
+            }
+            del state["optimizer_history"][i][-1]["best_loss"]
+        # keep track of number of updates
+        if "num_updates" not in state["optimizer_history"][i][-1]:
+            state["optimizer_history"][i][-1]["num_updates"] = 0
+
     # use stateful training data iterator
     if "train_iterator" not in state["extra_state"]:
         state["extra_state"]["train_iterator"] = {
