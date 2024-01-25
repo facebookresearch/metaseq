@@ -470,8 +470,21 @@ class Trainer(object):
                     except Exception as e:
                         logger.exception(f"Asynchronous save failed: {e}")
 
+                # TODO: remove this once MAST solves symlink issue
+                def perform_save_no_symlink():
+                    try:
+                        logger.info(f"Beginning asynchronous torch.save to {filename}")
+                        if files_to_symlink_to:
+                            for other_checkpoint in files_to_symlink_to:
+                                if PathManager.exists(other_checkpoint):
+                                    PathManager.rm(other_checkpoint)
+                                torch.save(state_dict, other_checkpoint)
+                        logger.info(f"Asynchronous torch.save to {filename} complete.")
+                    except Exception as e:
+                        logger.exception(f"Asynchronous save failed: {e}")
+
                 torch.save(state_dict, filename)
-                perform_save()
+                perform_save_no_symlink()
                 # if async_callback_fn is not None:
                 #     self.async_checkpoint.submit(perform_save)
             logger.info(f"Finished saving checkpoint to {filename}")
