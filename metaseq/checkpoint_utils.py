@@ -644,8 +644,9 @@ def _checkpoint_paths(path, pattern=r"checkpoint(\d+)\.pt"):
 def _upgrade_state_dict(state):
     """Helper for upgrading old model checkpoints."""
     # convert to multiple optimizers format
-    if not isinstance(state['last_optimizer_state'], list):
+    if 'last_optimizer_state' in state and not isinstance(state['last_optimizer_state'], list):
         state['last_optimizer_state'] = [state['last_optimizer_state']]
+    if 'optimizer_history' in state:
         state['optimizer_history'] = [state['optimizer_history']]
     # add optimizer_history
     if "optimizer_history" not in state:
