@@ -290,13 +290,21 @@ class Trainer(object):
             lr_factor.append(float(group[group.index('_')+1:]))
             order.append(int(group[group.index('group')+5:group.index('_')]))
         no_group_params = [p for p in self.model.parameters() if not hasattr(p, "param_group") and p.requires_grad]
-        if len(no_group_params) > 0:
-            params.append(no_group_params)
-            lr_factor.append(1)
-            order.append(max(order)+1 if len(order) > 0 else 1)
-
+        
         params = [params[idx] for idx in np.argsort(order)]
         lr_factor = [lr_factor[idx] for idx in np.argsort(order)]
+
+        if len(no_group_params) > 0:
+            #import torch.distributed as dist
+            #if dist.get_rank() == 0:
+            #    import ipdb; 
+            #    ipdb.set_trace()
+            #params.append(no_group_params)
+            #lr_factor.append(1)
+            #order.append(max(order)+1 if len(order) > 0 else 1)
+            logger.warning("Merging no_group_params to group number 1")
+            print(order)
+            params[0] += no_group_params
 
         self._optimizer = []
         self._lr_scheduler = []
@@ -897,16 +905,20 @@ class Trainer(object):
                 # check local gradnorm single GPU case, trigger NanDetector
                 raise FloatingPointError("gradients are Nan/Inf")
             # skip optimizer step if there is a loss spike
-            ewm_loss_ratio = self.skip_spike(
-                logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
-            )
-            # downscale grads by ewm_loss_ratio ** 4
-            if ewm_loss_ratio > 1.0:
-                grad_mult_factor = 1.0 / (ewm_loss_ratio**4)
-                curr_lr = self.optimizer.get_lr()
-                new_lr = curr_lr * grad_mult_factor
-                self.optimizer.set_lr(new_lr)
-                logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
+            if False:
+                ewm_loss_ratio = self.skip_spike(
+                    logging_outputs, self.cfg.optimization.ewm_ratio_to_skip_batch
+                )
+                # downscale grads by ewm_loss_ratio ** 4
+                if ewm_loss_ratio > 1.0:
+                    grad_mult_factor = 1.0 / (ewm_loss_ratio**4)
+                    curr_lr = self.optimizer.get_lr()
+                    new_lr = curr_lr * grad_mult_factor
+                    self.optimizer.set_lr(new_lr)
+                    logger.info(f"Scaling LR by {grad_mult_factor:.2f} to {new_lr:.6f}")
+            else:
+                self._ewm_loss = 0
+                ewm_loss_ratio = 1
             # take an optimization step
             self.task.optimizer_step(
                 self.optimizer,
