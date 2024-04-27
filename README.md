@@ -32,7 +32,7 @@ The OPT models can be served with [FasterTransformer](https://github.com/NVIDIA/
 The OPT models can be finetuned using [DeepSpeed](https://github.com/microsoft/DeepSpeed). See the [DeepSpeed-Chat example](https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat) to get started.
 
 ## Getting Started in Metaseq
-Follow [setup instructions here](docs/setup.md) to get started.
+Follow [setup instructions here](docs/setup.md) to get started. Before heading there, we kindly suggest that you assess whether you have the minimum hardware required, to avoid errors such as "RuntimeError: Building apex kernels was requested, but nvcc was not found". Thank you!
 
 ### Documentation on workflows
 * [Training](docs/training.md)
